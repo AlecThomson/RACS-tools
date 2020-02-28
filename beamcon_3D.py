@@ -199,6 +199,9 @@ def worker(idx, start, cubedict):
 
 
 def main(pool, args, verbose=True):
+    if args.dryrun:
+        if verbose:
+            print('Doing a dry run -- no files will be saved')
     # Fix up outdir
     if args.mpi:
         from mpi4py import MPI
@@ -236,6 +239,12 @@ def main(pool, args, verbose=True):
         beamlog = f"{dirname}/beamlog.{basename}".replace('.fits', '.txt')
         datadict[f"cube_{i}"]["beamlog"] = beamlog
         beam, nchan = getbeams(beamlog, verbose=verbose)
+        if args.cutoff is not None:
+            frac = len([beam['BMAJarcsec'].ravel() > args.cutoff]) / \
+                len(beam['BMAJarcsec'].ravel())
+            if verbose:
+                print(
+                    f'Cutoff will blank {round(frac*100,2)}% of channels in {basename}')
         # Find bad chans
         cube = SpectralCube.read(file)
         mask = cube[:, cube.shape[1]//2, cube.shape[2]//2].mask.view()
@@ -250,6 +259,15 @@ def main(pool, args, verbose=True):
     beams['BMINarcsec'][beams['BMAJarcsec'] == 0] = np.nan
     beams['BMINarcsec'][beams['BMINarcsec'] == 0] = np.nan
     beams['BMAJarcsec'][beams['BMINarcsec'] == 0] = np.nan
+
+    if args.cutoff is not None:
+        frac = len([beams['BMAJarcsec'].ravel() > args.cutoff]) / \
+            len(beams['BMAJarcsec'].ravel())
+        if verbose:
+            print(
+                f'Cutoff will blank {round(frac*100,2)}% of channels, in all cubes')
+        beams['BMAJarcsec'][beams['BMAJarcsec'] > args.cutoff] = np.nan
+        beams['BMINarcsec'][beams['BMAJarcsec'] > args.cutoff] = np.nan
 
     totalmask = sum(masks) > 0
 
@@ -311,48 +329,52 @@ def main(pool, args, verbose=True):
     if verbose:
         print(f'Final beam is', new_beam)
 
-    for key in tqdm(datadict.keys(), desc='Working on cubes separately'):
-        conbms, facs = getfacs(datadict[key], new_beam, verbose=False)
-        cube = SpectralCube.read(datadict[key]["filename"])
-        # Set up output file
-        outname = "sm." + os.path.basename(datadict[key]["filename"])
-        outfile = f'{outdir}/{outname}'
-        if verbose:
-            print(f'Initialsing to {outfile}')
-        if not os.path.isfile(outfile):
-            copyfile(datadict[key]["filename"], outfile, verbose=True)
+    if not args.dryrun:
+        for key in tqdm(datadict.keys(), desc='Working on cubes separately'):
+            conbms, facs = getfacs(datadict[key], new_beam, verbose=False)
+            cube = SpectralCube.read(datadict[key]["filename"])
+            # Set up output file
+            outname = "sm." + os.path.basename(datadict[key]["filename"])
+            outfile = f'{outdir}/{outname}'
+            if verbose:
+                print(f'Initialsing to {outfile}')
+            if not os.path.isfile(outfile):
+                copyfile(datadict[key]["filename"], outfile, verbose=True)
 
-        cubedict = datadict[key]
-        cubedict["conbeams"] = conbms
-        cubedict["sfactors"] = facs
+            cubedict = datadict[key]
+            cubedict["conbeams"] = conbms
+            cubedict["sfactors"] = facs
 
-        if not args.mpi:
-            n_cores = args.n_cores
-        width_max = n_cores
-        width = cpu_to_use(width_max, cube.shape[0])
-        n_chunks = cube.shape[0]//width
+            if not args.mpi:
+                n_cores = args.n_cores
+            width_max = n_cores
+            width = cpu_to_use(width_max, cube.shape[0])
+            n_chunks = cube.shape[0]//width
 
-        for i in trange(
-                n_chunks, disable=(not verbose),
-                desc='Smoothing in chunks'
-        ):
-            start = i*width
-            stop = start+width
+            for i in trange(
+                    n_chunks, disable=(not verbose),
+                    desc='Smoothing in chunks'
+            ):
+                start = i*width
+                stop = start+width
 
-            func = functools.partial(worker, start=start, cubedict=cubedict)
-            arr_out = list(pool.map(func, [idx for idx in range(width)]))
-            arr_out = np.array(arr_out)
+                func = functools.partial(
+                    worker, start=start, cubedict=cubedict)
+                arr_out = list(pool.map(func, [idx for idx in range(width)]))
+                arr_out = np.array(arr_out)
 
+                with fits.open(outfile, mode='update', memmap=True) as outfh:
+                    outfh[0].data[start:stop, 0, :, :] = arr_out[:]
+                    outfh.flush()
+
+            if verbose:
+                print('Updating header...')
             with fits.open(outfile, mode='update', memmap=True) as outfh:
-                outfh[0].data[start:stop, 0, :, :] = arr_out[:]
+                outfh[0].header = new_beam.attach_to_header(outfh[0].header)
                 outfh.flush()
-
-        if verbose:
-            print('Updating header...')
-        with fits.open(outfile, mode='update', memmap=True) as outfh:
-            outfh[0].header = new_beam.attach_to_header(outfh[0].header)
-            outfh.flush()
-        # print(arr_out)
+            # print(arr_out)
+    if verbose:
+        print('Done!')
 
 
 def cli():
@@ -380,6 +402,9 @@ def cli():
 
     parser.add_argument("-v", "--verbose", dest="verbose", action="store_true",
                         help="verbose output [False].")
+
+    parser.add_argument("-d", "--dryrun", dest="dryun", action="store_true",
+                        help="Compute common beam and stop [False].")
 
     parser.add_argument(
         '-o',
@@ -417,6 +442,14 @@ def cli():
         type=str,
         default=None,
         help='List of channels to be masked [None]')
+
+    parser.add_argument(
+        '-c',
+        '--cutoff',
+        dest='cutoff',
+        type=float,
+        default=None,
+        help='Cutoff BMAJ value -- Blank channels with BMAJ larger than this [None -- no limit]')
 
     group = parser.add_mutually_exclusive_group()
 

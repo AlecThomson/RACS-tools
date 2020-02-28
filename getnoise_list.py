@@ -76,7 +76,7 @@ def calcnoise(args):
             Ix = Ih[1][:-1] + 0.5*(Ih[1][1] - Ih[1][0])
             Iv = Ih[0]/float(max(Ih[0]))
             Inoise = myfit(Ix, Iv, '')
-            return Inoise.value
+            return Inoise
 
 def getcube(filename):
     """Read FITS file as SpectralCube

@@ -104,9 +104,7 @@ def savefile(datadict, filename, outdir='.', verbose=False):
         print(f'Saving to {outfile}')
     header = datadict['header']
     beam = datadict['final_beam']
-    header['BMIN'] = beam.minor.to(u.deg).value
-    header['BMAJ'] = beam.minor.to(u.deg).value
-    header['BPA'] = beam.pa.to(u.deg).value
+    header = beam.attach_to_header(header)
     fits.writeto(outfile, datadict['newimage'], header=header, overwrite=True)
 
 
@@ -167,7 +165,9 @@ def getmaxbeam(files, verbose=False):
 def main(pool, args, verbose=False):
     """Main script
     """
-
+    if args.dryrun:
+        if verbose:
+            print('Doing a dry run -- no files will be saved')
     # Fix up outdir
     outdir = args.outdir
     if outdir is not None:
@@ -218,7 +218,8 @@ def main(pool, args, verbose=False):
     inputs = [[file, outdir, new_beam, args, verbose]
               for i, file in enumerate(files)]
 
-    output = list(pool.map(worker, inputs))
+    if not args.dryrun:
+        output = list(pool.map(worker, inputs))
 
     if verbose:
         print('Done!')
@@ -265,6 +266,9 @@ def cli():
 
     parser.add_argument("-v", "--verbose", dest="verbose", action="store_true",
                         help="verbose output [False].")
+
+    parser.add_argument("-d", "--dryrun", dest="dryun", action="store_true",
+                        help="Compute common beam and stop [False].")
 
     parser.add_argument(
         "--bmaj",
