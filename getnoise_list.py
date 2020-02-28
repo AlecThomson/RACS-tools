@@ -13,6 +13,9 @@ warnings.filterwarnings(action='ignore', category=SpectralCubeWarning,
                         append=True)
 print = functools.partial(print, flush=True)
 
+#############################################
+####### ADAPTED FROM SCRIPT BY G. HEALD #####
+#############################################
 
 def myfit(x, y, fn):
     # Find the width of a Gaussian distribution by computing the second moment of

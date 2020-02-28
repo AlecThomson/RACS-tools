@@ -19,6 +19,10 @@ print = functools.partial(print, flush=True)
 warnings.filterwarnings(action='ignore', category=SpectralCubeWarning,
                         append=True)
 
+#############################################
+#### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
+#############################################
+
 
 class Error(OSError):
     pass
