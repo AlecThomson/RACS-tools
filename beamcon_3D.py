@@ -392,6 +392,10 @@ def cli():
 
     Names of output files are 'infile'.sm.fits
 
+    NOTE: Glob is used to parse wildcards. So if you want to run on 
+        *.fits, use: python beamcon_3D.py '*.fits'
+        i.e. parse the wildcard as a string.
+
     """
 
     # Parse the command line options
@@ -402,7 +406,7 @@ def cli():
         'infile',
         metavar='infile',
         type=str,
-        help='Input FITS image to smooth (can be a wildcard) - beam info must be in header.')
+        help='Input FITS image(s) to smooth - beam info must be in header.')
 
     parser.add_argument("-v", "--verbose", dest="verbose", action="store_true",
                         help="verbose output [False].")
