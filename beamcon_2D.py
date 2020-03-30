@@ -267,7 +267,7 @@ def cli():
     parser.add_argument("-v", "--verbose", dest="verbose", action="store_true",
                         help="verbose output [False].")
 
-    parser.add_argument("-d", "--dryrun", dest="dryun", action="store_true",
+    parser.add_argument("-d", "--dryrun", dest="dryrun", action="store_true",
                         help="Compute common beam and stop [False].")
 
     parser.add_argument(
