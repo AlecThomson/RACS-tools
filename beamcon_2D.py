@@ -114,7 +114,7 @@ def worker(args):
         print(f'Working on {file}')
 
     outfile = os.path.basename(file)
-    outfile = file.replace('.fits', '.sm.fits')
+    outfile = outfile.replace('.fits', '.sm.fits')
     if clargs.prefix is not None:
         outfile = clargs.prefix + outfile
     datadict = getimdata(file)
