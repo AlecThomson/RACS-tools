@@ -240,6 +240,8 @@ def main(pool, args, verbose=True):
         # Get beam info
         dirname = os.path.dirname(file)
         basename = os.path.basename(file)
+        if dirname=='':
+            dirname='.'
         beamlog = f"{dirname}/beamlog.{basename}".replace('.fits', '.txt')
         datadict[f"cube_{i}"]["beamlog"] = beamlog
         beam, nchan = getbeams(beamlog, verbose=verbose)
