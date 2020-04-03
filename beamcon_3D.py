@@ -252,8 +252,11 @@ def main(pool, args, verbose=True):
                 print(
                     f'Cutoff will blank {round(frac*100,2)}% of channels in {basename}')
         # Find bad chans
-        cube = SpectralCube.read(file)
-        mask = cube[:, cube.shape[1]//2, cube.shape[2]//2].mask.view()
+        #cube = SpectralCube.read(file)
+        #mask = cube[:, cube.shape[1]//2, cube.shape[2]//2].mask.view()
+        fitscube = fits.open(file, memmap=True, mode='denywrite')[0].data
+        subcube = fitscube[:, 0, fitscube.shape[2]//2, fitscube.shape[3]//2]
+        mask = (subcube==0) | (np.isnan(subcube))
         masks.append(mask)
         # Record beams
         beams.append(beam)
@@ -303,7 +306,7 @@ def main(pool, args, verbose=True):
 
     big_beam = beamlst[~np.isnan(beamlst)].common_beam()
     if verbose:
-        print(f'largest common beam is', big_beam)
+        print(f'Smallest common beam is', big_beam)
     # Parse args
     bmaj = args.bmaj
     bmin = args.bmin
