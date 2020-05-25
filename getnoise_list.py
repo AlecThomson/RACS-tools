@@ -8,6 +8,7 @@ from tqdm import tqdm, trange
 import schwimmbad
 import time
 import warnings
+import sys
 from spectral_cube.utils import SpectralCubeWarning
 warnings.filterwarnings(action='ignore', category=SpectralCubeWarning,
                         append=True)
