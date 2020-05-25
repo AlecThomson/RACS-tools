@@ -6,11 +6,13 @@ import scipy.signal
 from astropy import units as u
 from astropy.io import fits
 from radio_beam import Beam, Beams
+from radio_beam.utils import BeamError
 from glob import glob
 import au2
 import functools
 import schwimmbad
-print = functools.partial(print, flush=True)
+import psutil
+print = functools.partial(print, f'[{psutil.Process().cpu_num()}]', flush=True)
 
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
@@ -144,7 +146,7 @@ def worker(args):
     savefile(datadict, outfile, outdir, verbose=verbose)
 
 
-def getmaxbeam(files, verbose=False):
+def getmaxbeam(files, tolerance=0.0001, nsamps=200, epsilon=0.0005, verbose=False):
     """Get largest beam
     """
     beams = []
@@ -158,8 +160,16 @@ def getmaxbeam(files, verbose=False):
         [beam.minor.value for beam in beams]*u.deg,
         [beam.pa.value for beam in beams]*u.deg
     )
-
-    return beams.common_beam()
+    try:
+        cmn_beam = beams.common_beam(
+            tolerance=tolerance, epsilon=epsilon, nsamps=nsamps)
+    except BeamError:
+        if verbose:
+            print("Couldn't find common beam with defaults")
+            print("Trying again with smaller tolerance")
+        cmn_beam = beams.common_beam(
+            tolerance=tolerance*0.1, epsilon=epsilon, nsamps=nsamps)
+    return cmn_beam
 
 
 def main(pool, args, verbose=False):
@@ -187,7 +197,11 @@ def main(pool, args, verbose=False):
     bpa = args.bpa
 
     # Find largest bmax
-    big_beam = getmaxbeam(files, verbose=verbose)
+    big_beam = getmaxbeam(files,
+                          tolerance=args.tolerance,
+                          nsamps=args.nsamps, 
+                          epsilon=args.epsilon, 
+                          verbose=verbose)
 
     # Set to largest
     if bpa is None and bmin is None and bmaj is None:
@@ -294,6 +308,30 @@ def cli():
         type=float,
         default=None,
         help="BPA to convolve to [0].")
+
+    parser.add_argument(
+        "-t",
+        "--tolerance",
+        dest="tolerance",
+        type=float,
+        default=0.0001,
+        help="tolerance for radio_beam.commonbeam.")
+
+    parser.add_argument(
+        "-e",
+        "--epsilon",
+        dest="epsilon",
+        type=float,
+        default=0.0005,
+        help="epsilon for radio_beam.commonbeam.")
+
+    parser.add_argument(
+        "-n",
+        "--nsamps",
+        dest="nsamps",
+        type=int,
+        default=200,
+        help="nsamps for radio_beam.commonbeam.")
 
     group = parser.add_mutually_exclusive_group()
 

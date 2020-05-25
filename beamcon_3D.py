@@ -10,12 +10,14 @@ from astropy import units as u
 from astropy.io import fits
 from spectral_cube import SpectralCube
 from radio_beam import Beam, Beams
+from radio_beam.utils import BeamError
 from glob import glob
 import schwimmbad
 from tqdm import tqdm, trange
 import au2
 import functools
-print = functools.partial(print, flush=True)
+import psutil
+print = functools.partial(print, f'[{psutil.Process().cpu_num()}]', flush=True)
 warnings.filterwarnings(action='ignore', category=SpectralCubeWarning,
                         append=True)
 
@@ -240,8 +242,8 @@ def main(pool, args, verbose=True):
         # Get beam info
         dirname = os.path.dirname(file)
         basename = os.path.basename(file)
-        if dirname=='':
-            dirname='.'
+        if dirname == '':
+            dirname = '.'
         beamlog = f"{dirname}/beamlog.{basename}".replace('.fits', '.txt')
         datadict[f"cube_{i}"]["beamlog"] = beamlog
         beam, nchan = getbeams(beamlog, verbose=verbose)
@@ -256,7 +258,7 @@ def main(pool, args, verbose=True):
         #mask = cube[:, cube.shape[1]//2, cube.shape[2]//2].mask.view()
         fitscube = fits.open(file, memmap=True, mode='denywrite')[0].data
         subcube = fitscube[:, 0, fitscube.shape[2]//2, fitscube.shape[3]//2]
-        mask = (subcube==0) | (np.isnan(subcube))
+        mask = (subcube == 0) | (np.isnan(subcube))
         masks.append(mask)
         # Record beams
         beams.append(beam)
@@ -304,7 +306,19 @@ def main(pool, args, verbose=True):
     beamlst = Beams(beams['BMAJarcsec'].ravel(
     )*u.arcsec, beams['BMINarcsec'].ravel()*u.arcsec, beams['BPAdeg'].ravel()*u.deg)
 
-    big_beam = beamlst[~np.isnan(beamlst)].common_beam()
+    try:
+        big_beam = beamlst[~np.isnan(beamlst)].common_beam(tolerance=args.tolerance,
+                                                           nsamps=args.nsamps,
+                                                           epsilon=args.epsilon)
+    except BeamError:
+        if verbose:
+            print("Couldn't find common beam with defaults")
+            print("Trying again with smaller tolerance")
+
+        big_beam = beamlst[~np.isnan(beamlst)].common_beam(tolerance=args.tolerance*0.1,
+                                                           nsamps=args.nsamps,
+                                                           epsilon=args.epsilon)
+
     if verbose:
         print(f'Smallest common beam is', big_beam)
     # Parse args
@@ -393,7 +407,7 @@ def cli():
 
     # Help string to be shown using the -h option
     descStr = """
-    Smooth a field of 2D images to a common resolution.
+    Smooth a field of 3D cubes to a common resolution.
 
     Names of output files are 'infile'.sm.fits
 
@@ -463,6 +477,30 @@ def cli():
         type=float,
         default=None,
         help='Cutoff BMAJ value -- Blank channels with BMAJ larger than this [None -- no limit]')
+
+    parser.add_argument(
+        "-t",
+        "--tolerance",
+        dest="tolerance",
+        type=float,
+        default=0.0001,
+        help="tolerance for radio_beam.commonbeam.")
+
+    parser.add_argument(
+        "-e",
+        "--epsilon",
+        dest="epsilon",
+        type=float,
+        default=0.0005,
+        help="epsilon for radio_beam.commonbeam.")
+
+    parser.add_argument(
+        "-n",
+        "--nsamps",
+        dest="nsamps",
+        type=int,
+        default=200,
+        help="nsamps for radio_beam.commonbeam.")
 
     group = parser.add_mutually_exclusive_group()
 
