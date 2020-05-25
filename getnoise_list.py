@@ -11,7 +11,9 @@ import warnings
 from spectral_cube.utils import SpectralCubeWarning
 warnings.filterwarnings(action='ignore', category=SpectralCubeWarning,
                         append=True)
-print = functools.partial(print, flush=True)
+import psutil
+print = functools.partial(print,f'[{psutil.Process().cpu_num()}]', flush=True)
+
 
 #############################################
 ####### ADAPTED FROM SCRIPT BY G. HEALD #####
