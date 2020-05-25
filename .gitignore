@@ -130,3 +130,8 @@ dmypy.json
 
 # VS Code
 .vscode/
+
+# Local files
+*.err
+*.out
+*.sbatch
