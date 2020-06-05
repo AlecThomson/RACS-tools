@@ -24,29 +24,33 @@ def round_up(n, decimals=0):
     return np.ceil(n * multiplier) / multiplier
 
 
-def getbeam(datadict, new_beam, verbose=False):
+def getbeam(datadict, new_beam, cutoff=None, verbose=False):
     """Get beam info
     """
     if verbose:
         print(f"Current beam is", datadict['oldbeam'])
 
-    conbm = new_beam.deconvolve(datadict['oldbeam'])
-    fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
-        [
-            conbm.major.to(u.arcsec).value,
-            conbm.minor.to(u.arcsec).value,
-            conbm.pa.to(u.deg).value
-        ],
-        beamOrig=[
-            datadict['oldbeam'].major.to(u.arcsec).value,
-            datadict['oldbeam'].minor.to(u.arcsec).value,
-            datadict['oldbeam'].pa.to(u.deg).value
-        ],
-        dx1=datadict['dx'].to(u.arcsec).value,
-        dy1=datadict['dy'].to(u.arcsec).value
-    )
+    if cutoff is not None and datadict['oldbeam'].major.to(u.arcsec) > cutoff*u.arcsec:
+        return np.nan, np.nan
 
-    return conbm, fac
+    else:
+        conbm = new_beam.deconvolve(datadict['oldbeam'])
+        fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
+            [
+                conbm.major.to(u.arcsec).value,
+                conbm.minor.to(u.arcsec).value,
+                conbm.pa.to(u.deg).value
+            ],
+            beamOrig=[
+                datadict['oldbeam'].major.to(u.arcsec).value,
+                datadict['oldbeam'].minor.to(u.arcsec).value,
+                datadict['oldbeam'].pa.to(u.deg).value
+            ],
+            dx1=datadict['dx'].to(u.arcsec).value,
+            dy1=datadict['dy'].to(u.arcsec).value
+        )
+
+        return conbm, fac
 
 
 def getimdata(cubenm, verbose=False):
@@ -81,21 +85,27 @@ def getimdata(cubenm, verbose=False):
 def smooth(datadict, verbose=False):
     """Do the smoothing
     """
-    # using Beams package
-    if verbose:
-        print(f'Smoothing so beam is', datadict["final_beam"])
-        print(f'Using convolving beam', datadict["conbeam"])
-    pix_scale = datadict['dy']
+    if np.isnan(datadict["sfactor"]):
+        if verbose:
+            print('Beam larger than cutoff -- blanking')
+        newim = np.ones_like(datadict['image']) * np.nan
+        return newim
+    else:
+        # using Beams package
+        if verbose:
+            print(f'Smoothing so beam is', datadict["final_beam"])
+            print(f'Using convolving beam', datadict["conbeam"])
+        pix_scale = datadict['dy']
 
-    gauss_kern = datadict["conbeam"].as_kernel(pix_scale)
+        gauss_kern = datadict["conbeam"].as_kernel(pix_scale)
 
-    conbm1 = gauss_kern.array/gauss_kern.array.max()
+        conbm1 = gauss_kern.array/gauss_kern.array.max()
 
-    newim = scipy.signal.convolve(
-        datadict['image'].astype('f8'), conbm1, mode='same')
+        newim = scipy.signal.convolve(
+            datadict['image'].astype('f8'), conbm1, mode='same')
 
-    newim *= datadict["sfactor"]
-    return newim
+        newim *= datadict["sfactor"]
+        return newim
 
 
 def savefile(datadict, filename, outdir='.', verbose=False):
@@ -124,6 +134,7 @@ def worker(args):
     conbeam, sfactor = getbeam(
         datadict,
         new_beam,
+        cutoff=clargs.cutoff,
         verbose=verbose
     )
 
@@ -136,7 +147,6 @@ def worker(args):
     )
 
     newim = smooth(datadict, verbose=verbose)
-
     datadict.update(
         {
             "newimage": newim,
@@ -146,7 +156,7 @@ def worker(args):
     savefile(datadict, outfile, outdir, verbose=verbose)
 
 
-def getmaxbeam(files, tolerance=0.0001, nsamps=200, epsilon=0.0005, verbose=False):
+def getmaxbeam(files, cutoff=None, tolerance=0.0001, nsamps=200, epsilon=0.0005, verbose=False):
     """Get largest beam
     """
     beams = []
@@ -160,14 +170,18 @@ def getmaxbeam(files, tolerance=0.0001, nsamps=200, epsilon=0.0005, verbose=Fals
         [beam.minor.value for beam in beams]*u.deg,
         [beam.pa.value for beam in beams]*u.deg
     )
+    if cutoff is not None:
+        flags = beams.major > cutoff*u.arcsec
+    else:
+        flags = np.array([False for beam in beams])
     try:
-        cmn_beam = beams.common_beam(
+        cmn_beam = beams[~flags].common_beam(
             tolerance=tolerance, epsilon=epsilon, nsamps=nsamps)
     except BeamError:
         if verbose:
             print("Couldn't find common beam with defaults")
             print("Trying again with smaller tolerance")
-        cmn_beam = beams.common_beam(
+        cmn_beam = beams[~flags].common_beam(
             tolerance=tolerance*0.1, epsilon=epsilon, nsamps=nsamps)
     return cmn_beam
 
@@ -198,9 +212,10 @@ def main(pool, args, verbose=False):
 
     # Find largest bmax
     big_beam = getmaxbeam(files,
+                          cutoff=args.cutoff,
                           tolerance=args.tolerance,
-                          nsamps=args.nsamps, 
-                          epsilon=args.epsilon, 
+                          nsamps=args.nsamps,
+                          epsilon=args.epsilon,
                           verbose=verbose)
 
     # Set to largest
@@ -228,7 +243,6 @@ def main(pool, args, verbose=False):
     )
     if verbose:
         print(f'Final beam is', new_beam)
-
     inputs = [[file, outdir, new_beam, args, verbose]
               for i, file in enumerate(files)]
 
@@ -308,6 +322,14 @@ def cli():
         type=float,
         default=None,
         help="BPA to convolve to [0].")
+
+    parser.add_argument(
+        '-c',
+        '--cutoff',
+        dest='cutoff',
+        type=float,
+        default=None,
+        help='Cutoff BMAJ value (arcsec) -- Blank channels with BMAJ larger than this [None -- no limit]')
 
     parser.add_argument(
         "-t",
