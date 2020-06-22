@@ -11,7 +11,6 @@ from astropy.io import fits
 from spectral_cube import SpectralCube
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
-from glob import glob
 import schwimmbad
 from tqdm import tqdm, trange
 import au2
@@ -221,7 +220,7 @@ def main(pool, args, verbose=True):
     else:
         outdir = '.'
 
-    files = glob(args.infile)
+    files = sorted(args.infile)
     if files == []:
         raise Exception('No files found!')
 
@@ -425,7 +424,8 @@ def cli():
         'infile',
         metavar='infile',
         type=str,
-        help='Input FITS image(s) to smooth - beam info must be in header.')
+        help='Input FITS image(s) to smooth (can be a wildcard) - beam info must be in header.',
+        nargs='+')
 
     parser.add_argument("-v", "--verbose", dest="verbose", action="store_true",
                         help="verbose output [False].")

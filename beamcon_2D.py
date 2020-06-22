@@ -7,7 +7,6 @@ from astropy import units as u
 from astropy.io import fits
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
-from glob import glob
 import au2
 import functools
 import schwimmbad
@@ -201,9 +200,11 @@ def main(pool, args, verbose=False):
         outdir = '.'
 
     # Get file list
-    files = glob(args.infile)
+    files = sorted(args.infile)
     if files == []:
         raise Exception('No files found!')
+
+    
 
     # Parse args
     bmaj = args.bmaj
@@ -264,10 +265,6 @@ def cli():
 
     Names of output files are 'infile'.sm.fits
 
-    NOTE: Glob is used to parse wildcards. So if you want to run on 
-        *.fits, use: python beamcon_2D.py '*.fits'
-        i.e. parse the wildcard as a string.
-
     """
 
     # Parse the command line options
@@ -278,7 +275,8 @@ def cli():
         'infile',
         metavar='infile',
         type=str,
-        help='Input FITS image(s) to smooth (can be a wildcard) - beam info must be in header.')
+        help='Input FITS image(s) to smooth (can be a wildcard) - beam info must be in header.',
+        nargs='+')
 
     parser.add_argument(
         '-p',
