@@ -410,10 +410,6 @@ def cli():
 
     Names of output files are 'infile'.sm.fits
 
-    NOTE: Glob is used to parse wildcards. So if you want to run on 
-        *.fits, use: python beamcon_3D.py '*.fits'
-        i.e. parse the wildcard as a string.
-
     """
 
     # Parse the command line options
