@@ -124,8 +124,11 @@ def worker(args):
     if verbose:
         print(f'Working on {file}')
 
+    if outdir is None:
+        outdir = os.path.dirname(file)
+
     outfile = os.path.basename(file)
-    outfile = outfile.replace('.fits', '.sm.fits')
+    outfile = outfile.replace('.fits', f'.{clargs.suffix}.fits')
     if clargs.prefix is not None:
         outfile = clargs.prefix + outfile
     datadict = getimdata(file)
@@ -197,7 +200,7 @@ def main(pool, args, verbose=False):
         if outdir[-1] == '/':
             outdir = outdir[:-1]
     else:
-        outdir = '.'
+        outdir = None
 
     # Get file list
     files = sorted(args.infile)
@@ -287,12 +290,20 @@ def cli():
         help='Add prefix to output filenames.')
 
     parser.add_argument(
+        '-s',
+        '--suffix',
+        dest='suffix',
+        type=str,
+        default='sm',
+        help='Add suffix to output filenames [...sm.fits].')
+
+    parser.add_argument(
         '-o',
         '--outdir',
         dest='outdir',
         type=str,
         default=None,
-        help='Output directory of smoothed FITS image(s) [./].')
+        help='Output directory of smoothed FITS image(s) [same as input file].')
 
     parser.add_argument("-v", "--verbose", dest="verbose", action="store_true",
                         help="verbose output [False].")
