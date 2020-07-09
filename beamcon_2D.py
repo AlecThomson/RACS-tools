@@ -12,7 +12,7 @@ import functools
 import schwimmbad
 import psutil
 from tqdm import tqdm
-print = functools.partial(print, f'[{psutil.Process().cpu_num()}]', flush=True)
+#print = functools.partial(print, f'[{psutil.Process().cpu_num()}]', flush=True)
 
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
@@ -351,21 +351,21 @@ def cli():
         dest="bmaj",
         type=float,
         default=None,
-        help="BMAJ to convolve to [max BMAJ from given image(s)].")
+        help="Target BMAJ (arcsec) to convolve to [None].")
 
     parser.add_argument(
         "--bmin",
         dest="bmin",
         type=float,
         default=None,
-        help="BMIN to convolve to [max BMAJ from given image(s)].")
+        help="Target BMIN (arcsec) to convolve to [None].")
 
     parser.add_argument(
         "--bpa",
         dest="bpa",
         type=float,
         default=None,
-        help="BPA to convolve to [0].")
+        help="Target BPA (deg) to convolve to [None].")
 
     parser.add_argument(
         '-c',
