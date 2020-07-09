@@ -12,7 +12,7 @@ import functools
 import schwimmbad
 import psutil
 from tqdm import tqdm
-#print = functools.partial(print, f'[{psutil.Process().cpu_num()}]', flush=True)
+print = functools.partial(print, f'[{psutil.Process().cpu_num()}]', flush=True)
 
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
