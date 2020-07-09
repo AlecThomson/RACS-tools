@@ -11,6 +11,7 @@ import au2
 import functools
 import schwimmbad
 import psutil
+from tqdm import tqdm
 print = functools.partial(print, f'[{psutil.Process().cpu_num()}]', flush=True)
 
 #############################################
@@ -22,6 +23,9 @@ def round_up(n, decimals=0):
     multiplier = 10 ** decimals
     return np.ceil(n * multiplier) / multiplier
 
+
+def my_ceil(a, precision=0):
+    return np.round(a + 0.5 * 10**(-precision), precision)
 
 def getbeam(datadict, new_beam, cutoff=None, verbose=False):
     """Get beam info
@@ -159,7 +163,7 @@ def worker(args):
 
 
 def getmaxbeam(files, cutoff=None, tolerance=0.0001, nsamps=200, epsilon=0.0005, verbose=False):
-    """Get largest beam
+    """Get smallest common beam
     """
     beams = []
     for file in files:
@@ -185,7 +189,15 @@ def getmaxbeam(files, cutoff=None, tolerance=0.0001, nsamps=200, epsilon=0.0005,
             print("Trying again with smaller tolerance")
         cmn_beam = beams[~flags].common_beam(
             tolerance=tolerance*0.1, epsilon=epsilon, nsamps=nsamps)
-    return cmn_beam
+    
+    # Round up values
+    cmn_beam = Beam(
+        major=my_ceil(cmn_beam.major.to(u.arcsec).value, precision=1)*u.arcsec,
+        minor=my_ceil(cmn_beam.minor.to(u.arcsec).value, precision=1)*u.arcsec,
+        pa=round_up(cmn_beam.pa.to(u.deg), decimals=2)
+    )
+
+    return cmn_beam, beams
 
 
 def main(pool, args, verbose=False):
@@ -207,44 +219,67 @@ def main(pool, args, verbose=False):
     if files == []:
         raise Exception('No files found!')
 
-    
-
     # Parse args
     bmaj = args.bmaj
     bmin = args.bmin
     bpa = args.bpa
 
-    # Find largest bmax
-    big_beam = getmaxbeam(files,
-                          cutoff=args.cutoff,
-                          tolerance=args.tolerance,
-                          nsamps=args.nsamps,
-                          epsilon=args.epsilon,
-                          verbose=verbose)
+    nonetest = [test is None for test in [bmaj, bmin, bpa]]
 
-    # Set to largest
-    if bpa is None and bmin is None and bmaj is None:
-        bpa = big_beam.pa.to(u.deg)
-    else:
-        bpa = 0*u.deg
-    if bmaj is None:
-        bmaj = round_up(big_beam.major.to(u.arcsec))
-    elif bmaj*u.arcsec < round_up(big_beam.major.to(u.arcsec)):
-        raise Exception('Selected BMAJ is too small!')
-    else:
-        bmaj *= u.arcsec
-    if bmin is None:
-        bmin = round_up(big_beam.minor.to(u.arcsec))
-    elif bmin*u.arcsec < round_up(big_beam.minor.to(u.arcsec)):
-        raise Exception('Selected BMIN is too small!')
-    else:
-        bmin *= u.arcsec
+    if all(nonetest):
+        target_beam = None
 
-    new_beam = Beam(
-        bmaj,
-        bmin,
-        bpa
-    )
+    elif not all(nonetest) and any(nonetest):
+        raise Exception('Please specify all target beam params!')
+
+    elif not all(nonetest) and not any(nonetest):
+        target_beam = Beam(
+            bmaj * u.arcsec,
+            bmin * u.arcsec,
+            bpa * u.deg
+        )
+        if verbose:
+            print('Target beam is ', target_beam)
+
+    # Find smallest common beam
+    big_beam, allbeams = getmaxbeam(files,
+                                    cutoff=args.cutoff,
+                                    tolerance=args.tolerance,
+                                    nsamps=args.nsamps,
+                                    epsilon=args.epsilon,
+                                    verbose=verbose)
+
+    if target_beam is not None:
+        if verbose:
+            print('Checking that target beam will deconvolve...')
+
+        mask_count = 0
+        failed = []
+        for i, (beam, file) in enumerate(
+            tqdm(
+                zip(allbeams, files),
+                total=len(allbeams),
+                desc='Deconvolving',
+                disable=(not verbose)
+            )
+        ):
+            try:
+                target_beam.deconvolve(beam)
+            except ValueError:
+                mask_count += 1
+                failed.append(file)
+        if mask_count > 0:
+            if verbose:
+                print('The following images could not reach target resolution:')
+                print(failed)
+            raise Exception("Please choose a larger target beam!")
+        
+        else:
+            new_beam = target_beam 
+
+    else: 
+        new_beam = big_beam
+
     if verbose:
         print(f'Final beam is', new_beam)
     inputs = [[file, outdir, new_beam, args, verbose]
