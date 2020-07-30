@@ -12,7 +12,10 @@ import functools
 import schwimmbad
 import psutil
 from tqdm import tqdm
-print = functools.partial(print, f'[{psutil.Process().cpu_num()}]', flush=True)
+try:
+    print = functools.partial(print, f'[{psutil.Process().cpu_num()}]', flush=True)
+except AttributeError:
+    print = functools.partial(print, flush=True)
 
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
@@ -80,7 +83,7 @@ def getimdata(cubenm, verbose=False):
             'nx': nx,
             'ny': ny,
             'dx': dxas,
-            'dy': dxas
+            'dy': dyas
         }
     return datadict
 

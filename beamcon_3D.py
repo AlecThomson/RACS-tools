@@ -16,7 +16,10 @@ from tqdm import tqdm, trange
 import au2
 import functools
 import psutil
-print = functools.partial(print, f'[{psutil.Process().cpu_num()}]', flush=True)
+try:
+    print = functools.partial(print, f'[{psutil.Process().cpu_num()}]', flush=True)
+except AttributeError:
+    print = functools.partial(print, flush=True)
 warnings.filterwarnings(action='ignore', category=SpectralCubeWarning,
                         append=True)
 
