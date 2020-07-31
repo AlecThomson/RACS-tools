@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+from numpy.testing._private.utils import verbose
+from beamcon_2D import my_ceil, round_up
+from logging import disable
+from operator import countOf
 from spectral_cube.utils import SpectralCubeWarning
 import warnings
 import os
@@ -7,7 +11,8 @@ import sys
 import numpy as np
 import scipy.signal
 from astropy import units as u
-from astropy.io import fits
+from astropy.io import fits, ascii
+from astropy.table import Table
 from spectral_cube import SpectralCube
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
@@ -16,8 +21,10 @@ from tqdm import tqdm, trange
 import au2
 import functools
 import psutil
+from IPython import embed
 try:
-    print = functools.partial(print, f'[{psutil.Process().cpu_num()}]', flush=True)
+    print = functools.partial(
+        print, f'[{psutil.Process().cpu_num()}]', flush=True)
 except AttributeError:
     print = functools.partial(print, flush=True)
 warnings.filterwarnings(action='ignore', category=SpectralCubeWarning,
@@ -111,33 +118,50 @@ def copyfileobj(fsrc, fdst, length=16*1024, verbose=True):
             pbar.update(copied)
 
 
-def round_up(n, decimals=0):
-    multiplier = 10 ** decimals
-    return np.ceil(n * multiplier) / multiplier
-
-
 def getbeams(beamlog, verbose=False):
     """
 
     colnames=['Channel', 'BMAJarcsec', 'BMINarcsec', 'BPAdeg']
     """
+    # Get beamlog
     if verbose:
         print(f'Getting beams from {beamlog}')
-    beams = np.genfromtxt(beamlog, names=True)
-    nchan = beams.shape[0]
 
-    return beams, nchan
+    beams = Table.read(beamlog, format='ascii.commented_header')
+    for col in beams.colnames:
+        idx = col.find('[')
+        if idx == -1:
+            new_col = col
+            unit = u.Unit('')
+        else:
+            new_col = col[:idx]
+            unit = u.Unit(col[idx+1:-1])
+        beams[col].unit = unit
+        beams[col].name = new_col
+    # Get cubestats
+    statfile = beamlog.replace('beamlog.', 'cubeStats-')
+    if verbose:
+        print(f'Getting stats from {statfile}')
+
+    stats = Table.read(statfile, format='ascii.commented_header')
+    with open(statfile, 'r') as f:
+        lines = f.readlines()
+    units = lines[1].strip().split()
+    units[0] = ''
+    units = [u.Unit(unit) for unit in units]
+    for col, unit in zip(stats.colnames, units):
+        stats[col].unit = unit
+
+    nchan = len(beams)
+
+    return beams, stats, nchan
 
 
-def getfacs(datadict, new_beam, verbose=False):
+def getfacs(datadict, convbeams, verbose=False):
     """Get beam info
     """
-    conbms = []
     facs = []
-    for oldbeam in datadict['oldbeams']:
-        if verbose:
-            print(f"Current beam is", oldbeam)
-        conbm = new_beam.deconvolve(oldbeam)
+    for conbm, oldbeam in zip(convbeams, datadict['beams']):
         fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
             [
                 conbm.major.to(u.arcsec).value,
@@ -152,9 +176,9 @@ def getfacs(datadict, new_beam, verbose=False):
             dx1=datadict['dx'].to(u.arcsec).value,
             dy1=datadict['dy'].to(u.arcsec).value
         )
-        conbms.append(conbm)
         facs.append(fac)
-    return conbms, facs
+    facs = np.array(facs)
+    return facs
 
 
 def smooth(image, dy, conbeam, sfactor, verbose=False):
@@ -206,31 +230,8 @@ def worker(idx, start, cubedict):
     return newim
 
 
-def main(pool, args, verbose=True):
-    if args.dryrun:
-        if verbose:
-            print('Doing a dry run -- no files will be saved')
-    # Fix up outdir
-    if args.mpi:
-        from mpi4py import MPI
-        mpiComm = MPI.COMM_WORLD
-        n_cores = mpiComm.Get_size()
-        #mpiRank = mpiComm.Get_rank()
-    outdir = args.outdir
-    if outdir is not None:
-        if outdir[-1] == '/':
-            outdir = outdir[:-1]
-    else:
-        outdir = '.'
-
-    files = sorted(args.infile)
-    if files == []:
-        raise Exception('No files found!')
-
-    beams = []
-    nchans = []
+def makedata(files):
     datadict = {}
-    masks = []
     for i, file in enumerate(files):
         # Set up files
         datadict[f"cube_{i}"] = {}
@@ -248,111 +249,355 @@ def main(pool, args, verbose=True):
             dirname = '.'
         beamlog = f"{dirname}/beamlog.{basename}".replace('.fits', '.txt')
         datadict[f"cube_{i}"]["beamlog"] = beamlog
-        beam, nchan = getbeams(beamlog, verbose=verbose)
-        if args.cutoff is not None:
-            frac = len([beam['BMAJarcsec'].ravel() > args.cutoff]) / \
-                len(beam['BMAJarcsec'].ravel())
+        beam, stats, nchan = getbeams(beamlog, verbose=verbose)
+        datadict[f"cube_{i}"]["beam"] = beam
+        datadict[f"cube_{i}"]["stats"] = stats
+        datadict[f"cube_{i}"]["nchan"] = nchan
+    return datadict
+
+
+def commonbeamer(datadict, nchans, args, mode='natural', verbose=True):
+    ### Natural mode ###
+    if mode == 'natural':
+        big_beams = []
+        for n in trange(
+            nchans,
+            desc='Constructing beams',
+            disable=(not verbose)
+        ):
+            majors = []
+            minors = []
+            pas = []
+            for key in datadict.keys():
+                major = datadict[key]['beams'][n].major
+                minor = datadict[key]['beams'][n].minor
+                pa = datadict[key]['beams'][n].pa
+                if datadict[key]['mask'][n]:
+                    major *= np.nan
+                    minor *= np.nan
+                    pa *= np.nan
+                majors.append(major.value)
+                minors.append(minor.value)
+                pas.append(pa.value)
+
+            majors = np.array(majors)
+            minors = np.array(minors)
+            pas = np.array(pas)
+
+            majors *= major.unit
+            minors *= minor.unit
+            pas *= pa.unit
+            big_beams.append(Beams(major=majors, minor=minors, pa=pas))
+
+        # Find common beams
+        bmaj_common = []
+        bmin_common = []
+        bpa_common = []
+        for beams in tqdm(
+            big_beams,
+            desc='Finding common beam per channel',
+            disable=(not verbose),
+            total=nchans
+        ):
+            try:
+                commonbeam = beams[~np.isnan(beams)].common_beam(tolerance=args.tolerance,
+                                                                 nsamps=args.nsamps,
+                                                                 epsilon=args.epsilon)
+            except BeamError:
+                if verbose:
+                    print("Couldn't find common beam with defaults")
+                    print("Trying again with smaller tolerance")
+
+                commonbeam = beams[~np.isnan(beams)].common_beam(tolerance=args.tolerance*0.1,
+                                                                 nsamps=args.nsamps,
+                                                                 epsilon=args.epsilon)
+            # Round up values
+            commonbeam = Beam(
+                major=my_ceil(
+                    commonbeam.major.to(u.arcsec).value, precision=1
+                )*u.arcsec,
+                minor=my_ceil(
+                    commonbeam.minor.to(u.arcsec).value, precision=1
+                )*u.arcsec,
+                pa=round_up(commonbeam.pa.to(u.deg), decimals=2)
+            )
+            bmaj_common.append(commonbeam.major.value)
+            bmin_common.append(commonbeam.minor.value)
+            bpa_common.append(commonbeam.pa.value)
+
+        bmaj_common *= commonbeam.major.unit
+        bmin_common *= commonbeam.minor.unit
+        bpa_common *= commonbeam.pa.unit
+
+        # Make Beams object
+        commonbeams = Beams(
+            major=bmaj_common,
+            minor=bmin_common,
+            pa=bpa_common
+        )
+
+    elif mode == 'total':
+        majors = []
+        minors = []
+        pas = []
+        for key in datadict.keys():
+            major = datadict[key]['beams'].major
+            minor = datadict[key]['beams'].minor
+            pa = datadict[key]['beams'].pa
+            major[datadict[key]['mask']] *= np.nan
+            minor[datadict[key]['mask']] *= np.nan
+            pa[datadict[key]['mask']] *= np.nan
+            majors.append(major.value)
+            minors.append(minor.value)
+            pas.append(pa.value)
+
+        majors = np.array(majors).ravel()
+        minors = np.array(minors).ravel()
+        pas = np.array(pas).ravel()
+
+        majors *= major.unit
+        minors *= minor.unit
+        pas *= pa.unit
+        big_beams = Beams(major=majors, minor=minors, pa=pas)
+
+        try:
+            commonbeam = big_beams[~np.isnan(big_beams)].common_beam(tolerance=args.tolerance,
+                                                                     nsamps=args.nsamps,
+                                                                     epsilon=args.epsilon)
+        except BeamError:
             if verbose:
-                print(
-                    f'Cutoff will blank {round(frac*100,2)}% of channels in {basename}')
-        # Find bad chans
-        #cube = SpectralCube.read(file)
-        #mask = cube[:, cube.shape[1]//2, cube.shape[2]//2].mask.view()
-        fitscube = fits.open(file, memmap=True, mode='denywrite')[0].data
-        subcube = fitscube[:, 0, fitscube.shape[2]//2, fitscube.shape[3]//2]
-        mask = (subcube == 0) | (np.isnan(subcube))
-        masks.append(mask)
-        # Record beams
-        beams.append(beam)
-        nchans.append(nchan)
-    beams = np.array(beams)
-    nchans = np.array(nchans)
-    # Do dome masking
-    beams['BMAJarcsec'][beams['BMAJarcsec'] == 0] = np.nan
-    beams['BMINarcsec'][beams['BMAJarcsec'] == 0] = np.nan
-    beams['BMINarcsec'][beams['BMINarcsec'] == 0] = np.nan
-    beams['BMAJarcsec'][beams['BMINarcsec'] == 0] = np.nan
+                print("Couldn't find common beam with defaults")
+                print("Trying again with smaller tolerance")
 
-    if args.cutoff is not None:
-        frac = len([beams['BMAJarcsec'].ravel() > args.cutoff]) / \
-            len(beams['BMAJarcsec'].ravel())
-        if verbose:
-            print(
-                f'Cutoff will blank {round(frac*100,2)}% of channels, in all cubes')
-        beams['BMAJarcsec'][beams['BMAJarcsec'] > args.cutoff] = np.nan
-        beams['BMINarcsec'][beams['BMAJarcsec'] > args.cutoff] = np.nan
-
-    totalmask = sum(masks) > 0
-
-    for i, _ in enumerate(beams['BMAJarcsec']):
-        beams['BMAJarcsec'][i][totalmask] = np.nan
-        beams['BMINarcsec'][i][totalmask] = np.nan
-        beams['BPAdeg'][i][totalmask] = np.nan
-        datadict[f"cube_{i}"]["oldbeams"] = Beams(beams['BMAJarcsec'][i].ravel(
-        )*u.arcsec, beams['BMINarcsec'][i].ravel()*u.arcsec, beams['BPAdeg'][i].ravel()*u.deg)
-
-    if args.masklist is not None:
-        masklist = np.loadtxt(args.masklist) == 1
-        for i, _ in enumerate(beams['BMAJarcsec']):
-            beams['BMAJarcsec'][i][masklist] = np.nan
-            beams['BMINarcsec'][i][masklist] = np.nan
-            beams['BPAdeg'][i][masklist] = np.nan
-            datadict[f"cube_{i}"]["oldbeams"] = Beams(beams['BMAJarcsec'][i].ravel(
-            )*u.arcsec, beams['BMINarcsec'][i].ravel()*u.arcsec, beams['BPAdeg'][i].ravel()*u.deg)
-
-        # for chan in masklist:
-
-    if not all(elem == nchans[0] for elem in nchans):
-        raise Exception('Unequal channel count in beamlogs!')
-
-    beamlst = Beams(beams['BMAJarcsec'].ravel(
-    )*u.arcsec, beams['BMINarcsec'].ravel()*u.arcsec, beams['BPAdeg'].ravel()*u.deg)
-
-    try:
-        big_beam = beamlst[~np.isnan(beamlst)].common_beam(tolerance=args.tolerance,
-                                                           nsamps=args.nsamps,
-                                                           epsilon=args.epsilon)
-    except BeamError:
-        if verbose:
-            print("Couldn't find common beam with defaults")
-            print("Trying again with smaller tolerance")
-
-        big_beam = beamlst[~np.isnan(beamlst)].common_beam(tolerance=args.tolerance*0.1,
-                                                           nsamps=args.nsamps,
-                                                           epsilon=args.epsilon)
+            commonbeam = big_beams[~np.isnan(big_beams)].common_beam(tolerance=args.tolerance*0.1,
+                                                                     nsamps=args.nsamps,
+                                                                     epsilon=args.epsilon)
+        # Round up values
+        commonbeam = Beam(
+            major=my_ceil(
+                commonbeam.major.to(u.arcsec).value, precision=1
+            )*u.arcsec,
+            minor=my_ceil(
+                commonbeam.minor.to(u.arcsec).value, precision=1
+            )*u.arcsec,
+            pa=round_up(commonbeam.pa.to(u.deg), decimals=2)
+        )
+        # Make Beams object
+        commonbeams = Beams(
+            major=[commonbeam.major] * nchans * commonbeam.major.unit,
+            minor=[commonbeam.minor] * nchans * commonbeam.minor.unit,
+            pa=[commonbeam.pa] * nchans * commonbeam.pa.unit
+        )
 
     if verbose:
-        print(f'Smallest common beam is', big_beam)
+        print('Final beams are:')
+        for i, commonbeam in enumerate(commonbeams):
+            print(f'Channel {i}:', commonbeam)
+    embed()
+    for key in tqdm(
+        datadict.keys(),
+        desc='Getting convolution data',
+        disable=(not verbose)
+    ):
+        # Get convolving beams
+        conv_bmaj = []
+        conv_bmin = []
+        conv_bpa = []
+        oldbeams = datadict[key]['beams']
+        masks = datadict[key]['mask']
+        for commonbeam, oldbeam, mask in zip(commonbeams, oldbeams, masks):
+            if mask:
+                convbeam = Beam(
+                    major=np.nan*u.deg,
+                    minor=np.nan*u.deg,
+                    pa=np.nan*u.deg
+                )
+            else:
+                convbeam = commonbeam.deconvolve(oldbeam)
+            conv_bmaj.append(convbeam.major.value)
+            conv_bmin.append(convbeam.minor.value)
+            conv_bpa.append(convbeam.pa.to(u.deg).value)
+
+        conv_bmaj *= convbeam.major.unit
+        conv_bmin *= convbeam.minor.unit
+        conv_bpa *= u.deg
+
+        # Construct beams object
+        convbeams = Beams(
+            major=conv_bmaj,
+            minor=conv_bmin,
+            pa=conv_bpa
+        )
+
+        # Get gaussian beam factors
+        facs = getfacs(datadict[key], convbeams)
+        datadict[key]['facs'] = facs
+
+        # Setup conv beamlog
+        datadict[key]['convbeams'] = convbeams
+        commonbeam_log = datadict[key]['beamlog'].replace('beamlog.',
+                                                          f'beamlogConvolve-{mode}.')
+        datadict[key]['commonbeamlog'] = commonbeam_log
+
+        commonbeam_tab = Table()
+        # Save target
+        commonbeam_tab.add_column(np.arange(nchans), name='Channel')
+        commonbeam_tab.add_column(commonbeams.major, name='Target BMAJ')
+        commonbeam_tab.add_column(commonbeams.minor, name='Target BMIN')
+        commonbeam_tab.add_column(commonbeams.pa, name='Target BPA')
+        # Save convolving beams
+        commonbeam_tab.add_column(convbeams.major, name='Convolving BMAJ')
+        commonbeam_tab.add_column(convbeams.minor, name='Convolving BMIN')
+        commonbeam_tab.add_column(convbeams.pa, name='Convolving BPA')
+        # Save facs
+        commonbeam_tab.add_column(facs, name='Convolving factor')
+
+        # Write to log file
+        units = ''
+        for col in commonbeam_tab.colnames:
+            unit = commonbeam_tab[col].unit
+            unit = str(unit)
+            units += unit + ' '
+        commonbeam_tab.meta['comments'] = [units]
+        ascii.write(
+            commonbeam_tab,
+            output=commonbeam_log,
+            format='commented_header',
+            overwrite=True
+        )
+        if verbose:
+            print(f'Convolving log written to {commonbeam_log}')
+
+    return datadict
+
+
+def masking(nchans, cutoff, datadict, verbose=True):
+    for key in datadict.keys():
+        mask = np.array([False]*nchans)
+        datadict[key]['mask'] = mask
+    if cutoff is not None:
+        for key in datadict.keys():
+            majors = datadict[key]['beams'].major
+            cutmask = majors > cutoff
+            datadict[key]['mask'] += cutmask
+
+    # Check for pipeline masking
+    nullbeam = Beam(major=0*u.deg, minor=0*u.deg, pa=0*u.deg)
+    for key in datadict.keys():
+        nullmask = datadict[key]['beams'] == nullbeam
+        datadict[key]['mask'] += nullmask
+    return datadict
+
+
+def main(pool, args, verbose=True):
+    """main script
+    """
     # Parse args
+    if args.dryrun:
+        if verbose:
+            print('Doing a dry run -- no files will be saved')
+
+    # Check mode
+    mode = args.mode
+    if verbose:
+        print(f"Mode is {mode}")
+    if mode == 'natural' and mode == 'total':
+        raise Exception("'mode' must be 'natural' or 'total'")
+    if mode == 'natural':
+        if verbose:
+            print('Smoothing each channel to a common resolution')
+    if mode == 'total':
+        if verbose:
+            print('Smoothing all channels to a common resolution')
+
+    # Check cutoff
+    if args.cutoff is not None:
+        cutoff = args.cutoff * u.arcsec
+        if verbose:
+            print('Cutoff is:', cutoff)
+
+    # Check target
     bmaj = args.bmaj
     bmin = args.bmin
     bpa = args.bpa
 
-    # Set to largest
-    if bpa is None and bmin is None and bmaj is None:
-        bpa = big_beam.pa.to(u.deg)
-    else:
-        bpa = 0*u.deg
-    if bmaj is None:
-        bmaj = round_up(big_beam.major.to(u.arcsec))
-    elif bmaj*u.arcsec < round_up(big_beam.major.to(u.arcsec)):
-        raise Exception('Selected BMAJ is too small!')
-    else:
-        bmaj *= u.arcsec
-    if bmin is None:
-        bmin = round_up(big_beam.minor.to(u.arcsec))
-    elif bmin*u.arcsec < round_up(big_beam.minor.to(u.arcsec)):
-        raise Exception('Selected BMIN is too small!')
-    else:
-        bmin *= u.arcsec
+    nonetest = [test is None for test in [bmaj, bmin, bpa]]
 
-    new_beam = Beam(
-        bmaj,
-        bmin,
-        bpa
+    if not all(nonetest) and mode is not 'total':
+        raise Exception("Only specify a target beam in 'total' mode")
+
+    if all(nonetest):
+        target_beam = None
+
+    elif not all(nonetest) and any(nonetest):
+        raise Exception('Please specify all target beam params!')
+
+    elif not all(nonetest) and not any(nonetest):
+        target_beam = Beam(
+            bmaj * u.arcsec,
+            bmin * u.arcsec,
+            bpa * u.deg
+        )
+        if verbose:
+            print('Target beam is ', target_beam)
+
+    # Fix up outdir
+    if args.mpi:
+        from mpi4py import MPI
+        mpiComm = MPI.COMM_WORLD
+        n_cores = mpiComm.Get_size()
+        #mpiRank = mpiComm.Get_rank()
+    outdir = args.outdir
+    if outdir is not None:
+        if outdir[-1] == '/':
+            outdir = outdir[:-1]
+    else:
+        outdir = '.'
+
+    files = sorted(args.infile)
+    if files == []:
+        raise Exception('No files found!')
+
+    datadict = makedata(files)
+
+    # Sanity check channel counts
+    nchans = np.array([datadict[key]['nchan'] for key in datadict.keys()])
+    check = all(nchans == nchans[0])
+
+    if not check:
+        raise Exception('Unequal number of spectral channels!')
+
+    else:
+        nchans = nchans[0]
+
+    # Construct Beams objects
+    for key in datadict.keys():
+        beam = datadict[key]['beam']
+        bmaj = np.array(beam['BMAJ'])*beam['BMAJ'].unit
+        bmin = np.array(beam['BMIN'])*beam['BMIN'].unit
+        bpa = np.array(beam['BPA'])*beam['BPA'].unit
+        beams = Beams(
+            major=bmaj,
+            minor=bmin,
+            pa=bpa
+        )
+        datadict[key]['beams'] = beams
+
+    # Apply some masking
+    datadict = masking(
+        nchans,
+        cutoff,
+        datadict,
+        verbose=verbose
     )
-    if verbose:
-        print(f'Final beam is', new_beam)
+
+    datadict = commonbeamer(
+        datadict,
+        nchans,
+        args,
+        mode=mode,
+        verbose=verbose
+    )
 
     if not args.dryrun:
         for key in tqdm(datadict.keys(), desc='Working on cubes separately'):
@@ -423,14 +668,37 @@ def cli():
         'infile',
         metavar='infile',
         type=str,
-        help='Input FITS image(s) to smooth (can be a wildcard) - beam info must be in header.',
+        help="""Input FITS image(s) to smooth (can be a wildcard) 
+        - beam info must be in header.
+        """,
         nargs='+')
 
-    parser.add_argument("-v", "--verbose", dest="verbose", action="store_true",
-                        help="verbose output [False].")
+    parser.add_argument(
+        '--mode',
+        dest='mode',
+        type=str,
+        default='natural',
+        help="""Common resolution mode [natural]. 
+        natural  -- allow frequency variation.
+        total -- smooth all plans to a common resolution.
+        """
+    )
 
-    parser.add_argument("-d", "--dryrun", dest="dryrun", action="store_true",
-                        help="Compute common beam and stop [False].")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        dest="verbose",
+        action="store_true",
+        help="verbose output [False]."
+    )
+
+    parser.add_argument(
+        "-d",
+        "--dryrun",
+        dest="dryrun",
+        action="store_true",
+        help="Compute common beam and stop [False]."
+    )
 
     parser.add_argument(
         '-o',
@@ -438,28 +706,32 @@ def cli():
         dest='outdir',
         type=str,
         default=None,
-        help='Output directory of smoothed FITS image(s) [./].')
+        help='Output directory of smoothed FITS image(s) [./].'
+    )
 
     parser.add_argument(
         "--bmaj",
         dest="bmaj",
         type=float,
         default=None,
-        help="BMAJ to convolve to [max BMAJ from given image(s)].")
+        help="BMAJ to convolve to [max BMAJ from given image(s)]."
+    )
 
     parser.add_argument(
         "--bmin",
         dest="bmin",
         type=float,
         default=None,
-        help="BMIN to convolve to [max BMAJ from given image(s)].")
+        help="BMIN to convolve to [max BMAJ from given image(s)]."
+    )
 
     parser.add_argument(
         "--bpa",
         dest="bpa",
         type=float,
         default=None,
-        help="BPA to convolve to [0].")
+        help="BPA to convolve to [0]."
+    )
 
     parser.add_argument(
         '-m',
@@ -467,7 +739,8 @@ def cli():
         dest='masklist',
         type=str,
         default=None,
-        help='List of channels to be masked [None]')
+        help='List of channels to be masked [None]'
+    )
 
     parser.add_argument(
         '-c',
@@ -475,7 +748,8 @@ def cli():
         dest='cutoff',
         type=float,
         default=None,
-        help='Cutoff BMAJ value -- Blank channels with BMAJ larger than this [None -- no limit]')
+        help='Cutoff BMAJ value (arcsec) -- Blank channels with BMAJ larger than this [None -- no limit]'
+    )
 
     parser.add_argument(
         "-t",
@@ -483,7 +757,8 @@ def cli():
         dest="tolerance",
         type=float,
         default=0.0001,
-        help="tolerance for radio_beam.commonbeam.")
+        help="tolerance for radio_beam.commonbeam."
+    )
 
     parser.add_argument(
         "-e",
@@ -491,7 +766,8 @@ def cli():
         dest="epsilon",
         type=float,
         default=0.0005,
-        help="epsilon for radio_beam.commonbeam.")
+        help="epsilon for radio_beam.commonbeam."
+    )
 
     parser.add_argument(
         "-n",
@@ -499,14 +775,25 @@ def cli():
         dest="nsamps",
         type=int,
         default=200,
-        help="nsamps for radio_beam.commonbeam.")
+        help="nsamps for radio_beam.commonbeam."
+    )
 
     group = parser.add_mutually_exclusive_group()
 
-    group.add_argument("--ncores", dest="n_cores", default=1,
-                       type=int, help="Number of processes (uses multiprocessing).")
-    group.add_argument("--mpi", dest="mpi", default=False,
-                       action="store_true", help="Run with MPI.")
+    group.add_argument(
+        "--ncores",
+        dest="n_cores",
+        default=1,
+        type=int,
+        help="Number of processes (uses multiprocessing)."
+    )
+    group.add_argument(
+        "--mpi",
+        dest="mpi",
+        default=False,
+        action="store_true",
+        help="Run with MPI."
+    )
 
     args = parser.parse_args()
 
