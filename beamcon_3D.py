@@ -544,37 +544,6 @@ def initfiles(datadict, nchans, mode, verbose=True):
     
     return datadict
 
-    '''
-    if not args.mpi:
-        n_cores = args.n_cores
-    width_max = n_cores
-    width = cpu_to_use(width_max, cube.shape[0])
-    n_chunks = cube.shape[0]//width
-
-    for i in trange(
-            n_chunks, disable=(not verbose),
-            desc='Smoothing in chunks'
-    ):
-        start = i*width
-        stop = start+width
-
-        func = functools.partial(
-            worker, start=start, cubedict=cubedict)
-        arr_out = list(pool.map(func, [idx for idx in range(width)]))
-        arr_out = np.array(arr_out)
-
-        with fits.open(outfile, mode='update', memmap=True) as outfh:
-            outfh[0].data[start:stop, 0, :, :] = arr_out[:]
-            outfh.flush()
-
-    if verbose:
-        print('Updating header...')
-    with fits.open(outfile, mode='update', memmap=True) as outfh:
-        outfh[0].header = new_beam.attach_to_header(outfh[0].header)
-        outfh.flush()
-    # print(arr_out)
-    '''
-
 
 def main(args, verbose=True):
     """main script
