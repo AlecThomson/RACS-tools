@@ -582,7 +582,7 @@ def initfiles(datadict, nchans, mode, verbose=True):
                     'BPA'
                 ]
             )
-
+            primary_hdu = fits.PrimaryHDU(data=data, header=header)
             tab_hdu = fits.table_to_hdu(beam_table)
             new_hdulist = fits.HDUList([primary_hdu, tab_hdu])
 
@@ -752,19 +752,19 @@ def main(args, verbose=True):
             # The remaining 'size - remainder' ranks get 'count' task each
             my_start = myPE * count + rem
             my_end = my_start + (count - 1)
-
-        print(f"My start is {my_start}")
-        print(f"My end is {my_end}")
-        print(f"There are {nchans} channels, across {len(files)} files")
+        if verbose:
+            print(f"My start is {my_start}")
+            print(f"My end is {my_end}")
+            print(f"There are {nchans} channels, across {len(files)} files")
         for inp in inputs[my_start:my_end+1]:
             key, chan = inp
-            print(key, chan)
             newim = worker(chan, datadict[key])
             outfile = datadict[key]['outfile']
             with fits.open(outfile, mode='update', memmap=True) as outfh:
                 outfh[0].data[chan, 0, :, :] = newim
                 outfh.flush()
-            print(f"{outfile}  - channel {chan} - Done")
+            if verbose:
+                print(f"{outfile}  - channel {chan} - Done")
     else:
         if verbose:
             print('Done!')
