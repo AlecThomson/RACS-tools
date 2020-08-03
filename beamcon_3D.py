@@ -24,13 +24,7 @@ import psutil
 from IPython import embed
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
-#n_cores = comm.Get_size()
 print = functools.partial(print, f'[{comm.rank}]', flush=True)
-#try:
-#    print = functools.partial(
-#        print, f'[{psutil.Process().cpu_num()}]', flush=True)
-#except AttributeError:
-#    print = functools.partial(print, flush=True)
 warnings.filterwarnings(action='ignore', category=SpectralCubeWarning,
                         append=True)
 warnings.simplefilter('ignore', category=AstropyWarning)
@@ -257,7 +251,7 @@ def worker(idx, cubedict, start=0):
 
     Returns:
         ndarray: smoothed image
-    """    
+    """
     cube = SpectralCube.read(cubedict["filename"])
     plane = cube.unmasked_data[start+idx].value
     newim = smooth(plane, cubedict['dy'], cubedict['convbeams']
@@ -274,7 +268,7 @@ def makedata(files, outdir):
 
     Returns:
         datadict: Main data dictionary
-    """    
+    """
     datadict = {}
     for i, (file, out) in enumerate(zip(files, outdir)):
         # Set up files
@@ -313,7 +307,7 @@ def commonbeamer(datadict, nchans, args, mode='natural', verbose=True):
 
     Returns:
         dict: updated datadict
-    """    
+    """
     ### Natural mode ###
     if mode == 'natural':
         big_beams = []
@@ -562,7 +556,7 @@ def initfiles(datadict, nchans, mode, verbose=True):
 
     Returns:
         datadict: Updated datadict
-    """    
+    """
     for key in tqdm(datadict.keys(), desc='Initialising cubes'):
         with fits.open(datadict[key]["filename"], memmap=True, mode='denywrite') as hdulist:
             primary_hdu = hdulist[0]
@@ -588,7 +582,7 @@ def initfiles(datadict, nchans, mode, verbose=True):
                     'BPA'
                 ]
             )
-            
+
             tab_hdu = fits.table_to_hdu(beam_table)
             new_hdulist = fits.HDUList([primary_hdu, tab_hdu])
 
@@ -603,7 +597,7 @@ def initfiles(datadict, nchans, mode, verbose=True):
             print(f'Initialsing to {outfile}')
 
         new_hdulist.writeto(outfile, overwrite=True)
-    
+
     return datadict
 
 
@@ -614,7 +608,7 @@ def main(args, verbose=True):
         args (args): Command line args
         verbose (bool, optional): Verbose ouput. Defaults to True.
 
-    """    
+    """
     nPE = comm.Get_size()
     myPE = comm.Get_rank()
 
@@ -673,7 +667,7 @@ def main(args, verbose=True):
         files = sorted(args.infile)
         if files == []:
             raise Exception('No files found!')
-        
+
         outdir = args.outdir
         if outdir is not None:
             if outdir[-1] == '/':
@@ -725,12 +719,11 @@ def main(args, verbose=True):
 
         if not args.dryrun:
             datadict = initfiles(datadict, nchans, mode, verbose=verbose)
-            
+
             inputs = []
             for key in datadict.keys():
                 for chan in range(nchans):
-                    inputs.append( (key,chan) )
-        
+                    inputs.append((key, chan))
 
     else:
         if not args.dryrun:
@@ -738,7 +731,7 @@ def main(args, verbose=True):
             datadict = None
             nchans = None
             inputs = None
-    
+
     comm.Barrier()
     if not args.dryrun:
         files = comm.bcast(files, root=0)
@@ -756,7 +749,7 @@ def main(args, verbose=True):
             my_end = my_start + count
 
         else:
-            #The remaining 'size - remainder' ranks get 'count' task each
+            # The remaining 'size - remainder' ranks get 'count' task each
             my_start = myPE * count + rem
             my_end = my_start + (count - 1)
 
