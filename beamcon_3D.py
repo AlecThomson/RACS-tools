@@ -163,7 +163,17 @@ def getbeams(beamlog, verbose=False):
 
 
 def getfacs(datadict, convbeams, verbose=False):
-    """Get beam info
+    """Get smoothing unit factor
+
+    Args:
+        datadict (dict): Dict of input data
+        convbeams (Beams): Convolving beams
+        verbose (bool, optional): Verbose output. Defaults to False.
+
+    Returns:
+        list: factors to keep units of Jy/beam after convolution
+    """    """Get beam info
+    
     """
     facs = []
     for conbm, oldbeam in zip(convbeams, datadict['beams']):
@@ -187,7 +197,17 @@ def getfacs(datadict, convbeams, verbose=False):
 
 
 def smooth(image, dy, conbeam, sfactor, verbose=False):
-    """Do the smoothing
+    """smooth an image in Jy/beam
+
+    Args:
+        image (ndarray): Image plane from FITS file
+        dy (float): deg per pixel in image
+        conbeam (Beam): Convolving beam
+        sfactor (float): factor to keep units in Jy/beam
+        verbose (bool, optional): Verbose output. Defaults to False.
+
+    Returns:
+        ndarray: Smoothed image
     """
     if np.isnan(conbeam):
         return image*np.nan
@@ -228,6 +248,16 @@ def cpu_to_use(max_cpu, count):
 
 
 def worker(idx, cubedict, start=0):
+    """parallel worker function
+
+    Args:
+        idx (int): channel index
+        cubedict (dict): Datadict referring to single image cube
+        start (int, optional): index to start at. Defaults to 0.
+
+    Returns:
+        ndarray: smoothed image
+    """    
     cube = SpectralCube.read(cubedict["filename"])
     plane = cube.unmasked_data[start+idx].value
     newim = smooth(plane, cubedict['dy'], cubedict['convbeams']
@@ -236,6 +266,15 @@ def worker(idx, cubedict, start=0):
 
 
 def makedata(files, outdir):
+    """init datadict
+
+    Args:
+        files (list): list of input files
+        outdir (list): list of output dirs
+
+    Returns:
+        datadict: Main data dictionary
+    """    
     datadict = {}
     for i, (file, out) in enumerate(zip(files, outdir)):
         # Set up files
@@ -263,6 +302,18 @@ def makedata(files, outdir):
 
 
 def commonbeamer(datadict, nchans, args, mode='natural', verbose=True):
+    """Find common beams
+
+    Args:
+        datadict (dict): Main data dict
+        nchans (int): Number of channels
+        args (args): Command line args
+        mode (str, optional): 'total' or 'natural. Defaults to 'natural'.
+        verbose (bool, optional): Verbose output. Defaults to True.
+
+    Returns:
+        dict: updated datadict
+    """    
     ### Natural mode ###
     if mode == 'natural':
         big_beams = []
@@ -501,6 +552,17 @@ def masking(nchans, cutoff, datadict, verbose=True):
 
 
 def initfiles(datadict, nchans, mode, verbose=True):
+    """Initialise output files
+
+    Args:
+        datadict (dict): Main data dict
+        nchans (int): Number of channels
+        mode (str): 'total' or 'natural'
+        verbose (bool, optional): Verbose output. Defaults to True.
+
+    Returns:
+        datadict: Updated datadict
+    """    
     for key in tqdm(datadict.keys(), desc='Initialising cubes'):
         with fits.open(datadict[key]["filename"], memmap=True, mode='denywrite') as hdulist:
             primary_hdu = hdulist[0]
@@ -547,8 +609,12 @@ def initfiles(datadict, nchans, mode, verbose=True):
 
 def main(args, verbose=True):
     """main script
-    """
-    #comm = MPI.COMM_WORLD
+
+    Args:
+        args (args): Command line args
+        verbose (bool, optional): Verbose ouput. Defaults to True.
+
+    """    
     nPE = comm.Get_size()
     myPE = comm.Get_rank()
 
