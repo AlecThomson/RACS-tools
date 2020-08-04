@@ -1,8 +1,5 @@
 #!/usr/bin/env python
-from numpy.testing._private.utils import verbose
 from beamcon_2D import my_ceil, round_up
-from logging import disable
-from operator import countOf
 from spectral_cube.utils import SpectralCubeWarning
 import warnings
 from astropy.utils.exceptions import AstropyWarning
@@ -22,9 +19,29 @@ import au2
 import functools
 import psutil
 from IPython import embed
-from mpi4py import MPI
-comm = MPI.COMM_WORLD
-print = functools.partial(print, f'[{comm.rank}]', flush=True)
+try:
+    from mpi4py import MPI
+    mpiSwitch = True
+except:
+    mpiSwitch = False
+
+# Fail if script has been started with mpiexec & mpi4py is not installed
+if os.environ.get('OMPI_COMM_WORLD_SIZE') is not None:
+    if not mpiSwitch:
+        print("Script called with mpiexec, but mpi4py not installed")
+        sys.exit()
+
+# Get the processing environment
+if mpiSwitch:
+    comm = MPI.COMM_WORLD
+    nPE = comm.Get_size()
+    myPE = comm.Get_rank()
+else:
+    nPE = 1
+    myPE = 0
+
+print = functools.partial(print, f'[{myPE}]', flush=True)
+
 warnings.filterwarnings(action='ignore', category=SpectralCubeWarning,
                         append=True)
 warnings.simplefilter('ignore', category=AstropyWarning)
@@ -259,7 +276,7 @@ def worker(idx, cubedict, start=0):
     return newim
 
 
-def makedata(files, outdir):
+def makedata(files, outdir, verbose=True):
     """init datadict
 
     Args:
@@ -601,6 +618,43 @@ def initfiles(datadict, nchans, mode, verbose=True):
     return datadict
 
 
+def readlogs(datadict, mode, verbose=True):
+    if verbose:
+        print('Reading from beamlogConvolve files')
+    for key in datadict.keys():
+        # Read in logs
+        commonbeam_log = datadict[key]['beamlog'].replace('beamlog.',
+                                                          f'beamlogConvolve-{mode}.')
+        if verbose:
+            print(f'Reading from {commonbeam_log}')
+        try:
+            commonbeam_tab = Table.read(commonbeam_log, format='ascii.commented_header')
+        except FileNotFoundError:
+            raise Exception("beamlogConvolve must be co-located with image")
+        # Convert to Beams
+        commonbeams = Beams(
+            major=commonbeam_tab['Target BMAJ'] * u.arcsec,
+            minor=commonbeam_tab['Target BMIN'] * u.arcsec,
+            pa=commonbeam_tab['Target BPA'] * u.deg
+        )
+        convbeams = Beams(
+            major=commonbeam_tab['Convolving BMAJ'] * u.arcsec,
+            minor=commonbeam_tab['Convolving BMIN'] * u.arcsec,
+            pa=commonbeam_tab['Convolving BPA'] * u.deg
+        )
+        facs = np.array(commonbeam_tab['Convolving factor'])
+        # Save to datadict
+        datadict[key]['facs'] = facs
+        datadict[key]['convbeams'] = convbeams
+        datadict[key]['commonbeams'] = commonbeams
+        datadict[key]['commonbeamlog'] = commonbeam_log  
+    if verbose:
+        print('Final beams are:')
+        for i, commonbeam in enumerate(commonbeams):
+            print(f'Channel {i}:', commonbeam)                          
+    return datadict
+
+
 def main(args, verbose=True):
     """main script
 
@@ -609,10 +663,8 @@ def main(args, verbose=True):
         verbose (bool, optional): Verbose ouput. Defaults to True.
 
     """
-    nPE = comm.Get_size()
-    myPE = comm.Get_rank()
 
-    if comm.Get_rank() == 0:
+    if myPE == 0:
         print(f"Total number of MPI ranks = {nPE}")
         # Parse args
         if args.dryrun:
@@ -668,15 +720,21 @@ def main(args, verbose=True):
         if files == []:
             raise Exception('No files found!')
 
+
         outdir = args.outdir
         if outdir is not None:
             if outdir[-1] == '/':
                 outdir = outdir[:-1]
             outdir = [outdir] * len(files)
         else:
-            outdir = [os.path.dirname(f) for f in files]
+            outdir = []
+            for f in files:
+                out = os.path.dirname(f)
+                if out == '':
+                    out = '.'
+                outdir += [out]
 
-        datadict = makedata(files, outdir)
+        datadict = makedata(files, outdir, verbose=verbose)
 
         # Sanity check channel counts
         nchans = np.array([datadict[key]['nchan'] for key in datadict.keys()])
@@ -709,13 +767,21 @@ def main(args, verbose=True):
             verbose=verbose
         )
 
-        datadict = commonbeamer(
-            datadict,
-            nchans,
-            args,
-            mode=mode,
-            verbose=verbose
-        )
+
+        if not args.uselogs:
+            datadict = commonbeamer(
+                datadict,
+                nchans,
+                args,
+                mode=mode,
+                verbose=verbose
+            )
+        else:
+            datadict = readlogs(
+                datadict,
+                mode=mode,
+                verbose=verbose
+            )
 
         if not args.dryrun:
             datadict = initfiles(datadict, nchans, mode, verbose=verbose)
@@ -731,13 +797,15 @@ def main(args, verbose=True):
             datadict = None
             nchans = None
             inputs = None
+    if mpiSwitch:
+        comm.Barrier()
 
-    comm.Barrier()
     if not args.dryrun:
-        files = comm.bcast(files, root=0)
-        datadict = comm.bcast(datadict, root=0)
-        nchans = comm.bcast(nchans, root=0)
-        inputs = comm.bcast(inputs, root=0)
+        if mpiSwitch:
+            files = comm.bcast(files, root=0)
+            datadict = comm.bcast(datadict, root=0)
+            nchans = comm.bcast(nchans, root=0)
+            inputs = comm.bcast(inputs, root=0)
 
         dims = len(files) * nchans
         assert len(inputs) == dims
@@ -753,9 +821,10 @@ def main(args, verbose=True):
             my_start = myPE * count + rem
             my_end = my_start + (count - 1)
         if verbose:
-            print(f"My start is {my_start}")
-            print(f"My end is {my_end}")
-            print(f"There are {nchans} channels, across {len(files)} files")
+            if myPE==0:
+                print(f"There are {nchans} channels, across {len(files)} files")
+            print(f"My start is {my_start}", f"My end is {my_end}")
+
         for inp in inputs[my_start:my_end+1]:
             key, chan = inp
             newim = worker(chan, datadict[key])
@@ -792,9 +861,16 @@ def cli():
         metavar='infile',
         type=str,
         help="""Input FITS image(s) to smooth (can be a wildcard) 
-        - beam info must be in header.
+        - beam info must be in co-located beamlog files.
         """,
         nargs='+')
+
+    parser.add_argument(
+        "--uselogs",
+        dest="uselogs",
+        action="store_true",
+        help="Get convolving information from previous run [False]."
+    )
 
     parser.add_argument(
         '--mode',
