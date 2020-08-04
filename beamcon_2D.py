@@ -12,8 +12,10 @@ import functools
 import schwimmbad
 import psutil
 from tqdm import tqdm
+from IPython import embed
 try:
-    print = functools.partial(print, f'[{psutil.Process().cpu_num()}]', flush=True)
+    print = functools.partial(
+        print, f'[{psutil.Process().cpu_num()}]', flush=True)
 except AttributeError:
     print = functools.partial(print, flush=True)
 
@@ -29,6 +31,7 @@ def round_up(n, decimals=0):
 
 def my_ceil(a, precision=0):
     return np.round(a + 0.5 * 10**(-precision), precision)
+
 
 def getbeam(datadict, new_beam, cutoff=None, verbose=False):
     """Get beam info
@@ -134,6 +137,9 @@ def worker(args):
     if outdir is None:
         outdir = os.path.dirname(file)
 
+    if outdir == '':
+        outdir = '.'
+
     outfile = os.path.basename(file)
     outfile = outfile.replace('.fits', f'.{clargs.suffix}.fits')
     if clargs.prefix is not None:
@@ -192,7 +198,7 @@ def getmaxbeam(files, cutoff=None, tolerance=0.0001, nsamps=200, epsilon=0.0005,
             print("Trying again with smaller tolerance")
         cmn_beam = beams[~flags].common_beam(
             tolerance=tolerance*0.1, epsilon=epsilon, nsamps=nsamps)
-    
+
     # Round up values
     cmn_beam = Beam(
         major=my_ceil(cmn_beam.major.to(u.arcsec).value, precision=1)*u.arcsec,
@@ -276,11 +282,11 @@ def main(pool, args, verbose=False):
                 print('The following images could not reach target resolution:')
                 print(failed)
             raise Exception("Please choose a larger target beam!")
-        
-        else:
-            new_beam = target_beam 
 
-    else: 
+        else:
+            new_beam = target_beam
+
+    else:
         new_beam = big_beam
 
     if verbose:
