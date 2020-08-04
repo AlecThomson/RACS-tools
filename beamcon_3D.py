@@ -562,12 +562,11 @@ def masking(nchans, cutoff, datadict, verbose=True):
     return datadict
 
 
-def initfiles(datadict, nchans, mode, verbose=True):
+def initfiles(datadict, mode, suffix='sm', prefix=None, verbose=True):
     """Initialise output files
 
     Args:
         datadict (dict): Main data dict
-        nchans (int): Number of channels
         mode (str): 'total' or 'natural'
         verbose (bool, optional): Verbose output. Defaults to True.
 
@@ -606,7 +605,11 @@ def initfiles(datadict, nchans, mode, verbose=True):
         elif mode == 'total':
             new_hdulist = fits.HDUList([primary_hdu])
         # Set up output file
-        outname = f"sm-{mode}." + os.path.basename(datadict[key]["filename"])
+        outname = os.path.basename(datadict[key]["filename"])
+        outname = outname.replace('.fits', f'.{suffix}-{mode}.fits')
+        if prefix is not None:
+            outname = prefix + outname
+
         outdir = datadict[key]['outdir']
         outfile = f'{outdir}/{outname}'
         datadict[key]['outfile'] = outfile
@@ -784,7 +787,13 @@ def main(args, verbose=True):
             )
 
         if not args.dryrun:
-            datadict = initfiles(datadict, nchans, mode, verbose=verbose)
+            datadict = initfiles(
+                datadict, 
+                mode, 
+                suffix=args.suffix,
+                prefix=args.prefix,
+                verbose=verbose
+            )
 
             inputs = []
             for key in datadict.keys():
@@ -898,6 +907,22 @@ def cli():
         action="store_true",
         help="Compute common beam and stop [False]."
     )
+
+    parser.add_argument(
+        '-p',
+        '--prefix',
+        dest='prefix',
+        type=str,
+        default=None,
+        help='Add prefix to output filenames.')
+
+    parser.add_argument(
+        '-s',
+        '--suffix',
+        dest='suffix',
+        type=str,
+        default='sm',
+        help='Add suffix to output filenames [...sm-{mode}.fits].')
 
     parser.add_argument(
         '-o',
