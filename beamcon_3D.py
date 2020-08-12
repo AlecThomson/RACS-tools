@@ -229,7 +229,7 @@ def smooth(image, dy, conbeam, sfactor, verbose=False):
         if verbose:
             print(f'Using convolving beam', conbeam)
         pix_scale = dy
-        gauss_kern = conbeam.as_kernel(dy)
+        gauss_kern = conbeam.as_kernel(pix_scale)
 
         conbm1 = gauss_kern.array/gauss_kern.array.max()
         newim = scipy.signal.convolve(
@@ -367,28 +367,35 @@ def commonbeamer(datadict, nchans, args, mode='natural', verbose=True):
             disable=(not verbose),
             total=nchans
         ):
-            try:
-                commonbeam = beams[~np.isnan(beams)].common_beam(tolerance=args.tolerance,
-                                                                 nsamps=args.nsamps,
-                                                                 epsilon=args.epsilon)
-            except BeamError:
-                if verbose:
-                    print("Couldn't find common beam with defaults")
-                    print("Trying again with smaller tolerance")
+            if all(np.isnan(beams)):
+                commonbeam = Beam(
+                    major=np.nan*u.deg,
+                    minor=np.nan*u.deg,
+                    pa=np.nan*u.deg
+                )
+            else:
+                try:
+                    commonbeam = beams[~np.isnan(beams)].common_beam(tolerance=args.tolerance,
+                                                                     nsamps=args.nsamps,
+                                                                     epsilon=args.epsilon)
+                except BeamError:
+                    if verbose:
+                        print("Couldn't find common beam with defaults")
+                        print("Trying again with smaller tolerance")
 
-                commonbeam = beams[~np.isnan(beams)].common_beam(tolerance=args.tolerance*0.1,
-                                                                 nsamps=args.nsamps,
-                                                                 epsilon=args.epsilon)
-            # Round up values
-            commonbeam = Beam(
-                major=my_ceil(
-                    commonbeam.major.to(u.arcsec).value, precision=1
-                )*u.arcsec,
-                minor=my_ceil(
-                    commonbeam.minor.to(u.arcsec).value, precision=1
-                )*u.arcsec,
-                pa=round_up(commonbeam.pa.to(u.deg), decimals=2)
-            )
+                    commonbeam = beams[~np.isnan(beams)].common_beam(tolerance=args.tolerance*0.1,
+                                                                     nsamps=args.nsamps,
+                                                                     epsilon=args.epsilon)
+                # Round up values
+                commonbeam = Beam(
+                    major=my_ceil(
+                        commonbeam.major.to(u.arcsec).value, precision=1
+                    )*u.arcsec,
+                    minor=my_ceil(
+                        commonbeam.minor.to(u.arcsec).value, precision=1
+                    )*u.arcsec,
+                    pa=round_up(commonbeam.pa.to(u.deg), decimals=2)
+                )
             bmaj_common.append(commonbeam.major.value)
             bmin_common.append(commonbeam.minor.value)
             bpa_common.append(commonbeam.pa.value)
@@ -631,7 +638,8 @@ def readlogs(datadict, mode, verbose=True):
         if verbose:
             print(f'Reading from {commonbeam_log}')
         try:
-            commonbeam_tab = Table.read(commonbeam_log, format='ascii.commented_header')
+            commonbeam_tab = Table.read(
+                commonbeam_log, format='ascii.commented_header')
         except FileNotFoundError:
             raise Exception("beamlogConvolve must be co-located with image")
         # Convert to Beams
@@ -650,11 +658,11 @@ def readlogs(datadict, mode, verbose=True):
         datadict[key]['facs'] = facs
         datadict[key]['convbeams'] = convbeams
         datadict[key]['commonbeams'] = commonbeams
-        datadict[key]['commonbeamlog'] = commonbeam_log  
+        datadict[key]['commonbeamlog'] = commonbeam_log
     if verbose:
         print('Final beams are:')
         for i, commonbeam in enumerate(commonbeams):
-            print(f'Channel {i}:', commonbeam)                          
+            print(f'Channel {i}:', commonbeam)
     return datadict
 
 
@@ -723,7 +731,6 @@ def main(args, verbose=True):
         if files == []:
             raise Exception('No files found!')
 
-
         outdir = args.outdir
         if outdir is not None:
             if outdir[-1] == '/':
@@ -770,7 +777,6 @@ def main(args, verbose=True):
             verbose=verbose
         )
 
-
         if not args.uselogs:
             datadict = commonbeamer(
                 datadict,
@@ -788,8 +794,8 @@ def main(args, verbose=True):
 
         if not args.dryrun:
             datadict = initfiles(
-                datadict, 
-                mode, 
+                datadict,
+                mode,
                 suffix=args.suffix,
                 prefix=args.prefix,
                 verbose=verbose
@@ -830,8 +836,9 @@ def main(args, verbose=True):
             my_start = myPE * count + rem
             my_end = my_start + (count - 1)
         if verbose:
-            if myPE==0:
-                print(f"There are {nchans} channels, across {len(files)} files")
+            if myPE == 0:
+                print(
+                    f"There are {nchans} channels, across {len(files)} files")
             print(f"My start is {my_start}", f"My end is {my_end}")
 
         for inp in inputs[my_start:my_end+1]:
