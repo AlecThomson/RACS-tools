@@ -621,7 +621,7 @@ def initfiles(datadict, mode, suffix='sm', prefix=None, verbose=True):
         outfile = f'{outdir}/{outname}'
         datadict[key]['outfile'] = outfile
         if verbose:
-            print(f'Initialsing to {outfile}')
+            print(f'Initialising to {outfile}')
 
         new_hdulist.writeto(outfile, overwrite=True)
 
