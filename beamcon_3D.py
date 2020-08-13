@@ -573,59 +573,57 @@ def initfiles(datadict, mode, suffix='sm', prefix=None, verbose=True):
     """Initialise output files
 
     Args:
-        datadict (dict): Main data dict
+        datadict (dict): Main data dict - indexed
         mode (str): 'total' or 'natural'
         verbose (bool, optional): Verbose output. Defaults to True.
 
     Returns:
         datadict: Updated datadict
     """
-    for key in tqdm(datadict.keys(), desc='Initialising cubes'):
-        with fits.open(datadict[key]["filename"], memmap=True, mode='denywrite') as hdulist:
-            primary_hdu = hdulist[0]
-            data = primary_hdu.data
-            header = primary_hdu.header
+    with fits.open(datadict["filename"], memmap=True, mode='denywrite') as hdulist:
+        primary_hdu = hdulist[0]
+        data = primary_hdu.data
+        header = primary_hdu.header
 
-        # Header
-        commonbeams = datadict[key]['commonbeams']
-        header = commonbeams[0].attach_to_header(header)
+    # Header
+    commonbeams = datadict['commonbeams']
+    header = commonbeams[0].attach_to_header(header)
+    primary_hdu = fits.PrimaryHDU(data=data, header=header)
+    if mode == 'natural':
+        header['COMMENT'] = 'The PSF in each image plane varies.'
+        header['COMMENT'] = 'Full beam information is stored in the second FITS extension.'
+        beam_table = Table(
+            data=[
+                commonbeams.major.to(u.arcsec),
+                commonbeams.minor.to(u.arcsec),
+                commonbeams.pa.to(u.deg)
+            ],
+            names=[
+                'BMAJ',
+                'BMIN',
+                'BPA'
+            ]
+        )
         primary_hdu = fits.PrimaryHDU(data=data, header=header)
-        if mode == 'natural':
-            header['COMMENT'] = 'The PSF in each image plane varies.'
-            header['COMMENT'] = 'Full beam information is stored in the second FITS extension.'
-            beam_table = Table(
-                data=[
-                    commonbeams.major.to(u.arcsec),
-                    commonbeams.minor.to(u.arcsec),
-                    commonbeams.pa.to(u.deg)
-                ],
-                names=[
-                    'BMAJ',
-                    'BMIN',
-                    'BPA'
-                ]
-            )
-            primary_hdu = fits.PrimaryHDU(data=data, header=header)
-            tab_hdu = fits.table_to_hdu(beam_table)
-            new_hdulist = fits.HDUList([primary_hdu, tab_hdu])
+        tab_hdu = fits.table_to_hdu(beam_table)
+        new_hdulist = fits.HDUList([primary_hdu, tab_hdu])
 
-        elif mode == 'total':
-            new_hdulist = fits.HDUList([primary_hdu])
-        # Set up output file
-        outname = os.path.basename(datadict[key]["filename"])
-        outname = outname.replace('.fits', f'.{suffix}-{mode}.fits')
-        if prefix is not None:
-            outname = prefix + outname
+    elif mode == 'total':
+        new_hdulist = fits.HDUList([primary_hdu])
+    # Set up output file
+    outname = os.path.basename(datadict["filename"])
+    outname = outname.replace('.fits', f'.{suffix}-{mode}.fits')
+    if prefix is not None:
+        outname = prefix + outname
 
-        outdir = datadict[key]['outdir']
-        outfile = f'{outdir}/{outname}'
-        datadict[key]['outfile'] = outfile
-        if verbose:
-            print(f'Initialising to {outfile}')
+    outdir = datadict['outdir']
+    outfile = f'{outdir}/{outname}'
+    if verbose:
+        print(f'Initialising to {outfile}')
 
-        new_hdulist.writeto(outfile, overwrite=True)
+    new_hdulist.writeto(outfile, overwrite=True)
 
-    return datadict
+    return outfile
 
 
 def readlogs(datadict, mode, verbose=True):
@@ -792,35 +790,95 @@ def main(args, verbose=True):
                 verbose=verbose
             )
 
-        if not args.dryrun:
-            datadict = initfiles(
-                datadict,
-                mode,
-                suffix=args.suffix,
-                prefix=args.prefix,
-                verbose=verbose
-            )
-
-            inputs = []
-            for key in datadict.keys():
-                for chan in range(nchans):
-                    inputs.append((key, chan))
-
     else:
         if not args.dryrun:
             files = None
             datadict = None
             nchans = None
-            inputs = None
+
     if mpiSwitch:
         comm.Barrier()
 
+    # Init the files in parallel
     if not args.dryrun:
+        if myPE == 0 and verbose:
+            print('Initialising output files')
         if mpiSwitch:
             files = comm.bcast(files, root=0)
             datadict = comm.bcast(datadict, root=0)
             nchans = comm.bcast(nchans, root=0)
+
+        inputs = list(datadict.keys())
+        dims = len(inputs)
+
+        if nPE > dims:
+            my_start = myPE
+            my_end = myPE
+
+        else:
+            count = dims // nPE
+            rem = dims % nPE
+            if myPE < rem:
+                # The first 'remainder' ranks get 'count + 1' tasks each
+                my_start = myPE * (count + 1)
+                my_end = my_start + count
+
+            else:
+                # The remaining 'size - remainder' ranks get 'count' task each
+                my_start = myPE * count + rem
+                my_end = my_start + (count - 1)
+
+        if verbose:
+            if myPE == 0:
+                print(
+                    f"There are {dims} files to init")
+            print(f"My start is {my_start}", f"My end is {my_end}")
+
+        # Init output files and retrieve file names
+        outfile_dict = {}
+        for inp in inputs[my_start:my_end+1]:
+            outfile = initfiles(
+                datadict[inp],
+                args.mode,
+                suffix=args.suffix,
+                prefix=args.prefix,
+                verbose=verbose
+            )
+            outfile_dict.update(
+                {
+                    inp: outfile
+                }
+            )
+
+        if mpiSwitch:
+            # Send to master proc
+            outlist = comm.gather(outfile_dict, root=0)
+
+        if mpiSwitch:
+            comm.Barrier()
+
+        # Now do the convolution in parallel
+        if myPE == 0:
+
+            # Conver list to dict and save to main dict
+            outlist_dict = {}
+            for d in outlist:
+                outlist_dict.update(d)
+            # Also make inputs list
+            inputs = []
+            for key in datadict.keys():
+                datadict[key]['outfile'] = outlist_dict[key]
+                for chan in range(nchans):
+                    inputs.append((key, chan))
+
+        else:
+            datadict = None
+            inputs = None
+        if mpiSwitch:
+            comm.Barrier()
+        if mpiSwitch:
             inputs = comm.bcast(inputs, root=0)
+            datadict = comm.bcast(datadict, root=0)
 
         dims = len(files) * nchans
         assert len(inputs) == dims
