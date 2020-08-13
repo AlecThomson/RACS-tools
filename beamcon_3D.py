@@ -908,9 +908,9 @@ def main(args, verbose=True):
                 outfh.flush()
             if verbose:
                 print(f"{outfile}  - channel {chan} - Done")
-    else:
-        if verbose:
-            print('Done!')
+
+    if verbose:
+        print('Done!')
 
 
 def cli():
