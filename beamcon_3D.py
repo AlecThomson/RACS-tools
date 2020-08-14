@@ -569,7 +569,7 @@ def masking(nchans, cutoff, datadict, verbose=True):
     return datadict
 
 
-def initfiles(datadict, mode, suffix='sm', prefix=None, verbose=True):
+def initfiles(datadict, mode, suffix=None, prefix=None, verbose=True):
     """Initialise output files
 
     Args:
@@ -610,9 +610,12 @@ def initfiles(datadict, mode, suffix='sm', prefix=None, verbose=True):
 
     elif mode == 'total':
         new_hdulist = fits.HDUList([primary_hdu])
+
     # Set up output file
+    if suffix is None:
+        suffix = mode
     outname = os.path.basename(datadict["filename"])
-    outname = outname.replace('.fits', f'.{suffix}-{mode}.fits')
+    outname = outname.replace('.fits', f'.{suffix}.fits')
     if prefix is not None:
         outname = prefix + outname
 
@@ -986,8 +989,8 @@ def cli():
         '--suffix',
         dest='suffix',
         type=str,
-        default='sm',
-        help='Add suffix to output filenames [...sm-{mode}.fits].')
+        default=None,
+        help='Add suffix to output filenames [...{mode}.fits].')
 
     parser.add_argument(
         '-o',
