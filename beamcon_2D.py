@@ -14,6 +14,7 @@ import psutil
 from tqdm import tqdm
 from IPython import embed
 import matplotlib.pyplot as plt
+import warnings
 try:
     print = functools.partial(
         print, f'[{psutil.Process().cpu_num()}]', flush=True)
@@ -170,7 +171,7 @@ def worker(args):
     savefile(datadict, outfile, outdir, verbose=verbose)
 
 
-def getmaxbeam(files, cutoff=None, tolerance=0.0001, nsamps=200, epsilon=0.0005, verbose=False):
+def getmaxbeam(files, target_beam=None, cutoff=None, tolerance=0.0001, nsamps=200, epsilon=0.0005, verbose=False):
     """Get smallest common beam
     """
     beams = []
@@ -221,7 +222,7 @@ def getmaxbeam(files, cutoff=None, tolerance=0.0001, nsamps=200, epsilon=0.0005,
             min_samps.append([samp, b_idx])
 
     if len(min_samps) > 0:
-        print('Adjusting common beam to be sampled by grid!')
+        #print('Adjusting common beam to be sampled by grid!')
         worst_idx = np.argmin([samp[0] for samp in min_samps], axis=0)
         samp_cor_fac, idx = 2 / \
             min_samps[worst_idx][0], int(
@@ -238,14 +239,22 @@ def getmaxbeam(files, cutoff=None, tolerance=0.0001, nsamps=200, epsilon=0.0005,
         cor_beam = Beam(major, minor, pa)
         if verbose:
             print('Smallest common beam is:', cmn_beam)
-        cmn_beam = beams[idx].convolve(cor_beam)
-        cmn_beam = Beam(
-            major=my_ceil(cmn_beam.major.to(u.arcsec).value, precision=1)*u.arcsec,
-            minor=my_ceil(cmn_beam.minor.to(u.arcsec).value, precision=1)*u.arcsec,
-            pa=round_up(cmn_beam.pa.to(u.deg), decimals=2)
+        nyq_beam = beams[idx].convolve(cor_beam)
+        nyq_beam = Beam(
+            major=my_ceil(nyq_beam.major.to(u.arcsec).value, precision=1)*u.arcsec,
+            minor=my_ceil(nyq_beam.minor.to(u.arcsec).value, precision=1)*u.arcsec,
+            pa=round_up(nyq_beam.pa.to(u.deg), decimals=2)
         )
         if verbose:
-            print('Smallest common Nyquist sampled beam is:', cmn_beam)
+            print('Smallest common Nyquist sampled beam is:', nyq_beam)
+        if target_beam is not None:
+            if target_beam < nyq_beam:
+                warnings.warn('TARGET BEAM WILL BE UNDERSAMPLED!')
+        if cmn_beam < nyq_beam:
+                warnings.warn('COMMON BEAM WILL BE UNDERSAMPLED!')
+
+    else:
+        nyq_beam = None
 
     return cmn_beam, beams
 
@@ -293,6 +302,7 @@ def main(pool, args, verbose=False):
 
     # Find smallest common beam
     big_beam, allbeams = getmaxbeam(files,
+                                    target_beam=target_beam,
                                     cutoff=args.cutoff,
                                     tolerance=args.tolerance,
                                     nsamps=args.nsamps,
