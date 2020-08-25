@@ -217,12 +217,10 @@ def getmaxbeam(files, target_beam=None, cutoff=None, tolerance=0.0001, nsamps=20
     for b_idx, conbeam in enumerate(conbeams):
         # Get maj, min, pa
         samp = conbeam.minor / grid.to(u.arcsec)
-        print(samp)
         if samp < 2:
             min_samps.append([samp, b_idx])
 
     if len(min_samps) > 0:
-        #print('Adjusting common beam to be sampled by grid!')
         worst_idx = np.argmin([samp[0] for samp in min_samps], axis=0)
         samp_cor_fac, idx = 2 / \
             min_samps[worst_idx][0], int(
@@ -245,6 +243,7 @@ def getmaxbeam(files, target_beam=None, cutoff=None, tolerance=0.0001, nsamps=20
             minor=my_ceil(nyq_beam.minor.to(u.arcsec).value, precision=1)*u.arcsec,
             pa=round_up(nyq_beam.pa.to(u.deg), decimals=2)
         )
+        embed()
         if verbose:
             print('Smallest common Nyquist sampled beam is:', nyq_beam)
         if target_beam is not None:
