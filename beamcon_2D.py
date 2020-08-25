@@ -250,8 +250,11 @@ def getmaxbeam(files, target_beam=None, cutoff=None, tolerance=0.0001, nsamps=20
         if target_beam is not None:
             if target_beam < nyq_beam:
                 warnings.warn('TARGET BEAM WILL BE UNDERSAMPLED!')
+                raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
         if cmn_beam < nyq_beam:
                 warnings.warn('COMMON BEAM WILL BE UNDERSAMPLED!')
+                warnings.warn('SETTING COMMON BEAM TO NYQUIST BEAM')
+                cmn_beam = nyq_beam
 
     else:
         nyq_beam = None
