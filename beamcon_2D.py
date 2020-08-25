@@ -225,6 +225,7 @@ def getmaxbeam(files, target_beam=None, cutoff=None, tolerance=0.0001, nsamps=20
         samp_cor_fac, idx = 2 / \
             min_samps[worst_idx][0], int(
                 min_samps[worst_idx][1])
+        samp_cor_fac = my_ceil(samp_cor_fac.value, precision=1)
         conbeam = conbeams[idx]
         major = conbeam.major
         minor = conbeam.minor*samp_cor_fac
