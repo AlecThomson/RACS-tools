@@ -154,23 +154,8 @@ def getbeams(beamlog, verbose=False):
             unit = u.Unit(col[idx+1:-1])
         beams[col].unit = unit
         beams[col].name = new_col
-    # Get cubestats
-    statfile = beamlog.replace('beamlog.', 'cubeStats-')
-    if verbose:
-        print(f'Getting stats from {statfile}')
 
-    stats = Table.read(statfile, format='ascii.commented_header')
-    with open(statfile, 'r') as f:
-        lines = f.readlines()
-    units = lines[1].strip().split()
-    units[0] = ''
-    units = [u.Unit(unit) for unit in units]
-    for col, unit in zip(stats.colnames, units):
-        stats[col].unit = unit
-
-    nchan = len(beams)
-
-    return beams, stats, nchan
+    return beams, nchan
 
 
 def getfacs(datadict, convbeams, verbose=False):
@@ -308,9 +293,8 @@ def makedata(files, outdir, verbose=True):
             dirname = '.'
         beamlog = f"{dirname}/beamlog.{basename}".replace('.fits', '.txt')
         datadict[f"cube_{i}"]["beamlog"] = beamlog
-        beam, stats, nchan = getbeams(beamlog, verbose=verbose)
+        beam, nchan = getbeams(beamlog, verbose=verbose)
         datadict[f"cube_{i}"]["beam"] = beam
-        datadict[f"cube_{i}"]["stats"] = stats
         datadict[f"cube_{i}"]["nchan"] = nchan
     return datadict
 
