@@ -228,8 +228,9 @@ def getmaxbeam(files, target_beam=None, cutoff=None, tolerance=0.0001, nsamps=20
             minor=grid*2,
             pa=0*u.deg
         )
-        # Find new target based on smallest beam * Nyquist beam
-        nyq_beam = beams.smallest_beam().convolve(nyq_con_beam)
+        # Find new target based on common beam * Nyquist beam
+        # Not sure if this is best - but it works
+        nyq_beam = cmn_beam.convolve(nyq_con_beam)
         nyq_beam = Beam(
             major=my_ceil(nyq_beam.major.to(
                 u.arcsec).value, precision=1)*u.arcsec,
