@@ -228,6 +228,7 @@ def smooth(image, dy, conbeam, sfactor, verbose=False):
         # using Beams package
         if verbose:
             print(f'Using convolving beam', conbeam)
+            print(f'Using scaling factor', sfactor)
         pix_scale = dy
         gauss_kern = conbeam.as_kernel(pix_scale)
 
