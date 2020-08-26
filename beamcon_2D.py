@@ -209,55 +209,88 @@ def getmaxbeam(files, target_beam=None, cutoff=None, tolerance=0.0001, nsamps=20
     target_header = header
     dx = target_header['CDELT1']*-1*u.deg
     dy = target_header['CDELT2']*u.deg
+    if not dx == dy:
+        raise Exception("GRID MUST BE SAME IN X AND Y")
     grid = dy
-    conbeams = [cmn_beam.deconvolve(beam) for beam in beams]
 
-    # Check that convolving beam will be nyquist sampled
-    min_samps = []
-    for b_idx, conbeam in enumerate(conbeams):
-        # Get maj, min, pa
-        samp = conbeam.minor / grid.to(u.arcsec)
-        if samp < 2:
-            min_samps.append([samp, b_idx])
-
-    if len(min_samps) > 0:
-        worst_idx = np.argmin([samp[0] for samp in min_samps], axis=0)
-        samp_cor_fac, idx = 2 / \
-            min_samps[worst_idx][0], int(
-                min_samps[worst_idx][1])
-        samp_cor_fac = my_ceil(samp_cor_fac.value, precision=1)
-        conbeam = conbeams[idx]
-        major = conbeam.major
-        minor = conbeam.minor*samp_cor_fac
-        pa = conbeam.pa
-        # Check for small major!
-        if major < minor:
-            major = minor
-            pa = 0*u.deg
-
-        cor_beam = Beam(major, minor, pa)
-        if verbose:
-            print('Smallest common beam is:', cmn_beam)
-        nyq_beam = beams[idx].convolve(cor_beam)
+    minorcons = []
+    for beam in beams:
+        minorcons += [cmn_beam.deconvolve(beam).minor.to(u.arcsec).value]
+    minorcons = np.array(minorcons)*u.arcsec
+    samps = minorcons / grid.to(u.arcsec)
+    if any(samps.value < 2):
+        nyq_con_beam = Beam(
+            major=grid*2,
+            minor=grid*2,
+            pa=0*u.deg
+        )
+        nyq_beam = beams.smallest_beam().convolve(nyq_con_beam)
         nyq_beam = Beam(
-            major=my_ceil(nyq_beam.major.to(u.arcsec).value, precision=1)*u.arcsec,
-            minor=my_ceil(nyq_beam.minor.to(u.arcsec).value, precision=1)*u.arcsec,
+            major=my_ceil(nyq_beam.major.to(
+                u.arcsec).value, precision=1)*u.arcsec,
+            minor=my_ceil(nyq_beam.minor.to(
+                u.arcsec).value, precision=1)*u.arcsec,
             pa=round_up(nyq_beam.pa.to(u.deg), decimals=2)
         )
-        embed()
         if verbose:
             print('Smallest common Nyquist sampled beam is:', nyq_beam)
         if target_beam is not None:
             if target_beam < nyq_beam:
                 warnings.warn('TARGET BEAM WILL BE UNDERSAMPLED!')
                 raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
-        if cmn_beam < nyq_beam:
-                warnings.warn('COMMON BEAM WILL BE UNDERSAMPLED!')
-                warnings.warn('SETTING COMMON BEAM TO NYQUIST BEAM')
-                cmn_beam = nyq_beam
+        else:
+            warnings.warn('COMMON BEAM WILL BE UNDERSAMPLED!')
+            warnings.warn('SETTING COMMON BEAM TO NYQUIST BEAM')
+            cmn_beam = nyq_beam
 
-    else:
-        nyq_beam = None
+    # # Check that convolving beam will be nyquist sampled
+    # min_samps = []
+    # for b_idx, conbeam in enumerate(conbeams):
+    #     # Get maj, min, pa
+    #     samp = conbeam.minor / grid.to(u.arcsec)
+    #     if samp < 2:
+    #         min_samps.append([samp, b_idx])
+
+    # if len(min_samps) > 0:
+    #     worst_idx = np.argmin([samp[0] for samp in min_samps], axis=0)
+    #     samp_cor_fac, idx = 2 / \
+    #         min_samps[worst_idx][0], int(
+    #             min_samps[worst_idx][1])
+    #     samp_cor_fac = my_ceil(samp_cor_fac.value, precision=1)
+    #     conbeam = conbeams[idx]
+    #     major = conbeam.major
+    #     minor = conbeam.minor*samp_cor_fac
+    #     pa = conbeam.pa
+    #     # Check for small major!
+    #     if major < minor:
+    #         major = minor
+    #         pa = 0*u.deg
+
+    #     cor_beam = Beam(major, minor, pa)
+    #     if verbose:
+    #         print('Smallest common beam is:', cmn_beam)
+    #     nyq_beam = beams[idx].convolve(cor_beam)
+    #     nyq_beam = Beam(
+    #         major=my_ceil(nyq_beam.major.to(
+    #             u.arcsec).value, precision=1)*u.arcsec,
+    #         minor=my_ceil(nyq_beam.minor.to(
+    #             u.arcsec).value, precision=1)*u.arcsec,
+    #         pa=round_up(nyq_beam.pa.to(u.deg), decimals=2)
+    #     )
+    #     embed()
+    #     if verbose:
+    #         print('Smallest common Nyquist sampled beam is:', nyq_beam)
+    #     if target_beam is not None:
+    #         if target_beam < nyq_beam:
+    #             warnings.warn('TARGET BEAM WILL BE UNDERSAMPLED!')
+    #             raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
+    #     if cmn_beam < nyq_beam:
+    #         warnings.warn('COMMON BEAM WILL BE UNDERSAMPLED!')
+    #         warnings.warn('SETTING COMMON BEAM TO NYQUIST BEAM')
+    #         cmn_beam = nyq_beam
+
+    # else:
+    #     nyq_beam = None
 
     return cmn_beam, beams
 
