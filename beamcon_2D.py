@@ -106,6 +106,7 @@ def smooth(datadict, verbose=False):
         if verbose:
             print(f'Smoothing so beam is', datadict["final_beam"])
             print(f'Using convolving beam', datadict["conbeam"])
+            print(f'Using scaling factor', datadict["sfactor"])
         pix_scale = datadict['dy']
 
         gauss_kern = datadict["conbeam"].as_kernel(pix_scale)
@@ -213,17 +214,21 @@ def getmaxbeam(files, target_beam=None, cutoff=None, tolerance=0.0001, nsamps=20
         raise Exception("GRID MUST BE SAME IN X AND Y")
     grid = dy
 
+    # Get the minor axis of the convolving beams
     minorcons = []
     for beam in beams:
         minorcons += [cmn_beam.deconvolve(beam).minor.to(u.arcsec).value]
     minorcons = np.array(minorcons)*u.arcsec
     samps = minorcons / grid.to(u.arcsec)
+    # Check that convolving beam will be Nyquist sampled
     if any(samps.value < 2):
+        # Set the convolving beam to be Nyquist sampled
         nyq_con_beam = Beam(
             major=grid*2,
             minor=grid*2,
             pa=0*u.deg
         )
+        # Find new target based on smallest beam * Nyquist beam
         nyq_beam = beams.smallest_beam().convolve(nyq_con_beam)
         nyq_beam = Beam(
             major=my_ceil(nyq_beam.major.to(
@@ -243,7 +248,7 @@ def getmaxbeam(files, target_beam=None, cutoff=None, tolerance=0.0001, nsamps=20
             warnings.warn('SETTING COMMON BEAM TO NYQUIST BEAM')
             cmn_beam = nyq_beam
 
-    # # Check that convolving beam will be nyquist sampled
+    # 
     # min_samps = []
     # for b_idx, conbeam in enumerate(conbeams):
     #     # Get maj, min, pa
