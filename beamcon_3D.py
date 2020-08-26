@@ -298,6 +298,8 @@ def makedata(files, outdir, verbose=True):
         datadict[f"cube_{i}"]["dx"] = dxas
         dyas = header['CDELT2']*u.deg
         datadict[f"cube_{i}"]["dy"] = dyas
+        if not dxas == dyas:
+            raise Exception("GRID MUST BE SAME IN X AND Y")
         # Get beam info
         dirname = os.path.dirname(file)
         basename = os.path.basename(file)
@@ -312,7 +314,7 @@ def makedata(files, outdir, verbose=True):
     return datadict
 
 
-def commonbeamer(datadict, nchans, args, mode='natural', verbose=True):
+def commonbeamer(datadict, nchans, args, mode='natural', target_beam=None, verbose=True):
     """Find common beams
 
     Args:
@@ -396,6 +398,41 @@ def commonbeamer(datadict, nchans, args, mode='natural', verbose=True):
                     )*u.arcsec,
                     pa=round_up(commonbeam.pa.to(u.deg), decimals=2)
                 )
+
+                grid = datadict[key]["dy"]
+
+                # Get the minor axis of the convolving beams
+                minorcons = []
+                for beam in beams[~np.isnan(beams)]:
+                    minorcons += [commonbeam.deconvolve(
+                        beam).minor.to(u.arcsec).value]
+                minorcons = np.array(minorcons)*u.arcsec
+                samps = minorcons / grid.to(u.arcsec)
+                # Check that convolving beam will be Nyquist sampled
+                if any(samps.value < 2):
+                    # Set the convolving beam to be Nyquist sampled
+                    nyq_con_beam = Beam(
+                        major=grid*2,
+                        minor=grid*2,
+                        pa=0*u.deg
+                    )
+                    # Find new target based on common beam * Nyquist beam
+                    # Not sure if this is best - but it works
+                    nyq_beam = commonbeam.convolve(nyq_con_beam)
+                    nyq_beam = Beam(
+                        major=my_ceil(nyq_beam.major.to(
+                            u.arcsec).value, precision=1)*u.arcsec,
+                        minor=my_ceil(nyq_beam.minor.to(
+                            u.arcsec).value, precision=1)*u.arcsec,
+                        pa=round_up(nyq_beam.pa.to(u.deg), decimals=2)
+                    )
+                    if verbose:
+                        print('Smallest common Nyquist sampled beam is:', nyq_beam)
+
+                    warnings.warn('COMMON BEAM WILL BE UNDERSAMPLED!')
+                    warnings.warn('SETTING COMMON BEAM TO NYQUIST BEAM')
+                    commonbeam = nyq_beam
+
             bmaj_common.append(commonbeam.major.value)
             bmin_common.append(commonbeam.minor.value)
             bpa_common.append(commonbeam.pa.value)
@@ -461,6 +498,41 @@ def commonbeamer(datadict, nchans, args, mode='natural', verbose=True):
             )*u.arcsec,
             pa=round_up(commonbeam.pa.to(u.deg), decimals=2)
         )
+        # Get the minor axis of the convolving beams
+        minorcons = []
+        for beam in big_beams[~np.isnan(big_beams)]:
+            minorcons += [commonbeam.deconvolve(beam).minor.to(u.arcsec).value]
+        minorcons = np.array(minorcons)*u.arcsec
+        samps = minorcons / grid.to(u.arcsec)
+        # Check that convolving beam will be Nyquist sampled
+        if any(samps.value < 2):
+            # Set the convolving beam to be Nyquist sampled
+            nyq_con_beam = Beam(
+                major=grid*2,
+                minor=grid*2,
+                pa=0*u.deg
+            )
+            # Find new target based on common beam * Nyquist beam
+            # Not sure if this is best - but it works
+            nyq_beam = commonbeam.convolve(nyq_con_beam)
+            nyq_beam = Beam(
+                major=my_ceil(nyq_beam.major.to(
+                    u.arcsec).value, precision=1)*u.arcsec,
+                minor=my_ceil(nyq_beam.minor.to(
+                    u.arcsec).value, precision=1)*u.arcsec,
+                pa=round_up(nyq_beam.pa.to(u.deg), decimals=2)
+            )
+            if verbose:
+                print('Smallest common Nyquist sampled beam is:', nyq_beam)
+            if target_beam is not None:
+                if target_beam < nyq_beam:
+                    warnings.warn('TARGET BEAM WILL BE UNDERSAMPLED!')
+                    raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
+            else:
+                warnings.warn('COMMON BEAM WILL BE UNDERSAMPLED!')
+                warnings.warn('SETTING COMMON BEAM TO NYQUIST BEAM')
+                commonbeam = nyq_beam
+
         # Make Beams object
         commonbeams = Beams(
             major=[commonbeam.major] * nchans * commonbeam.major.unit,
@@ -783,6 +855,7 @@ def main(args, verbose=True):
                 datadict,
                 nchans,
                 args,
+                target_beam=target_beam,
                 mode=mode,
                 verbose=verbose
             )
