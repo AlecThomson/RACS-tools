@@ -526,6 +526,7 @@ def commonbeamer(datadict, nchans, args, mode='natural', target_beam=None, verbo
             if verbose:
                 print('Smallest common Nyquist sampled beam is:', nyq_beam)
             if target_beam is not None:
+                commonbeam = target_beam
                 if target_beam < nyq_beam:
                     warnings.warn('TARGET BEAM WILL BE UNDERSAMPLED!')
                     raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
