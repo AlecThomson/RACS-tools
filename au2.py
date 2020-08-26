@@ -144,7 +144,7 @@ def gauss_factor(beamConv, beamOrig=None, dx1=1, dy1=1):
     if (abs(gamma) + abs(alpha - beta)) == 0:
         bpa = 0.0
     else:
-        bpa = 0.5 * arctan2(-1 * gamma, alpha - beta)
+        bpa = 0.5 * np.arctan2(-1 * gamma, alpha - beta)
         #print alpha,beta,gamma
     amp = (math.pi / (4.0 * math.log(2.0)) * bmaj1 * bmin1 * bmaj2 * bmin2
            / math.sqrt(alpha * beta - 0.25 * gamma * gamma))
