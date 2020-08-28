@@ -5,6 +5,7 @@ import numpy as np
 import scipy.signal
 from astropy import units as u
 from astropy.io import fits
+from astropy.convolution import convolve, convolve_fft
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 import au2
@@ -93,7 +94,7 @@ def getimdata(cubenm, verbose=False):
     return datadict
 
 
-def smooth(datadict, verbose=False):
+def smooth(datadict, conv_mode='scipy', verbose=False):
     """Do the smoothing
     """
     if np.isnan(datadict["sfactor"]):
@@ -111,9 +112,25 @@ def smooth(datadict, verbose=False):
 
         gauss_kern = datadict["conbeam"].as_kernel(pix_scale)
         conbm1 = gauss_kern.array/gauss_kern.array.max()
-        newim = scipy.signal.convolve(
-            datadict['image'].astype('f8'), conbm1, mode='same')
-
+        if conv_mode == 'scipy':
+            newim = scipy.signal.convolve(
+                datadict['image'].astype('f8'),
+                conbm1,
+                mode='same'
+            )
+        elif conv_mode == 'astropy':
+            newim = convolve(
+                datadict['image'].astype('f8'),
+                conbm1,
+                normalize_kernel=False,
+            )
+        elif conv_mode == 'astropy_fft':
+            newim = convolve_fft(
+                datadict['image'].astype('f8'),
+                conbm1,
+                normalize_kernel=False,
+                allow_huge=True,
+            )
         newim *= datadict["sfactor"]
         return newim
 
@@ -131,7 +148,7 @@ def savefile(datadict, filename, outdir='.', verbose=False):
 
 
 def worker(args):
-    file, outdir, new_beam, clargs, verbose = args
+    file, outdir, new_beam, conv_mode, clargs, verbose = args
     if verbose:
         print(f'Working on {file}')
 
@@ -162,7 +179,7 @@ def worker(args):
         }
     )
 
-    newim = smooth(datadict, verbose=verbose)
+    newim = smooth(datadict, conv_mode=conv_mode, verbose=verbose)
     datadict.update(
         {
             "newimage": newim,
@@ -272,6 +289,19 @@ def main(pool, args, verbose=False):
         raise Exception('No files found!')
 
     # Parse args
+
+    conv_mode = args.conv_mode
+    print(conv_mode)
+    if not conv_mode == 'scipy' and not conv_mode == 'astropy' and not conv_mode == 'astropy_fft':
+        raise Exception('Please select valid convolution method!')
+
+    if verbose:
+        print(f"Using convolution method {conv_mode}")
+        if conv_mode == 'scipy':
+            print('This is fastest but not robust to NaNs')
+        else:
+            print('This is slower but robust to NaNs')
+
     bmaj = args.bmaj
     bmin = args.bmin
     bpa = args.bpa
@@ -335,7 +365,7 @@ def main(pool, args, verbose=False):
 
     if verbose:
         print(f'Final beam is', new_beam)
-    inputs = [[file, outdir, new_beam, args, verbose]
+    inputs = [[file, outdir, new_beam, conv_mode, args, verbose]
               for i, file in enumerate(files)]
 
     if not args.dryrun:
@@ -392,6 +422,15 @@ def cli():
         type=str,
         default=None,
         help='Output directory of smoothed FITS image(s) [same as input file].')
+
+    parser.add_argument(
+        "--conv_mode",
+        dest="conv_mode",
+        type=str,
+        default='scipy',
+        help="""Which method to use for convolution [scipy].
+        Can be 'scipy', 'astropy', or 'astropy_fft'.
+        """)
 
     parser.add_argument("-v", "--verbose", dest="verbose", action="store_true",
                         help="verbose output [False].")
