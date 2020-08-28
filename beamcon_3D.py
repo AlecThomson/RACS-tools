@@ -154,7 +154,7 @@ def getbeams(beamlog, verbose=False):
             unit = u.Unit(col[idx+1:-1])
         beams[col].unit = unit
         beams[col].name = new_col
-
+    nchan = len(beams)
     return beams, nchan
 
 
