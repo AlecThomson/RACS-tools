@@ -3,6 +3,7 @@ from beamcon_2D import my_ceil, round_up
 from spectral_cube.utils import SpectralCubeWarning
 import warnings
 from astropy.utils.exceptions import AstropyWarning
+from astropy.convolution import convolve, convolve_fft
 import os
 import stat
 import sys
@@ -192,7 +193,7 @@ def getfacs(datadict, convbeams, verbose=False):
     return facs
 
 
-def smooth(image, dy, conbeam, sfactor, verbose=False):
+def smooth(image, dy, conbeam, sfactor, conv_mode='scipy', verbose=False):
     """smooth an image in Jy/beam
 
     Args:
@@ -218,8 +219,26 @@ def smooth(image, dy, conbeam, sfactor, verbose=False):
         gauss_kern = conbeam.as_kernel(pix_scale)
 
         conbm1 = gauss_kern.array/gauss_kern.array.max()
-        newim = scipy.signal.convolve(
-            image.astype('f8'), conbm1, mode='same')
+        if conv_mode == 'scipy':
+            newim = scipy.signal.convolve(
+                image.astype('f8'),
+                conbm1,
+                mode='same'
+            )
+        elif conv_mode == 'astropy':
+            newim = convolve(
+                image.astype('f8'),
+                conbm1,
+                normalize_kernel=False,
+            )
+        elif conv_mode == 'astropy_fft':
+            newim = convolve_fft(
+                image.astype('f8'),
+                conbm1,
+                normalize_kernel=False,
+                allow_huge=True,
+            )
+
     newim *= sfactor
     return newim
 
@@ -244,7 +263,7 @@ def cpu_to_use(max_cpu, count):
     return max(factors[factors <= max_cpu])
 
 
-def worker(idx, cubedict, start=0):
+def worker(idx, cubedict, conv_mode='scipy', start=0):
     """parallel worker function
 
     Args:
@@ -257,8 +276,13 @@ def worker(idx, cubedict, start=0):
     """
     cube = SpectralCube.read(cubedict["filename"])
     plane = cube.unmasked_data[start+idx].value
-    newim = smooth(plane, cubedict['dy'], cubedict['convbeams']
-                   [start+idx], cubedict['facs'][start+idx], verbose=False)
+    newim = smooth(plane,
+                   cubedict['dy'],
+                   cubedict['convbeams'][start+idx],
+                   cubedict['facs'][start+idx],
+                   conv_mode=conv_mode,
+                   verbose=False
+                   )
     return newim
 
 
@@ -484,6 +508,7 @@ def commonbeamer(datadict, nchans, args, mode='natural', target_beam=None, verbo
             pa=round_up(commonbeam.pa.to(u.deg), decimals=2)
         )
         # Get the minor axis of the convolving beams
+        grid = datadict[key]["dy"]
         minorcons = []
         for beam in big_beams[~np.isnan(big_beams)]:
             minorcons += [commonbeam.deconvolve(beam).minor.to(u.arcsec).value]
@@ -762,6 +787,11 @@ def main(args, verbose=True):
                 print('Cutoff is:', cutoff)
 
         # Check target
+        conv_mode = args.conv_mode
+        print(conv_mode)
+        if not conv_mode == 'scipy' and not conv_mode == 'astropy' and not conv_mode == 'astropy_fft':
+            raise Exception('Please select valid convolution method!')
+
         bmaj = args.bmaj
         bmin = args.bmin
         bpa = args.bpa
@@ -870,6 +900,7 @@ def main(args, verbose=True):
             datadict = comm.bcast(datadict, root=0)
             nchans = comm.bcast(nchans, root=0)
 
+        conv_mode = args.conv_mode
         inputs = list(datadict.keys())
         dims = len(inputs)
 
@@ -963,7 +994,7 @@ def main(args, verbose=True):
 
         for inp in inputs[my_start:my_end+1]:
             key, chan = inp
-            newim = worker(chan, datadict[key])
+            newim = worker(chan, datadict[key], conv_mode=conv_mode)
             outfile = datadict[key]['outfile']
             with fits.open(outfile, mode='update', memmap=True) as outfh:
                 outfh[0].data[chan, 0, :, :] = newim
@@ -1018,6 +1049,15 @@ def cli():
         total -- smooth all plans to a common resolution.
         """
     )
+
+    parser.add_argument(
+        "--conv_mode",
+        dest="conv_mode",
+        type=str,
+        default='scipy',
+        help="""Which method to use for convolution [scipy].
+        Can be 'scipy', 'astropy', or 'astropy_fft'.
+        """)
 
     parser.add_argument(
         "-v",
