@@ -407,7 +407,8 @@ def commonbeamer(datadict, nchans, args, mode='natural', target_beam=None, verbo
                     )*u.arcsec,
                     pa=round_up(commonbeam.pa.to(u.deg), decimals=2)
                 )
-
+                if verbose:
+                    print('Smallest common common beam is:', commonbeam)
                 grid = datadict[key]["dy"]
 
                 # Get the minor axis of the convolving beams
@@ -507,6 +508,8 @@ def commonbeamer(datadict, nchans, args, mode='natural', target_beam=None, verbo
             )*u.arcsec,
             pa=round_up(commonbeam.pa.to(u.deg), decimals=2)
         )
+        if verbose:
+            print('Smallest common common beam is:', commonbeam)
         # Get the minor axis of the convolving beams
         grid = datadict[key]["dy"]
         minorcons = []
@@ -947,7 +950,7 @@ def main(args, verbose=True):
             # Send to master proc
             outlist = comm.gather(outfile_dict, root=0)
         else:
-            outlist = outfile_dict
+            outlist = [outfile_dict]
 
         if mpiSwitch:
             comm.Barrier()
@@ -955,7 +958,7 @@ def main(args, verbose=True):
         # Now do the convolution in parallel
         if myPE == 0:
 
-            # Conver list to dict and save to main dict
+            # Convert list to dict and save to main dict
             outlist_dict = {}
             for d in outlist:
                 outlist_dict.update(d)
