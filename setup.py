@@ -9,7 +9,7 @@ import os
 import sys
 from shutil import rmtree
 
-from setuptools import find_packages, Command# setup, 
+from setuptools import find_packages, Command  # setup,
 from numpy.distutils.core import Extension, setup
 
 
@@ -24,8 +24,8 @@ VERSION = '0.1.0'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
-     'astropy', 'radio_beam', 'schwimmbad', 'psutil', 'matplotlib',
-     'scipy', 'numpy', 'spectral_cube', 'tqdm', 'ipython', 'mpi4py'
+    'astropy', 'radio_beam', 'schwimmbad', 'psutil', 'matplotlib',
+    'scipy', 'numpy', 'spectral_cube', 'tqdm', 'ipython', 'mpi4py'
 ]
 
 # What packages are optional?
@@ -33,7 +33,7 @@ EXTRAS = {
     # 'fancy feature': ['django'],
 }
 
-lib = Extension(name='racs_tools.convolve', 
+lib = Extension(name='racs_tools.convolve',
                 sources=['racs_tools/convolve.f'],
                 extra_f90_compile_args=["-ffixed-form"]
                 )
@@ -88,7 +88,8 @@ class UploadCommand(Command):
             pass
 
         self.status('Building Source and Wheel (universal) distribution…')
-        os.system('{0} setup.py sdist bdist_wheel --universal'.format(sys.executable))
+        os.system(
+            '{0} setup.py sdist bdist_wheel --universal'.format(sys.executable))
 
         self.status('Uploading the package to PyPI via Twine…')
         os.system('twine upload dist/*')
@@ -111,16 +112,22 @@ setup(
     author_email=EMAIL,
     python_requires=REQUIRES_PYTHON,
     url=URL,
-    packages=find_packages(exclude=["tests", "*.tests", "*.tests.*", "tests.*"]),
+    packages=find_packages(
+        exclude=["tests", "*.tests", "*.tests.*", "tests.*"]),
+    # packages=['racs_tools'],
     # If your package is a single module, use this instead of 'packages':
     # py_modules=['racs_tools'],
 
     entry_points={
-        'console_scripts': ['beamcon_2D=beamcon_2D:cli'],
+        'console_scripts': [
+            'beamcon_2D=racs_tools.beamcon_2D:cli',
+            'beamcon_3D=racs_tools.beamcon_3D:cli',
+            'getnoise_list=racs_tools.getnoise_list:cli'
+        ],
     },
     install_requires=REQUIRED,
     extras_require=EXTRAS,
-    ext_modules = [lib],
+    ext_modules=[lib],
     include_package_data=True,
     license='BSD',
     classifiers=[
