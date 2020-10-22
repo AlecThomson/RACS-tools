@@ -9,7 +9,9 @@ import os
 import sys
 from shutil import rmtree
 
-from setuptools import find_packages, setup, Command
+from setuptools import find_packages, Command# setup, 
+from numpy.distutils.core import Extension, setup
+
 
 # Package meta-data.
 NAME = 'RACS-tools'
@@ -30,6 +32,11 @@ REQUIRED = [
 EXTRAS = {
     # 'fancy feature': ['django'],
 }
+
+lib = Extension(name='racs_tools.convolve', 
+                sources=['racs_tools/convolve.f'],
+                extra_f90_compile_args=["-ffixed-form"]
+                )
 
 # The rest you shouldn't have to touch too much :)
 # ------------------------------------------------
@@ -106,13 +113,14 @@ setup(
     url=URL,
     packages=find_packages(exclude=["tests", "*.tests", "*.tests.*", "tests.*"]),
     # If your package is a single module, use this instead of 'packages':
-    # py_modules=['mypackage'],
+    # py_modules=['racs_tools'],
 
-    # entry_points={
-    #     'console_scripts': ['mycli=mymodule:cli'],
-    # },
+    entry_points={
+        'console_scripts': ['beamcon_2D=beamcon_2D:cli'],
+    },
     install_requires=REQUIRED,
     extras_require=EXTRAS,
+    ext_modules = [lib],
     include_package_data=True,
     license='BSD',
     classifiers=[
