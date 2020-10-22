@@ -136,3 +136,4 @@ dmypy.json
 *.out
 *.sbatch
 *.ipynb
+mk_convolve
