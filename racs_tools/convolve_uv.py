@@ -21,8 +21,8 @@ def convolve(image, old_beam, new_beam, dx, dy):
     ny = image.shape[1]
 
     # The coordinates in FT domain: 
-    u = np.fft.fftfreq(nx, d=dx)
-    v = np.fft.fftfreq(ny, d=dy)
+    u = np.fft.fftfreq(nx, d=dx.to(units.deg).value)
+    v = np.fft.fftfreq(ny, d=dy.to(units.deg).value)
 
     g_final = np.zeros((nx,ny),dtype=float)
     [g_final,g_ratio] = gaussft.gaussft(bmin_in=old_beam.major.to(units.deg).value, 
