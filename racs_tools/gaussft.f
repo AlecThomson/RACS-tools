@@ -1,7 +1,32 @@
 chelp+
-c       Code to perform 2D convolution
+c       Code to generate FT of final 2D-Gaussian to be used 
+c       for convolving an image. The code deconvolves the input 
+c       psf. The intrinsic psf must be specified. 
+c                                          --wr, 22 Oct, 2020
+c                                          Wasim.Raja@csiro.au
+c
+c INPUTS: 
+c     bmin_in = intrinsic psf BMIN (degrees)
+c     bmaj_in = intrinsic psf BMAJ (degrees)
+c     bpa_in  = intrinsic psf BPA  (degrees)
+c
+c     bmin    = final psf BMIN (degrees)
+c     bmaj    = final psf BMAJ (degrees)
+c     bpa     = final psf BPA  (degrees)
+c
+c     u       = Fourier coordinates corresponding to image coord x 
+c     v       = Fourier coordinates corresponding to image coord y
+c
+c     nx      = Number of pixels along x
+c     ny      = Number of pixels along y
+c
+c OUTPUT: 
+c     g_final = Final array to be multiplied to FT(image) to get teh
+c               convoution in the FT domain.
+c     g_ratio = factor for flux scaling
+c
 chelp-
-      subroutine convolve(bmin_in, bmaj_in, bpa_in, 
+      subroutine gaussft(bmin_in, bmaj_in, bpa_in, 
      -                    bmin, bmaj, bpa, 
      -                    u, v, nx, ny, 
      -                    g_final,g_ratio)
@@ -73,7 +98,7 @@ chelp-
       dg_amp = sqrt(2.0*pi*sx_in*sy_in)
 
       g_ratio = g_amp/dg_amp 
-      write(77,*)g_ratio
+      !write(77,*)g_ratio
 
       !write(*,*)"cbpa, sbpa, g_amp: ",cos_bpa,sin_bpa, g_amp
       !write(*,*)"gratio: ",g_ratio
