@@ -6,10 +6,10 @@ import scipy.signal
 from astropy import units as u
 from astropy.io import fits
 from astropy.convolution import convolve, convolve_fft
-from racs_tools.convolve import convolve as racs_convolve
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 from . import au2
+from . import convolve_uv
 import functools
 import schwimmbad
 import psutil
@@ -95,7 +95,7 @@ def getimdata(cubenm, verbose=False):
     return datadict
 
 
-def smooth(datadict, conv_mode='scipy', verbose=False):
+def smooth(datadict, conv_mode='robust', verbose=False):
     """Do the smoothing
     """
     if np.isnan(datadict["sfactor"]):
@@ -108,11 +108,19 @@ def smooth(datadict, conv_mode='scipy', verbose=False):
         if verbose:
             print(f'Smoothing so beam is', datadict["final_beam"])
             print(f'Using convolving beam', datadict["conbeam"])
-            print(f'Using scaling factor', datadict["sfactor"])
         pix_scale = datadict['dy']
 
         gauss_kern = datadict["conbeam"].as_kernel(pix_scale)
         conbm1 = gauss_kern.array/gauss_kern.array.max()
+        fac = datadict["sfactor"]
+        if conv_mode == 'robust':
+            newim, fac = convolve_uv.convolve(
+                datadict['image'].astype('f8'),
+                datadict['oldbeam'],
+                datadict['final_beam'],
+                datadict['dx'],
+                datadict['dy'],
+            )
         if conv_mode == 'scipy':
             newim = scipy.signal.convolve(
                 datadict['image'].astype('f8'),
@@ -132,7 +140,9 @@ def smooth(datadict, conv_mode='scipy', verbose=False):
                 normalize_kernel=False,
                 allow_huge=True,
             )
-        newim *= datadict["sfactor"]
+        if verbose:
+            print(f'Using scaling factor', fac)
+        newim *= fac
         return newim
 
 
@@ -190,7 +200,8 @@ def worker(args):
     savefile(datadict, outfile, outdir, verbose=verbose)
 
 
-def getmaxbeam(files, target_beam=None, cutoff=None, tolerance=0.0001, nsamps=200, epsilon=0.0005, verbose=False):
+def getmaxbeam(files, conv_mode='robust', target_beam=None, cutoff=None, 
+                tolerance=0.0001, nsamps=200, epsilon=0.0005, verbose=False):
     """Get smallest common beam
     """
     beams = []
@@ -224,48 +235,47 @@ def getmaxbeam(files, target_beam=None, cutoff=None, tolerance=0.0001, nsamps=20
         minor=my_ceil(cmn_beam.minor.to(u.arcsec).value, precision=1)*u.arcsec,
         pa=round_up(cmn_beam.pa.to(u.deg), decimals=2)
     )
-
     target_header = header
     dx = target_header['CDELT1']*-1*u.deg
     dy = target_header['CDELT2']*u.deg
     if not dx == dy:
         raise Exception("GRID MUST BE SAME IN X AND Y")
     grid = dy
-
-    # Get the minor axis of the convolving beams
-    minorcons = []
-    for beam in beams:
-        minorcons += [cmn_beam.deconvolve(beam).minor.to(u.arcsec).value]
-    minorcons = np.array(minorcons)*u.arcsec
-    samps = minorcons / grid.to(u.arcsec)
-    # Check that convolving beam will be Nyquist sampled
-    if any(samps.value < 2):
-        # Set the convolving beam to be Nyquist sampled
-        nyq_con_beam = Beam(
-            major=grid*2,
-            minor=grid*2,
-            pa=0*u.deg
-        )
-        # Find new target based on common beam * Nyquist beam
-        # Not sure if this is best - but it works
-        nyq_beam = cmn_beam.convolve(nyq_con_beam)
-        nyq_beam = Beam(
-            major=my_ceil(nyq_beam.major.to(
-                u.arcsec).value, precision=1)*u.arcsec,
-            minor=my_ceil(nyq_beam.minor.to(
-                u.arcsec).value, precision=1)*u.arcsec,
-            pa=round_up(nyq_beam.pa.to(u.deg), decimals=2)
-        )
-        if verbose:
-            print('Smallest common Nyquist sampled beam is:', nyq_beam)
-        if target_beam is not None:
-            if target_beam < nyq_beam:
-                warnings.warn('TARGET BEAM WILL BE UNDERSAMPLED!')
-                raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
-        else:
-            warnings.warn('COMMON BEAM WILL BE UNDERSAMPLED!')
-            warnings.warn('SETTING COMMON BEAM TO NYQUIST BEAM')
-            cmn_beam = nyq_beam
+    if conv_mode is not 'robust':
+        # Get the minor axis of the convolving beams
+        minorcons = []
+        for beam in beams:
+            minorcons += [cmn_beam.deconvolve(beam).minor.to(u.arcsec).value]
+        minorcons = np.array(minorcons)*u.arcsec
+        samps = minorcons / grid.to(u.arcsec)
+        # Check that convolving beam will be Nyquist sampled
+        if any(samps.value < 2):
+            # Set the convolving beam to be Nyquist sampled
+            nyq_con_beam = Beam(
+                major=grid*2,
+                minor=grid*2,
+                pa=0*u.deg
+            )
+            # Find new target based on common beam * Nyquist beam
+            # Not sure if this is best - but it works
+            nyq_beam = cmn_beam.convolve(nyq_con_beam)
+            nyq_beam = Beam(
+                major=my_ceil(nyq_beam.major.to(
+                    u.arcsec).value, precision=1)*u.arcsec,
+                minor=my_ceil(nyq_beam.minor.to(
+                    u.arcsec).value, precision=1)*u.arcsec,
+                pa=round_up(nyq_beam.pa.to(u.deg), decimals=2)
+            )
+            if verbose:
+                print('Smallest common Nyquist sampled beam is:', nyq_beam)
+            if target_beam is not None:
+                if target_beam < nyq_beam:
+                    warnings.warn('TARGET BEAM WILL BE UNDERSAMPLED!')
+                    raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
+            else:
+                warnings.warn('COMMON BEAM WILL BE UNDERSAMPLED!')
+                warnings.warn('SETTING COMMON BEAM TO NYQUIST BEAM')
+                cmn_beam = nyq_beam
 
     return cmn_beam, beams
 
@@ -293,15 +303,18 @@ def main(pool, args, verbose=False):
 
     conv_mode = args.conv_mode
     print(conv_mode)
-    if not conv_mode == 'scipy' and not conv_mode == 'astropy' and not conv_mode == 'astropy_fft':
+    if not conv_mode == 'robust' and not conv_mode == 'scipy' and \
+        not conv_mode == 'astropy' and not conv_mode == 'astropy_fft':
         raise Exception('Please select valid convolution method!')
 
     if verbose:
         print(f"Using convolution method {conv_mode}")
-        if conv_mode == 'scipy':
-            print('This is fastest but not robust to NaNs')
+        if conv_mode == 'robust':
+            print("This is the most robust method")
+        elif conv_mode == 'scipy':
+            print('This is fastest but not robust to NaNs or small PSF changes')
         else:
-            print('This is slower but robust to NaNs')
+            print('This is slower but robust to NaNs, but not to small PSF changes')
 
     bmaj = args.bmaj
     bmin = args.bmin
@@ -326,6 +339,7 @@ def main(pool, args, verbose=False):
 
     # Find smallest common beam
     big_beam, allbeams = getmaxbeam(files,
+                                    conv_mode=conv_mode,
                                     target_beam=target_beam,
                                     cutoff=args.cutoff,
                                     tolerance=args.tolerance,
@@ -428,9 +442,11 @@ def cli():
         "--conv_mode",
         dest="conv_mode",
         type=str,
-        default='scipy',
-        help="""Which method to use for convolution [scipy].
-        Can be 'scipy', 'astropy', or 'astropy_fft'.
+        default='robust',
+        help="""Which method to use for convolution [robust].
+        'robust' uses the built-in, UV-based method.
+        Can also be 'scipy', 'astropy', or 'astropy_fft'.
+        Note these other methods cannot colve well with small convolving beams.
         """)
 
     parser.add_argument("-v", "--verbose", dest="verbose", action="store_true",
