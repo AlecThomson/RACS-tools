@@ -310,11 +310,11 @@ def main(pool, args, verbose=False):
     if verbose:
         print(f"Using convolution method {conv_mode}")
         if conv_mode == 'robust':
-            print("This is the most robust method")
+            print("This is the most robust method. And fast!")
         elif conv_mode == 'scipy':
-            print('This is fastest but not robust to NaNs or small PSF changes')
+            print('This fast, but not robust to NaNs or small PSF changes')
         else:
-            print('This is slower but robust to NaNs, but not to small PSF changes')
+            print('This is slower, but robust to NaNs, but not to small PSF changes')
 
     bmaj = args.bmaj
     bmin = args.bmin
