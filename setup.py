@@ -33,8 +33,8 @@ EXTRAS = {
     # 'fancy feature': ['django'],
 }
 
-lib = Extension(name='racs_tools.convolve',
-                sources=['racs_tools/convolve.f'],
+lib = Extension(name='racs_tools.gaussft',
+                sources=['racs_tools/gaussft.f'],
                 extra_f90_compile_args=["-ffixed-form"]
                 )
 
