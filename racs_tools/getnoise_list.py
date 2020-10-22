@@ -222,8 +222,7 @@ def main(pool, clargs):
         print(f'Saving bad files to {clargs.file}')
         np.savetxt(clargs.file, totalbad)
 
-
-if __name__ == "__main__":
+def cli():
     import argparse
     descStr = """
     Find bad channels by checking statistics of each channel image.
@@ -293,3 +292,6 @@ if __name__ == "__main__":
     main(pool, args)
 
     pool.close()
+
+if __name__ == "__main__":
+    cli()

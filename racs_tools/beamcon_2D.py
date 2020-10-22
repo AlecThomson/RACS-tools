@@ -6,9 +6,10 @@ import scipy.signal
 from astropy import units as u
 from astropy.io import fits
 from astropy.convolution import convolve, convolve_fft
+from racs_tools.convolve import convolve as racs_convolve
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
-import au2
+from . import au2
 import functools
 import schwimmbad
 import psutil
