@@ -11,8 +11,8 @@ from astropy.io import fits
 from astropy.convolution import convolve, convolve_fft
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
-from . import au2
-from . import convolve_uv
+from racs_tools import au2
+from racs_tools import convolve_uv
 import functools
 import schwimmbad
 import psutil
