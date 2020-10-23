@@ -4,7 +4,6 @@ from spectral_cube.utils import SpectralCubeWarning
 import warnings
 from astropy.utils.exceptions import AstropyWarning
 from astropy.convolution import convolve, convolve_fft
-import astropy.units as units
 from . import convolve_uv
 import os
 import stat
@@ -228,16 +227,12 @@ def smooth(image, dx, dy, oldbeam, newbeam, conbeam, sfactor,
         conbm1 = gauss_kern.array/gauss_kern.array.max()
         fac = sfactor
         if conv_mode == 'robust':
-            nx = image.shape[0]
-            ny = image.shape[1]
-            u = np.fft.fftfreq(nx, d=dx.to(units.rad).value)
-            v = np.fft.fftfreq(ny, d=dy.to(units.rad).value)
             newim, fac = convolve_uv.convolve(
                 image.astype('f8'),
                 oldbeam,
                 newbeam,
-                u,
-                v,
+                dx,
+                dy,
             )
         if conv_mode == 'scipy':
             newim = scipy.signal.convolve(
