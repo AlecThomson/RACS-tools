@@ -462,7 +462,8 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
                             pa=round_up(nyq_beam.pa.to(u.deg), decimals=2)
                         )
                         if verbose:
-                            print('Smallest common Nyquist sampled beam is:', nyq_beam)
+                            print(
+                                'Smallest common Nyquist sampled beam is:', nyq_beam)
 
                         warnings.warn('COMMON BEAM WILL BE UNDERSAMPLED!')
                         warnings.warn('SETTING COMMON BEAM TO NYQUIST BEAM')
@@ -538,7 +539,8 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
             grid = datadict[key]["dy"]
             minorcons = []
             for beam in big_beams[~np.isnan(big_beams)]:
-                minorcons += [commonbeam.deconvolve(beam).minor.to(u.arcsec).value]
+                minorcons += [commonbeam.deconvolve(
+                    beam).minor.to(u.arcsec).value]
             minorcons = np.array(minorcons)*u.arcsec
             samps = minorcons / grid.to(u.arcsec)
             # Check that convolving beam will be Nyquist sampled

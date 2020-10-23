@@ -203,8 +203,8 @@ def worker(args):
     savefile(datadict, outfile, outdir, verbose=verbose)
 
 
-def getmaxbeam(files, conv_mode='robust', target_beam=None, cutoff=None, 
-                tolerance=0.0001, nsamps=200, epsilon=0.0005, verbose=False):
+def getmaxbeam(files, conv_mode='robust', target_beam=None, cutoff=None,
+               tolerance=0.0001, nsamps=200, epsilon=0.0005, verbose=False):
     """Get smallest common beam
     """
     beams = []
@@ -307,7 +307,7 @@ def main(pool, args, verbose=False):
     conv_mode = args.conv_mode
     print(conv_mode)
     if not conv_mode == 'robust' and not conv_mode == 'scipy' and \
-        not conv_mode == 'astropy' and not conv_mode == 'astropy_fft':
+            not conv_mode == 'astropy' and not conv_mode == 'astropy_fft':
         raise Exception('Please select valid convolution method!')
 
     if verbose:
