@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+""" Fast convolution in the UV domain """
+__author__ = "Wasim Raja"
 
 import numpy as np
 import astropy.units as units

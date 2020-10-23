@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+""" Convolve ASKAP cubes to common resolution """
+__author__ = "Alec Thomson"
+
 from .beamcon_2D import my_ceil, round_up
 from spectral_cube.utils import SpectralCubeWarning
 import warnings

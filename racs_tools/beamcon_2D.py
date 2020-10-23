@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+""" Convolve ASKAP images to common resolution """
+__author__ = "Alec Thomson"
+
 import os
 import sys
 import numpy as np
