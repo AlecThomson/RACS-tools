@@ -1,9 +1,13 @@
 #!/usr/bin/env python
-from beamcon_2D import my_ceil, round_up
+""" Convolve ASKAP cubes to common resolution """
+__author__ = "Alec Thomson"
+
+from racs_tools.beamcon_2D import my_ceil, round_up
 from spectral_cube.utils import SpectralCubeWarning
 import warnings
 from astropy.utils.exceptions import AstropyWarning
 from astropy.convolution import convolve, convolve_fft
+from racs_tools import convolve_uv
 import os
 import stat
 import sys
@@ -16,7 +20,7 @@ from spectral_cube import SpectralCube
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 from tqdm import tqdm, trange
-import au2
+from racs_tools import au2
 import functools
 import psutil
 from IPython import embed
