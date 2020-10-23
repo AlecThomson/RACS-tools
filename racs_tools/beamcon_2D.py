@@ -447,10 +447,11 @@ def cli():
         type=str,
         default='robust',
         help="""Which method to use for convolution [robust].
-        'robust' uses the built-in, UV-based method.
+        'robust' uses the built-in, FFT-based method.
         Can also be 'scipy', 'astropy', or 'astropy_fft'.
-        Note these other methods cannot colve well with small convolving beams.
-        """)
+        Note these other methods cannot cope well with small convolving beams.
+        """
+    )
 
     parser.add_argument("-v", "--verbose", dest="verbose", action="store_true",
                         help="verbose output [False].")
