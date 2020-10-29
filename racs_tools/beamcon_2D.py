@@ -7,8 +7,9 @@ import sys
 import numpy as np
 import scipy.signal
 from astropy import units as u
-from astropy.io import fits
+from astropy.io import fits, ascii
 from astropy.convolution import convolve, convolve_fft
+from astropy.table import Table
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 from racs_tools import au2
@@ -87,6 +88,7 @@ def getimdata(cubenm, verbose=False):
         )
 
         datadict = {
+            'filename': os.path.basename(cubenm),
             'image': hdu[0].data[0, 0, :, :],
             'header': hdu[0].header,
             'oldbeam': old_beam,
@@ -202,6 +204,8 @@ def worker(args):
 
     savefile(datadict, outfile, outdir, verbose=verbose)
 
+    return datadict
+
 
 def getmaxbeam(files, conv_mode='robust', target_beam=None, cutoff=None,
                tolerance=0.0001, nsamps=200, epsilon=0.0005, verbose=False):
@@ -281,6 +285,56 @@ def getmaxbeam(files, conv_mode='robust', target_beam=None, cutoff=None,
                 cmn_beam = nyq_beam
 
     return cmn_beam, beams
+
+
+def writelog(output, commonbeam_log, verbose=True):
+    """Write beamlog file
+
+    Args:
+        output (list): Output dicts from worker opertation
+        commonbeam_log (str): Filename to save log
+        verbose (bool, optional): Verbose output. Defaults to True.
+    """
+    commonbeam_tab = Table()
+    commonbeam_tab.add_column([out['filename']
+                               for out in output], name='FileName')
+    # Origina
+    commonbeam_tab.add_column([out['oldbeam'].major.to(u.deg).value for out in output]*u.deg,
+                              name='Original BMAJ')
+    commonbeam_tab.add_column([out['oldbeam'].minor.to(u.deg).value for out in output]*u.deg,
+                              name='Original BMIN')
+    commonbeam_tab.add_column([out['oldbeam'].pa.to(u.deg).value for out in output]*u.deg,
+                              name='Original BPA')
+    # Target
+    commonbeam_tab.add_column([out['final_beam'].major.to(u.deg).value for out in output]*u.deg,
+                              name='Target BMAJ')
+    commonbeam_tab.add_column([out['final_beam'].minor.to(u.deg).value for out in output]*u.deg,
+                              name='Target BMIN')
+    commonbeam_tab.add_column([out['final_beam'].pa.to(u.deg).value for out in output]*u.deg,
+                              name='Target BPA')
+    # Convolving
+    commonbeam_tab.add_column([out['conbeam'].major.to(u.deg).value for out in output]*u.deg,
+                              name='Convolving BMAJ')
+    commonbeam_tab.add_column([out['conbeam'].minor.to(u.deg).value for out in output]*u.deg,
+                              name='Convolving BMIN')
+    commonbeam_tab.add_column([out['conbeam'].pa.to(u.deg).value for out in output]*u.deg,
+                              name='Convolving BPA')
+
+    # Write to log file
+    units = ''
+    for col in commonbeam_tab.colnames:
+        unit = commonbeam_tab[col].unit
+        unit = str(unit)
+        units += unit + ' '
+    commonbeam_tab.meta['comments'] = [units]
+    ascii.write(
+        commonbeam_tab,
+        output=commonbeam_log,
+        format='commented_header',
+        overwrite=True
+    )
+    if verbose:
+        print(f'Convolving log written to {commonbeam_log}')
 
 
 def main(pool, args, verbose=False):
@@ -389,6 +443,9 @@ def main(pool, args, verbose=False):
     if not args.dryrun:
         output = list(pool.map(worker, inputs))
 
+        if args.log is not None:
+            writelog(output, args.log, verbose=verbose)
+
     if verbose:
         print('Done!')
 
@@ -479,6 +536,13 @@ def cli():
         type=float,
         default=None,
         help="Target BPA (deg) to convolve to [None].")
+
+    parser.add_argument(
+        "--log",
+        dest="log",
+        type=str,
+        default=None,
+        help="Name of beamlog file. If provided, save beamlog data to a file [None - not saved].")
 
     parser.add_argument(
         '-c',

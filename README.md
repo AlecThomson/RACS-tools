@@ -19,7 +19,7 @@ pip install RACS-tools
 
 ## Usage
 
-```bash
+```
 $ beamcon_2D -h
 usage: beamcon_2D [-h] [-p PREFIX] [-s SUFFIX] [-o OUTDIR]
                   [--conv_mode CONV_MODE] [-v] [-d] [--bmaj BMAJ]
@@ -67,11 +67,11 @@ optional arguments:
   --mpi                 Run with MPI.
 
 $ beamcon_3D -h
-usage: beamcon_3D [-h] [--uselogs] [--mode MODE] [--conv_mode CONV_MODE] [-v]
-                  [-d] [-p PREFIX] [-s SUFFIX] [-o OUTDIR] [--bmaj BMAJ]
-                  [--bmin BMIN] [--bpa BPA] [-m MASKLIST] [-c CUTOFF]
-                  [-t TOLERANCE] [-e EPSILON] [-n NSAMPS]
-                  infile [infile ...]
+usage: beamcon_3D.py [-h] [--uselogs] [--mode MODE] [--conv_mode CONV_MODE]
+                     [-v] [-d] [-p PREFIX] [-s SUFFIX] [-o OUTDIR]
+                     [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA] [-m MASKLIST]
+                     [-c CUTOFF] [-t TOLERANCE] [-e EPSILON] [-n NSAMPS]
+                     infile [infile ...]
 
     Smooth a field of 3D cubes to a common resolution.
 
@@ -92,8 +92,10 @@ optional arguments:
                                 total -- smooth all plans to a common resolution.
                                 
   --conv_mode CONV_MODE
-                        Which method to use for convolution [scipy].
-                                Can be 'scipy', 'astropy', or 'astropy_fft'.
+                        Which method to use for convolution [robust].
+                                'robust' uses the built-in, FFT-based method.
+                                Can also be 'scipy', 'astropy', or 'astropy_fft'.
+                                Note these other methods cannot cope well with small convolving beams.
                                 
   -v, --verbose         verbose output [False].
   -d, --dryrun          Compute common beam and stop [False].
