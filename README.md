@@ -2,6 +2,13 @@
 Useful scripts for RACS
 
 ## Installation
+First `numpy` is required before running `pip install`.
+
+```bash
+conda install numpy
+# or
+pip install numpy
+```
 
 Use the package manager [pip](https://pip.pypa.io/en/stable/) to install RACS-tools.
 
