@@ -1168,15 +1168,6 @@ def cli():
     )
 
     parser.add_argument(
-        '-m',
-        '--mask',
-        dest='masklist',
-        type=str,
-        default=None,
-        help='List of channels to be masked [None]'
-    )
-
-    parser.add_argument(
         '-c',
         '--cutoff',
         dest='cutoff',
