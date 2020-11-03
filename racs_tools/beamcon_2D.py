@@ -248,7 +248,7 @@ def getmaxbeam(files, conv_mode='robust', target_beam=None, cutoff=None,
     if not dx == dy:
         raise Exception("GRID MUST BE SAME IN X AND Y")
     grid = dy
-    if conv_mode is not 'robust':
+    if conv_mode != 'robust':
         # Get the minor axis of the convolving beams
         minorcons = []
         for beam in beams:

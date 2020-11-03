@@ -435,7 +435,7 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
                 )
 
                 grid = datadict[key]["dy"]
-                if conv_mode is not 'robust':
+                if conv_mode != 'robust':
                     # Get the minor axis of the convolving beams
                     minorcons = []
                     for beam in beams[~np.isnan(beams)]:
@@ -462,7 +462,8 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
                             pa=round_up(nyq_beam.pa.to(u.deg), decimals=2)
                         )
                         if verbose:
-                            print('Smallest common Nyquist sampled beam is:', nyq_beam)
+                            print(
+                                'Smallest common Nyquist sampled beam is:', nyq_beam)
 
                         warnings.warn('COMMON BEAM WILL BE UNDERSAMPLED!')
                         warnings.warn('SETTING COMMON BEAM TO NYQUIST BEAM')
@@ -533,12 +534,13 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
             )*u.arcsec,
             pa=round_up(commonbeam.pa.to(u.deg), decimals=2)
         )
-        if conv_mode is not 'robust':
+        if conv_mode != 'robust':
             # Get the minor axis of the convolving beams
             grid = datadict[key]["dy"]
             minorcons = []
             for beam in big_beams[~np.isnan(big_beams)]:
-                minorcons += [commonbeam.deconvolve(beam).minor.to(u.arcsec).value]
+                minorcons += [commonbeam.deconvolve(
+                    beam).minor.to(u.arcsec).value]
             minorcons = np.array(minorcons)*u.arcsec
             samps = minorcons / grid.to(u.arcsec)
             # Check that convolving beam will be Nyquist sampled
@@ -835,7 +837,7 @@ def main(args, verbose=True):
 
         nonetest = [test is None for test in [bmaj, bmin, bpa]]
 
-        if not all(nonetest) and mode is not 'total':
+        if not all(nonetest) and mode != 'total':
             raise Exception("Only specify a target beam in 'total' mode")
 
         if all(nonetest):
