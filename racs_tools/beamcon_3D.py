@@ -524,16 +524,19 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
             commonbeam = big_beams[~np.isnan(big_beams)].common_beam(tolerance=args.tolerance*0.1,
                                                                      nsamps=args.nsamps,
                                                                      epsilon=args.epsilon)
-        # Round up values
-        commonbeam = Beam(
-            major=my_ceil(
-                commonbeam.major.to(u.arcsec).value, precision=1
-            )*u.arcsec,
-            minor=my_ceil(
-                commonbeam.minor.to(u.arcsec).value, precision=1
-            )*u.arcsec,
-            pa=round_up(commonbeam.pa.to(u.deg), decimals=2)
-        )
+        if target_beam is not None:
+            commonbeam = target_beam
+        else:
+            # Round up values
+            commonbeam = Beam(
+                major=my_ceil(
+                    commonbeam.major.to(u.arcsec).value, precision=1
+                )*u.arcsec,
+                minor=my_ceil(
+                    commonbeam.minor.to(u.arcsec).value, precision=1
+                )*u.arcsec,
+                pa=round_up(commonbeam.pa.to(u.deg), decimals=2)
+            )
         if conv_mode != 'robust':
             # Get the minor axis of the convolving beams
             grid = datadict[key]["dy"]
