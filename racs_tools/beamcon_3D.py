@@ -719,7 +719,7 @@ def initfiles(datadict, mode, suffix=None, prefix=None, verbose=True):
                 'BPA'
             ]
         )
-        primary_hdu = fits.PrimaryHDU(data=data, header=header)
+        primary_hdu = fits.PrimaryHDU(data=data.astype(np.float32), header=header)
         tab_hdu = fits.table_to_hdu(beam_table)
         new_hdulist = fits.HDUList([primary_hdu, tab_hdu])
 
@@ -1040,7 +1040,7 @@ def main(args, verbose=True):
             newim = worker(chan, datadict[key], conv_mode=conv_mode)
             outfile = datadict[key]['outfile']
             with fits.open(outfile, mode='update', memmap=True) as outfh:
-                outfh[0].data[chan, 0, :, :] = newim
+                outfh[0].data[chan, 0, :, :] = newim.astype(np.float32) # make sure data is 32-bit
                 outfh.flush()
             if verbose:
                 print(f"{outfile}  - channel {chan} - Done")

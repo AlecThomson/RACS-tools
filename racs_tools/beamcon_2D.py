@@ -160,7 +160,11 @@ def savefile(datadict, filename, outdir='.', verbose=False):
     header = datadict['header']
     beam = datadict['final_beam']
     header = beam.attach_to_header(header)
-    fits.writeto(outfile, datadict['newimage'], header=header, overwrite=True)
+    fits.writeto(outfile,
+                 datadict['newimage'].astype(np.float32),
+                 header=header,
+                 overwrite=True
+                 )
 
 
 def worker(args):
