@@ -80,8 +80,12 @@ def getimdata(cubenm, verbose=False):
         dxas = hdu[0].header['CDELT1']*-1*u.deg
         dyas = hdu[0].header['CDELT2']*u.deg
 
-        nx, ny = hdu[0].data[0, 0, :,
-                             :].shape[0], hdu[0].data[0, 0, :, :].shape[1]
+        if len(hdu[0].data.shape)==4:
+            # has spectral, polarization axes
+            data = hdu[0].data[0,0]
+        else:
+            data = hdu[0].data
+        nx, ny = data.shape[-1], data.shape[-2]
 
         old_beam = Beam.from_fits_header(
             hdu[0].header
@@ -89,7 +93,8 @@ def getimdata(cubenm, verbose=False):
 
         datadict = {
             'filename': os.path.basename(cubenm),
-            'image': hdu[0].data[0, 0, :, :],
+            'image': data,
+            '4d': (len(hdu[0].data.shape) == 4),
             'header': hdu[0].header,
             'oldbeam': old_beam,
             'nx': nx,
@@ -200,6 +205,9 @@ def worker(args):
     )
 
     newim = smooth(datadict, conv_mode=conv_mode, verbose=verbose)
+    if datadict['4d']:
+        # make it back into a 4D image
+        newim = np.expand_dims(np.expand_dims(newim, axis=0), axis=0)
     datadict.update(
         {
             "newimage": newim,
