@@ -126,6 +126,8 @@ def smooth(datadict, conv_mode='robust', verbose=False):
                 datadict['dx'],
                 datadict['dy'],
             )
+            # keep the new sfactor computed by this method
+            datadict["sfactor"] = fac
         if conv_mode == 'scipy':
             newim = scipy.signal.convolve(
                 datadict['image'].astype('f8'),
