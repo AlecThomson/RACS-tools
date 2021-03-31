@@ -18,8 +18,6 @@ import functools
 import schwimmbad
 import psutil
 from tqdm import tqdm
-from IPython import embed
-import matplotlib.pyplot as plt
 import warnings
 try:
     print = functools.partial(

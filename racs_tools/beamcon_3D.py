@@ -23,7 +23,6 @@ from tqdm import tqdm, trange
 from racs_tools import au2
 import functools
 import psutil
-from IPython import embed
 try:
     from mpi4py import MPI
     mpiSwitch = True
