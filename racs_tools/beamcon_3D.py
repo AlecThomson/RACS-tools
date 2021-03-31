@@ -15,6 +15,7 @@ import numpy as np
 import scipy.signal
 from astropy import units as u
 from astropy.io import fits, ascii
+import astropy.wcs
 from astropy.table import Table
 from spectral_cube import SpectralCube
 from radio_beam import Beam, Beams
@@ -327,9 +328,13 @@ def makedata(files, outdir, verbose=True):
         datadict[f"cube_{i}"]["outdir"] = out
         # Get metadata
         header = fits.getheader(file)
-        dxas = header['CDELT1']*-1*u.deg
+        w = astropy.wcs.WCS(header)
+        pixelscales = astropy.wcs.utils.proj_plane_pixel_scales(w)
+
+        dxas = pixelscales[0]*u.deg
+        dyas = pixelscales[1]*u.deg
+
         datadict[f"cube_{i}"]["dx"] = dxas
-        dyas = header['CDELT2']*u.deg
         datadict[f"cube_{i}"]["dy"] = dyas
         if not dxas == dyas:
             raise Exception("GRID MUST BE SAME IN X AND Y")

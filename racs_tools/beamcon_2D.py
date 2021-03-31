@@ -8,6 +8,7 @@ import numpy as np
 import scipy.signal
 from astropy import units as u
 from astropy.io import fits, ascii
+import astropy.wcs
 from astropy.convolution import convolve, convolve_fft
 from astropy.table import Table
 from radio_beam import Beam, Beams
@@ -77,8 +78,11 @@ def getimdata(cubenm, verbose=False):
         print(f'Getting image data from {cubenm}')
     with fits.open(cubenm, memmap=True, mode='denywrite') as hdu:
 
-        dxas = hdu[0].header['CDELT1']*-1*u.deg
-        dyas = hdu[0].header['CDELT2']*u.deg
+        w = astropy.wcs.WCS(hdu[0])
+        pixelscales = astropy.wcs.utils.proj_plane_pixel_scales(w)
+
+        dxas = pixelscales[0]*u.deg
+        dyas = pixelscales[1]*u.deg
 
         nx, ny = hdu[0].data[0, 0, :,
                              :].shape[0], hdu[0].data[0, 0, :, :].shape[1]
@@ -247,8 +251,11 @@ def getmaxbeam(files, conv_mode='robust', target_beam=None, cutoff=None,
         pa=round_up(cmn_beam.pa.to(u.deg), decimals=2)
     )
     target_header = header
-    dx = target_header['CDELT1']*-1*u.deg
-    dy = target_header['CDELT2']*u.deg
+    w = astropy.wcs.WCS(target_header)
+    pixelscales = astropy.wcs.utils.proj_plane_pixel_scales(w)
+
+    dx = pixelscales[0]*u.deg
+    dy = pixelscales[1]*u.deg
     if not dx == dy:
         raise Exception("GRID MUST BE SAME IN X AND Y")
     grid = dy
