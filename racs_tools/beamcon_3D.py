@@ -23,7 +23,7 @@ from radio_beam.utils import BeamError
 from tqdm import tqdm, trange
 from racs_tools import au2
 import functools
-import psutil
+import logging as log
 try:
     from mpi4py import MPI
     mpiSwitch = True
@@ -33,7 +33,7 @@ except:
 # Fail if script has been started with mpiexec & mpi4py is not installed
 if os.environ.get('OMPI_COMM_WORLD_SIZE') is not None:
     if not mpiSwitch:
-        print("Script called with mpiexec, but mpi4py not installed")
+        log.warn("Script called with mpiexec, but mpi4py not installed")
         sys.exit()
 
 # Get the processing environment
@@ -44,8 +44,6 @@ if mpiSwitch:
 else:
     nPE = 1
     myPE = 0
-
-print = functools.partial(print, f'[{myPE}]', flush=True)
 
 warnings.filterwarnings(action='ignore', category=SpectralCubeWarning,
                         append=True)
@@ -91,7 +89,7 @@ def _samefile(src, dst):
             return False
 
 
-def copyfile(src, dst, *, follow_symlinks=True, verbose=True):
+def copyfile(src, dst, *, follow_symlinks=True):
     """Copy data from src to dst.
 
     If follow_symlinks is not set and src is a symbolic link, a new
@@ -117,16 +115,16 @@ def copyfile(src, dst, *, follow_symlinks=True, verbose=True):
     else:
         with open(src, 'rb') as fsrc:
             with open(dst, 'wb') as fdst:
-                copyfileobj(fsrc, fdst, verbose=verbose)
+                copyfileobj(fsrc, fdst)
     return dst
 
 
-def copyfileobj(fsrc, fdst, length=16*1024, verbose=True):
+def copyfileobj(fsrc, fdst, length=16*1024):
     #copied = 0
     total = os.fstat(fsrc.fileno()).st_size
     with tqdm(
             total=total,
-            disable=(not verbose),
+            disable=(log.level > log.INFO),
             unit_scale=True,
             desc='Copying file'
     ) as pbar:
@@ -139,14 +137,13 @@ def copyfileobj(fsrc, fdst, length=16*1024, verbose=True):
             pbar.update(copied)
 
 
-def getbeams(beamlog, verbose=False):
+def getbeams(beamlog):
     """
 
     colnames=['Channel', 'BMAJarcsec', 'BMINarcsec', 'BPAdeg']
     """
     # Get beamlog
-    if verbose:
-        print(f'Getting beams from {beamlog}')
+    log.info(f'Getting beams from {beamlog}')
 
     beams = Table.read(beamlog, format='ascii.commented_header')
     for col in beams.colnames:
@@ -163,13 +160,12 @@ def getbeams(beamlog, verbose=False):
     return beams, nchan
 
 
-def getfacs(datadict, convbeams, verbose=False):
+def getfacs(datadict, convbeams):
     """Get smoothing unit factor
 
     Args:
         datadict (dict): Dict of input data
         convbeams (Beams): Convolving beams
-        verbose (bool, optional): Verbose output. Defaults to False.
 
     Returns:
         list: factors to keep units of Jy/beam after convolution
@@ -198,7 +194,7 @@ def getfacs(datadict, convbeams, verbose=False):
 
 
 def smooth(image, dx, dy, oldbeam, newbeam, conbeam, sfactor,
-           conv_mode='robust', verbose=False):
+           conv_mode='robust'):
     """smooth an image in Jy/beam
 
     Args:
@@ -210,7 +206,6 @@ def smooth(image, dx, dy, oldbeam, newbeam, conbeam, sfactor,
         conbeam (Beam): Convolving beam
         sfactor (float): factor to keep units in Jy/beam
         conv_mode (str): Convolution mode
-        verbose (bool, optional): Verbose output. Defaults to False.
 
     Returns:
         ndarray: Smoothed image
@@ -221,9 +216,8 @@ def smooth(image, dx, dy, oldbeam, newbeam, conbeam, sfactor,
         return image
     else:
         # using Beams package
-        if verbose:
-            print(f'Using convolving beam', conbeam)
-            print(f'Using scaling factor', sfactor)
+        log.debug(f'Using convolving beam', conbeam)
+        log.debug(f'Using scaling factor', sfactor)
         pix_scale = dy
         gauss_kern = conbeam.as_kernel(pix_scale)
 
@@ -256,8 +250,7 @@ def smooth(image, dx, dy, oldbeam, newbeam, conbeam, sfactor,
                 normalize_kernel=False,
                 allow_huge=True,
             )
-    if verbose:
-        print(f'Using scaling factor', fac)
+    log.debug(f'Using scaling factor', fac)
     newim *= fac
     return newim
 
@@ -304,12 +297,11 @@ def worker(idx, cubedict, conv_mode='robust', start=0):
                    conbeam=cubedict['convbeams'][start+idx],
                    sfactor=cubedict['facs'][start+idx],
                    conv_mode=conv_mode,
-                   verbose=False
                    )
     return newim
 
 
-def makedata(files, outdir, verbose=True):
+def makedata(files, outdir):
     """init datadict
 
     Args:
@@ -344,14 +336,14 @@ def makedata(files, outdir, verbose=True):
             dirname = '.'
         beamlog = f"{dirname}/beamlog.{basename}".replace('.fits', '.txt')
         datadict[f"cube_{i}"]["beamlog"] = beamlog
-        beam, nchan = getbeams(beamlog, verbose=verbose)
+        beam, nchan = getbeams(beamlog)
         datadict[f"cube_{i}"]["beam"] = beam
         datadict[f"cube_{i}"]["nchan"] = nchan
     return datadict
 
 
 def commonbeamer(datadict, nchans, args, conv_mode='robust',
-                 mode='natural', target_beam=None, verbose=True):
+                 mode='natural', target_beam=None):
     """Find common beams
 
     Args:
@@ -361,7 +353,6 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
         conv_mode (str, optional): Convolution method
         mode (str, optional): 'total' or 'natural. Defaults to 'natural'.
         target_beam (Beam, optional): Target PSF
-        verbose (bool, optional): Verbose output. Defaults to True.
 
     Returns:
         dict: updated datadict
@@ -372,7 +363,7 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
         for n in trange(
             nchans,
             desc='Constructing beams',
-            disable=(not verbose)
+            disable=(log.level > log.INFO)
         ):
             majors = []
             minors = []
@@ -405,7 +396,7 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
         for beams in tqdm(
             big_beams,
             desc='Finding common beam per channel',
-            disable=(not verbose),
+            disable=(log.level > log.INFO),
             total=nchans
         ):
             if all(np.isnan(beams)):
@@ -420,9 +411,8 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
                                                                      nsamps=args.nsamps,
                                                                      epsilon=args.epsilon)
                 except BeamError:
-                    if verbose:
-                        print("Couldn't find common beam with defaults")
-                        print("Trying again with smaller tolerance")
+                    log.warn("Couldn't find common beam with defaults")
+                    log.warn("Trying again with smaller tolerance")
 
                     commonbeam = beams[~np.isnan(beams)].common_beam(tolerance=args.tolerance*0.1,
                                                                      nsamps=args.nsamps,
@@ -465,9 +455,9 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
                                 u.arcsec).value, precision=1)*u.arcsec,
                             pa=round_up(nyq_beam.pa.to(u.deg), decimals=2)
                         )
-                        if verbose:
-                            print(
-                                'Smallest common Nyquist sampled beam is:', nyq_beam)
+                        log.info(
+                                f'Smallest common Nyquist sampled beam is: {nyq_beam.__repr__()}'
+                                )
 
                         warnings.warn('COMMON BEAM WILL BE UNDERSAMPLED!')
                         warnings.warn('SETTING COMMON BEAM TO NYQUIST BEAM')
@@ -512,18 +502,16 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
         pas *= pa.unit
         big_beams = Beams(major=majors, minor=minors, pa=pas)
 
-        if verbose:
-            print('Finding common beam across all channels')
-            print('This may take some time...')
+        log.info('Finding common beam across all channels')
+        log.info('This may take some time...')
 
         try:
             commonbeam = big_beams[~np.isnan(big_beams)].common_beam(tolerance=args.tolerance,
                                                                      nsamps=args.nsamps,
                                                                      epsilon=args.epsilon)
         except BeamError:
-            if verbose:
-                print("Couldn't find common beam with defaults")
-                print("Trying again with smaller tolerance")
+            log.warn("Couldn't find common beam with defaults")
+            log.warn("Trying again with smaller tolerance")
 
             commonbeam = big_beams[~np.isnan(big_beams)].common_beam(tolerance=args.tolerance*0.1,
                                                                      nsamps=args.nsamps,
@@ -568,8 +556,7 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
                         u.arcsec).value, precision=1)*u.arcsec,
                     pa=round_up(nyq_beam.pa.to(u.deg), decimals=2)
                 )
-                if verbose:
-                    print('Smallest common Nyquist sampled beam is:', nyq_beam)
+                log.info(f'Smallest common Nyquist sampled beam is: {nyq_beam.__repr__()}')
                 if target_beam is not None:
                     commonbeam = target_beam
                     if target_beam < nyq_beam:
@@ -587,15 +574,14 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
             pa=[commonbeam.pa] * nchans * commonbeam.pa.unit
         )
 
-    if verbose:
-        print('Final beams are:')
-        for i, commonbeam in enumerate(commonbeams):
-            print(f'Channel {i}:', commonbeam)
+    log.info('Final beams are:')
+    for i, commonbeam in enumerate(commonbeams):
+        log.info(f'Channel {i}: {commonbeam}')
 
     for key in tqdm(
         datadict.keys(),
         desc='Getting convolution data',
-        disable=(not verbose)
+        disable=(log.level > log.INFO)
     ):
         # Get convolving beams
         conv_bmaj = []
@@ -664,13 +650,12 @@ def commonbeamer(datadict, nchans, args, conv_mode='robust',
             format='commented_header',
             overwrite=True
         )
-        if verbose:
-            print(f'Convolving log written to {commonbeam_log}')
+        log.info(f'Convolving log written to {commonbeam_log}')
 
     return datadict
 
 
-def masking(nchans, cutoff, datadict, verbose=True):
+def masking(nchans, cutoff, datadict):
     for key in datadict.keys():
         mask = np.array([False]*nchans)
         datadict[key]['mask'] = mask
@@ -688,13 +673,12 @@ def masking(nchans, cutoff, datadict, verbose=True):
     return datadict
 
 
-def initfiles(datadict, mode, suffix=None, prefix=None, verbose=True):
+def initfiles(datadict, mode, suffix=None, prefix=None):
     """Initialise output files
 
     Args:
         datadict (dict): Main data dict - indexed
         mode (str): 'total' or 'natural'
-        verbose (bool, optional): Verbose output. Defaults to True.
 
     Returns:
         datadict: Updated datadict
@@ -740,23 +724,20 @@ def initfiles(datadict, mode, suffix=None, prefix=None, verbose=True):
 
     outdir = datadict['outdir']
     outfile = f'{outdir}/{outname}'
-    if verbose:
-        print(f'Initialising to {outfile}')
+    log.info(f'Initialising to {outfile}')
 
     new_hdulist.writeto(outfile, overwrite=True)
 
     return outfile
 
 
-def readlogs(datadict, mode, verbose=True):
-    if verbose:
-        print('Reading from beamlogConvolve files')
+def readlogs(datadict, mode):
+    log.info('Reading from beamlogConvolve files')
     for key in datadict.keys():
         # Read in logs
         commonbeam_log = datadict[key]['beamlog'].replace('beamlog.',
                                                           f'beamlogConvolve-{mode}.')
-        if verbose:
-            print(f'Reading from {commonbeam_log}')
+        log.info(f'Reading from {commonbeam_log}')
         try:
             commonbeam_tab = Table.read(
                 commonbeam_log, format='ascii.commented_header')
@@ -779,64 +760,56 @@ def readlogs(datadict, mode, verbose=True):
         datadict[key]['convbeams'] = convbeams
         datadict[key]['commonbeams'] = commonbeams
         datadict[key]['commonbeamlog'] = commonbeam_log
-    if verbose:
-        print('Final beams are:')
-        for i, commonbeam in enumerate(commonbeams):
-            print(f'Channel {i}:', commonbeam)
+    log.info('Final beams are:')
+    for i, commonbeam in enumerate(commonbeams):
+        log.info(f'Channel {i}: {commonbeam}')
     return datadict
 
 
-def main(args, verbose=True):
+def main(args):
     """main script
 
     Args:
         args (args): Command line args
-        verbose (bool, optional): Verbose ouput. Defaults to True.
 
     """
 
     if myPE == 0:
-        print(f"Total number of MPI ranks = {nPE}")
+        log.info(f"Total number of MPI ranks = {nPE}")
         # Parse args
         if args.dryrun:
-            if verbose:
-                print('Doing a dry run -- no files will be saved')
+            log.info('Doing a dry run -- no files will be saved')
 
         # Check mode
         mode = args.mode
-        if verbose:
-            print(f"Mode is {mode}")
+        log.info(f"Mode is {mode}")
         if mode == 'natural' and mode == 'total':
             raise Exception("'mode' must be 'natural' or 'total'")
         if mode == 'natural':
-            if verbose:
-                print('Smoothing each channel to a common resolution')
+            log.info('Smoothing each channel to a common resolution')
         if mode == 'total':
-            if verbose:
-                print('Smoothing all channels to a common resolution')
+            log.info('Smoothing all channels to a common resolution')
 
         # Check cutoff
         cutoff = args.cutoff
         if args.cutoff is not None:
             cutoff = args.cutoff * u.arcsec
-            if verbose:
-                print('Cutoff is:', cutoff)
+            log.info(f'Cutoff is: {cutoff}')
 
         # Check target
         conv_mode = args.conv_mode
-        print(conv_mode)
+        log.debug(conv_mode)
         if not conv_mode == 'robust' and not conv_mode == 'scipy' and \
                 not conv_mode == 'astropy' and not conv_mode == 'astropy_fft':
             raise Exception('Please select valid convolution method!')
 
-        if verbose:
-            print(f"Using convolution method {conv_mode}")
-            if conv_mode == 'robust':
-                print("This is the most robust method. And fast!")
-            elif conv_mode == 'scipy':
-                print('This fast, but not robust to NaNs or small PSF changes')
-            else:
-                print('This is slower, but robust to NaNs, but not to small PSF changes')
+        log.info(f"Using convolution method {conv_mode}")
+        if conv_mode == 'robust':
+            log.info("This is the most robust method. And fast!")
+        elif conv_mode == 'scipy':
+            log.info('This fast, but not robust to NaNs or small PSF changes')
+        else:
+            log.info('This is slower, but robust to NaNs, but not to small PSF changes')
 
         bmaj = args.bmaj
         bmin = args.bmin
@@ -859,8 +832,7 @@ def main(args, verbose=True):
                 bmin * u.arcsec,
                 bpa * u.deg
             )
-            if verbose:
-                print('Target beam is ', target_beam)
+            log.info(f'Target beam is {target_beam.__repr__()}')
 
         files = sorted(args.infile)
         if files == []:
@@ -879,7 +851,7 @@ def main(args, verbose=True):
                     out = '.'
                 outdir += [out]
 
-        datadict = makedata(files, outdir, verbose=verbose)
+        datadict = makedata(files, outdir)
 
         # Sanity check channel counts
         nchans = np.array([datadict[key]['nchan'] for key in datadict.keys()])
@@ -909,7 +881,6 @@ def main(args, verbose=True):
             nchans,
             cutoff,
             datadict,
-            verbose=verbose
         )
 
         if not args.uselogs:
@@ -920,13 +891,13 @@ def main(args, verbose=True):
                 conv_mode=conv_mode,
                 target_beam=target_beam,
                 mode=mode,
-                verbose=verbose
+
             )
         else:
             datadict = readlogs(
                 datadict,
                 mode=mode,
-                verbose=verbose
+
             )
 
     else:
@@ -940,8 +911,8 @@ def main(args, verbose=True):
 
     # Init the files in parallel
     if not args.dryrun:
-        if myPE == 0 and verbose:
-            print('Initialising output files')
+        if myPE == 0:
+            log.info('Initialising output files')
         if mpiSwitch:
             files = comm.bcast(files, root=0)
             datadict = comm.bcast(datadict, root=0)
@@ -968,11 +939,9 @@ def main(args, verbose=True):
                 my_start = myPE * count + rem
                 my_end = my_start + (count - 1)
 
-        if verbose:
-            if myPE == 0:
-                print(
-                    f"There are {dims} files to init")
-            print(f"My start is {my_start}", f"My end is {my_end}")
+        if myPE == 0:
+            log.info(f"There are {dims} files to init")
+        log.info(f"My start is {my_start}", f"My end is {my_end}")
 
         # Init output files and retrieve file names
         outfile_dict = {}
@@ -982,7 +951,6 @@ def main(args, verbose=True):
                 args.mode,
                 suffix=args.suffix,
                 prefix=args.prefix,
-                verbose=verbose
             )
             outfile_dict.update(
                 {
@@ -1033,11 +1001,9 @@ def main(args, verbose=True):
             # The remaining 'size - remainder' ranks get 'count' task each
             my_start = myPE * count + rem
             my_end = my_start + (count - 1)
-        if verbose:
-            if myPE == 0:
-                print(
-                    f"There are {nchans} channels, across {len(files)} files")
-            print(f"My start is {my_start}", f"My end is {my_end}")
+        if myPE == 0:
+            log.info(f"There are {nchans} channels, across {len(files)} files")
+        log.info(f"My start is {my_start}", f"My end is {my_end}")
 
         for inp in inputs[my_start:my_end+1]:
             key, chan = inp
@@ -1046,11 +1012,9 @@ def main(args, verbose=True):
             with fits.open(outfile, mode='update', memmap=True) as outfh:
                 outfh[0].data[chan, 0, :, :] = newim.astype(np.float32) # make sure data is 32-bit
                 outfh.flush()
-            if verbose:
-                print(f"{outfile}  - channel {chan} - Done")
+            log.info(f"{outfile}  - channel {chan} - Done")
 
-    if verbose:
-        print('Done!')
+    log.info('Done!')
 
 
 def cli():
@@ -1110,11 +1074,14 @@ def cli():
     )
 
     parser.add_argument(
-        "-v",
-        "--verbose",
-        dest="verbose",
-        action="store_true",
-        help="verbose output [False]."
+        "-v", "--verbosity", action="count", help="Increase output verbosity"
+    )
+
+    parser.add_argument(
+        "--logfile",
+        default=None,
+        type=str,
+        help="Save logging output to file",
     )
 
     parser.add_argument(
@@ -1212,9 +1179,22 @@ def cli():
 
     args = parser.parse_args()
 
-    verbose = args.verbose
+    if args.verbosity == 1:
+        log.basicConfig(
+            filename=args.logfile,
+            level=log.INFO,
+            format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    elif args.verbosity >= 2:
+        log.basicConfig(
+            filename=args.logfile,
+            level=log.DEBUG,
+            format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
 
-    main(args, verbose=verbose)
+    main(args)
 
 
 if __name__ == "__main__":

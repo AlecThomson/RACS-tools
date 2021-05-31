@@ -22,10 +22,9 @@ from tqdm import tqdm
 import warnings
 import logging as log
 try:
-    print = functools.partial(
-        print, f'[{psutil.Process().cpu_num()}]', flush=True)
+    myPE = psutil.Process().cpu_num()
 except AttributeError:
-    print = functools.partial(print, flush=True)
+    myPE = 0
 
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
@@ -44,7 +43,7 @@ def my_ceil(a, precision=0):
 def getbeam(datadict, new_beam, cutoff=None):
     """Get beam info
     """
-    log.info("Current beam is {}".format(str(datadict['oldbeam'])))
+    log.info(f"Current beam is {datadict['oldbeam'].__repr__()}")
 
     if cutoff is not None and datadict['oldbeam'].major.to(u.arcsec) > cutoff*u.arcsec:
         return np.nan, np.nan
@@ -116,8 +115,8 @@ def smooth(datadict, conv_mode='robust'):
         return newim
     else:
         # using Beams package
-        log.info('Smoothing so beam is {}'.format(str(datadict["final_beam"])))
-        log.info('Using convolving beam {}'.format(str(datadict["conbeam"])))
+        log.info(f'Smoothing so beam is {datadict["final_beam"].__repr__()}')
+        log.info(f'Using convolving beam {datadict["conbeam"].__repr__()}')
         pix_scale = datadict['dy']
 
         gauss_kern = datadict["conbeam"].as_kernel(pix_scale)
@@ -152,9 +151,9 @@ def smooth(datadict, conv_mode='robust'):
                 normalize_kernel=False,
                 allow_huge=True,
             )
-        log.info('Using scaling factor {}'.format(fac))
+        log.info(f'Using scaling factor {fac}')
         if np.any(np.isnan(newim)):
-            log.warning("{} NaNs present in smoothed output".format(np.isnan(newim).sum()))
+            log.warning(f"{np.isnan(newim).sum()} NaNs present in smoothed output")
 
         newim *= fac
         return newim
@@ -286,7 +285,7 @@ def getmaxbeam(files, conv_mode='robust', target_beam=None, cutoff=None,
                     u.arcsec).value, precision=1)*u.arcsec,
                 pa=round_up(nyq_beam.pa.to(u.deg), decimals=2)
             )
-            log.info('Smallest common Nyquist sampled beam is:', nyq_beam)
+            log.info(f'Smallest common Nyquist sampled beam is: {nyq_beam.__repr__()}')
             if target_beam is not None:
                 if target_beam < nyq_beam:
                     warnings.warn('TARGET BEAM WILL BE UNDERSAMPLED!')
@@ -398,7 +397,7 @@ def main(pool, args):
             bmin * u.arcsec,
             bpa * u.deg
         )
-        log.info('Target beam is %s' % target_beam)
+        log.info(f'Target beam is {target_beam.__repr__()}')
 
     # Find smallest common beam
     big_beam, allbeams = getmaxbeam(files,
@@ -419,7 +418,7 @@ def main(pool, args):
                 zip(allbeams, files),
                 total=len(allbeams),
                 desc='Deconvolving',
-                disable=(log.level > logging.INFO)
+                disable=(log.level > log.INFO)
             )
         ):
             try:
@@ -439,7 +438,7 @@ def main(pool, args):
     else:
         new_beam = big_beam
 
-    log.info('Final beam is %s' % new_beam)
+    log.info(f'Final beam is {new_beam.__repr__()}')
     inputs = [[file, outdir, new_beam, conv_mode, args]
               for i, file in enumerate(files)]
 
@@ -597,14 +596,14 @@ def cli():
         log.basicConfig(
             filename=args.logfile,
             level=log.INFO,
-            format="%(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
+            format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     elif args.verbosity >= 2:
         log.basicConfig(
             filename=args.logfile,
             level=log.DEBUG,
-            format="%(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
+            format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     pool = schwimmbad.choose_pool(mpi=args.mpi, processes=args.n_cores)
