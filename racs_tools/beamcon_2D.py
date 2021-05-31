@@ -21,8 +21,7 @@ from tqdm import tqdm
 from IPython import embed
 import matplotlib.pyplot as plt
 import warnings
-from astropy import log
-import logging
+import logging as log
 try:
     print = functools.partial(
         print, f'[{psutil.Process().cpu_num()}]', flush=True)
@@ -500,8 +499,6 @@ def cli():
         """
     )
 
-    #parser.add_argument("-v", "--verbose", dest="verbose", action="store_true",
-    #                    help="verbose output [False].")
     parser.add_argument(
         "-v", "--verbosity", action="count", help="Increase output verbosity"
     )
@@ -536,6 +533,13 @@ def cli():
         type=str,
         default=None,
         help="Name of beamlog file. If provided, save beamlog data to a file [None - not saved].")
+
+    parser.add_argument(
+        "--logfile",
+        default=None,
+        type=str,
+        help="Save logging output to file",
+    )
 
     parser.add_argument(
         '-c',
@@ -578,9 +582,19 @@ def cli():
 
     args = parser.parse_args()
     if args.verbosity == 1:
-        log.setLevel("INFO")
+        log.basicConfig(
+            filename=args.logfile,
+            level=log.INFO,
+            format="%(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
     elif args.verbosity >= 2:
-        log.setLevel("DEBUG")
+        log.basicConfig(
+            filename=args.logfile,
+            level=log.DEBUG,
+            format="%(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
     pool = schwimmbad.choose_pool(mpi=args.mpi, processes=args.n_cores)
     if args.mpi:
         if not pool.is_master():
