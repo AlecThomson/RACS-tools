@@ -21,10 +21,6 @@ import psutil
 from tqdm import tqdm
 import warnings
 import logging as log
-try:
-    myPE = psutil.Process().cpu_num()
-except AttributeError:
-    myPE = 0
 
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
@@ -592,6 +588,15 @@ def cli():
                        action="store_true", help="Run with MPI.")
 
     args = parser.parse_args()
+    if args.mpi:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        myPE = comm.Get_rank()
+    else:
+        try:
+            myPE = psutil.Process().cpu_num()
+        except AttributeError:
+            myPE = 0
     if args.verbosity == 1:
         log.basicConfig(
             filename=args.logfile,
