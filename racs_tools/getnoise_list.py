@@ -107,14 +107,14 @@ def getbadchans(
     """
     assert len(ucube.spectral_axis) == len(qcube.spectral_axis)
     inputs = [[i, qfile, totalbad, update] for i in range(len(qcube.spectral_axis))]
-    if pool.__class__.__name__ is "MPIPool" or pool.__class__.__name__ is "SerialPool":
+    if pool.__class__.__name__=="MPIPool" or pool.__class__.__name__=="SerialPool":
         print(f"Checking Q...")
         tic = time.perf_counter()
         qnoisevals = list(pool.map(calcnoise, inputs))
         toc = time.perf_counter()
         print(f"Time taken was {toc - tic}s")
 
-    elif pool.__class__.__name__ is "MultiPool":
+    elif pool.__class__.__name__=="MultiPool":
         qnoisevals = list(
             tqdm(
                 pool.imap_unordered(calcnoise, inputs),
@@ -125,14 +125,14 @@ def getbadchans(
     qnoisevals = np.array(qnoisevals)
 
     inputs = [[i, ufile, totalbad, update] for i in range(len(ucube.spectral_axis))]
-    if pool.__class__.__name__ is "MPIPool" or pool.__class__.__name__ is "SerialPool":
+    if pool.__class__.__name__=="MPIPool" or pool.__class__.__name__=="SerialPool":
         print(f"Checking U...")
         tic = time.perf_counter()
         unoisevals = list(pool.map(calcnoise, inputs))
         toc = time.perf_counter()
         print(f"Time taken was {toc - tic}s")
 
-    elif pool.__class__.__name__ is "MultiPool":
+    elif pool.__class__.__name__=="MultiPool":
         unoisevals = list(
             tqdm(
                 pool.imap_unordered(calcnoise, inputs),
