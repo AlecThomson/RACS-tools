@@ -20,7 +20,7 @@ URL = 'https://github.com/AlecThomson/RACS-tools'
 EMAIL = 'alec.thomson@csiro.au'
 AUTHOR = 'Alec Thomson'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '1.1.2'
+VERSION = '1.1.3'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
