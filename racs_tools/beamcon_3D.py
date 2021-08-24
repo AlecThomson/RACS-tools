@@ -22,7 +22,6 @@ from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 from tqdm import tqdm, trange
 from racs_tools import au2
-import functools
 import logging as log
 
 try:
@@ -216,8 +215,8 @@ def smooth(image, dx, dy, oldbeam, newbeam, conbeam, sfactor, conv_mode="robust"
         return image
     else:
         # using Beams package
-        log.debug(f"Using convolving beam", conbeam)
-        log.debug(f"Using scaling factor", sfactor)
+        log.debug(f"Using convolving beam {conbeam}")
+        log.debug(f"Using scaling factor {sfactor}")
         pix_scale = dy
         gauss_kern = conbeam.as_kernel(pix_scale)
 
@@ -235,7 +234,7 @@ def smooth(image, dx, dy, oldbeam, newbeam, conbeam, sfactor, conv_mode="robust"
             newim = convolve_fft(
                 image.astype("f8"), conbm1, normalize_kernel=False, allow_huge=True,
             )
-    log.debug(f"Using scaling factor", fac)
+    log.debug(f"Using scaling factor {fac}")
     newim *= fac
     return newim
 
@@ -447,8 +446,8 @@ def commonbeamer(
                             f"Smallest common Nyquist sampled beam is: {nyq_beam.__repr__()}"
                         )
 
-                        warnings.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
-                        warnings.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
+                        log.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
+                        log.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
                         commonbeam = nyq_beam
 
             bmaj_common.append(commonbeam.major.value)
@@ -539,11 +538,11 @@ def commonbeamer(
                 if target_beam is not None:
                     commonbeam = target_beam
                     if target_beam < nyq_beam:
-                        warnings.warn("TARGET BEAM WILL BE UNDERSAMPLED!")
+                        log.warn("TARGET BEAM WILL BE UNDERSAMPLED!")
                         raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
                 else:
-                    warnings.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
-                    warnings.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
+                    log.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
+                    log.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
                     commonbeam = nyq_beam
 
         # Make Beams object
@@ -898,7 +897,7 @@ def main(args):
 
         if myPE == 0:
             log.info(f"There are {dims} files to init")
-        log.info(f"My start is {my_start}", f"My end is {my_end}")
+        log.info(f"My start is {my_start}, my end is {my_end}")
 
         # Init output files and retrieve file names
         outfile_dict = {}
@@ -953,7 +952,7 @@ def main(args):
             my_end = my_start + (count - 1)
         if myPE == 0:
             log.info(f"There are {nchans} channels, across {len(files)} files")
-        log.info(f"My start is {my_start}", f"My end is {my_end}")
+        log.info(f"My start is {my_start}, my end is {my_end}")
 
         for inp in inputs[my_start : my_end + 1]:
             key, chan = inp

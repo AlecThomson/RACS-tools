@@ -15,11 +15,9 @@ from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 from racs_tools import au2
 from racs_tools import convolve_uv
-import functools
 import schwimmbad
 import psutil
 from tqdm import tqdm
-import warnings
 import logging as log
 
 #############################################
@@ -156,7 +154,7 @@ def savefile(datadict, filename, outdir="."):
     """Save file to disk
     """
     outfile = f"{outdir}/{filename}"
-    log.info("Saving to %s" % outfile)
+    log.info(f"Saving to {outfile}")
     header = datadict["header"]
     beam = datadict["final_beam"]
     header = beam.attach_to_header(header)
@@ -167,7 +165,7 @@ def savefile(datadict, filename, outdir="."):
 
 def worker(args):
     file, outdir, new_beam, conv_mode, clargs = args
-    log.info("Working on %s" % file)
+    log.info(f"Working on {file}")
 
     if outdir is None:
         outdir = os.path.dirname(file)
@@ -274,11 +272,11 @@ def getmaxbeam(
             log.info(f"Smallest common Nyquist sampled beam is: {nyq_beam.__repr__()}")
             if target_beam is not None:
                 if target_beam < nyq_beam:
-                    warnings.warn("TARGET BEAM WILL BE UNDERSAMPLED!")
+                    log.warn("TARGET BEAM WILL BE UNDERSAMPLED!")
                     raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
             else:
-                warnings.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
-                warnings.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
+                log.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
+                log.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
                 cmn_beam = nyq_beam
 
     return cmn_beam, beams
@@ -343,7 +341,7 @@ def writelog(output, commonbeam_log):
     ascii.write(
         commonbeam_tab, output=commonbeam_log, format="commented_header", overwrite=True
     )
-    log.info("Convolving log written to %s" % commonbeam_log)
+    log.info(f"Convolving log written to {commonbeam_log}")
 
 
 def main(pool, args):
@@ -367,11 +365,11 @@ def main(pool, args):
     # Parse args
 
     conv_mode = args.conv_mode
-    log.info("Convolution mode: %s" % conv_mode)
+    log.info(f"Convolution mode: {conv_mode}")
     if not conv_mode in ["robust", "scipy", "astropy", "astropy_fft"]:
         raise Exception("Please select valid convolution method!")
 
-    log.info("Using convolution method %s" % conv_mode)
+    log.info(f"Using convolution method {conv_mode}")
     if conv_mode == "robust":
         log.info("This is the most robust method. And fast!")
     elif conv_mode == "scipy":
@@ -425,8 +423,8 @@ def main(pool, args):
                 mask_count += 1
                 failed.append(file)
         if mask_count > 0:
-            log.info("The following images could not reach target resolution:")
-            log.info(failed)
+            log.warn("The following images could not reach target resolution:")
+            log.warn(failed)
 
             raise Exception("Please choose a larger target beam!")
 
