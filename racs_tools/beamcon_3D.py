@@ -125,7 +125,7 @@ def copyfileobj(fsrc, fdst, length=16 * 1024):
     total = os.fstat(fsrc.fileno()).st_size
     with tqdm(
         total=total,
-        disable=(log.level > log.INFO),
+        disable=(log.root.level > log.INFO),
         unit_scale=True,
         desc="Copying file",
     ) as pbar:
@@ -348,7 +348,7 @@ def commonbeamer(
     if mode == "natural":
         big_beams = []
         for n in trange(
-            nchans, desc="Constructing beams", disable=(log.level > log.INFO)
+            nchans, desc="Constructing beams", disable=(log.root.level > log.INFO)
         ):
             majors = []
             minors = []
@@ -381,7 +381,7 @@ def commonbeamer(
         for beams in tqdm(
             big_beams,
             desc="Finding common beam per channel",
-            disable=(log.level > log.INFO),
+            disable=(log.root.level > log.INFO),
             total=nchans,
         ):
             if all(np.isnan(beams)):
@@ -558,7 +558,7 @@ def commonbeamer(
         log.info(f"Channel {i}: {commonbeam}")
 
     for key in tqdm(
-        datadict.keys(), desc="Getting convolution data", disable=(log.level > log.INFO)
+        datadict.keys(), desc="Getting convolution data", disable=(log.root.level > log.INFO)
     ):
         # Get convolving beams
         conv_bmaj = []

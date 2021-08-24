@@ -416,7 +416,7 @@ def main(pool, args):
                 zip(allbeams, files),
                 total=len(allbeams),
                 desc="Deconvolving",
-                disable=(log.level > log.INFO),
+                disable=(log.root.level > log.INFO),
             )
         ):
             try:
