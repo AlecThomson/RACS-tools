@@ -434,6 +434,15 @@ def main(pool, args):
     else:
         new_beam = big_beam
 
+
+    if args.circularise:
+        log.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
+        new_beam = Beam(
+            major=new_beam.major,
+            minor=new_beam.major,
+            pa=0*u.deg,
+        )
+
     log.info(f"Final beam is {new_beam.__repr__()}")
     inputs = [[file, outdir, new_beam, conv_mode, args] for i, file in enumerate(files)]
 
@@ -565,6 +574,12 @@ def cli():
         type=float,
         default=None,
         help="Cutoff BMAJ value (arcsec) -- Blank channels with BMAJ larger than this [None -- no limit]",
+    )
+
+    parser.add_argument(
+        "--circularise",
+        action='store_true',
+        help="Circularise the final PSF -- Sets the BMIN = BMAJ, and BPA=0.",
     )
 
     parser.add_argument(
