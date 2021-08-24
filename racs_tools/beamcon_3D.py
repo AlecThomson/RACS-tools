@@ -328,7 +328,13 @@ def makedata(files, outdir):
 
 
 def commonbeamer(
-    datadict, nchans, args, conv_mode="robust", mode="natural", target_beam=None
+    datadict,
+    nchans,
+    args,
+    conv_mode="robust",
+    mode="natural",
+    target_beam=None,
+    circularise=False,
 ):
     """Find common beams
 
@@ -339,6 +345,7 @@ def commonbeamer(
         conv_mode (str, optional): Convolution method
         mode (str, optional): 'total' or 'natural. Defaults to 'natural'.
         target_beam (Beam, optional): Target PSF
+        circularise (bool, optional): Circularise the common beam
 
     Returns:
         dict: updated datadict
@@ -552,12 +559,20 @@ def commonbeamer(
             pa=[commonbeam.pa] * nchans * commonbeam.pa.unit,
         )
 
+    if circularise:
+        log.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
+        commonbeams = Beams(
+            major=commonbeams.major, minor=commonbeams.major, pa=commonbeams.pa * 0,
+        )
+
     log.info("Final beams are:")
     for i, commonbeam in enumerate(commonbeams):
         log.info(f"Channel {i}: {commonbeam}")
 
     for key in tqdm(
-        datadict.keys(), desc="Getting convolution data", disable=(log.root.level > log.INFO)
+        datadict.keys(),
+        desc="Getting convolution data",
+        disable=(log.root.level > log.INFO),
     ):
         # Get convolving beams
         conv_bmaj = []
@@ -852,6 +867,7 @@ def main(args):
                 conv_mode=conv_mode,
                 target_beam=target_beam,
                 mode=mode,
+                circularise=args.circularise,
             )
         else:
             datadict = readlogs(datadict, mode=mode,)
@@ -1096,6 +1112,12 @@ def cli():
         type=float,
         default=None,
         help="Cutoff BMAJ value (arcsec) -- Blank channels with BMAJ larger than this [None -- no limit]",
+    )
+
+    parser.add_argument(
+        "--circularise",
+        action="store_true",
+        help="Circularise the final PSF -- Sets the BMIN = BMAJ, and BPA=0.",
     )
 
     parser.add_argument(
