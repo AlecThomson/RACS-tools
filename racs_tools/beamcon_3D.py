@@ -443,7 +443,7 @@ def commonbeamer(
                             pa=round_up(nyq_beam.pa.to(u.deg), decimals=2),
                         )
                         log.info(
-                            f"Smallest common Nyquist sampled beam is: {nyq_beam.__repr__()}"
+                            f"Smallest common Nyquist sampled beam is: {nyq_beam!r}"
                         )
 
                         log.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
@@ -533,7 +533,7 @@ def commonbeamer(
                     pa=round_up(nyq_beam.pa.to(u.deg), decimals=2),
                 )
                 log.info(
-                    f"Smallest common Nyquist sampled beam is: {nyq_beam.__repr__()}"
+                    f"Smallest common Nyquist sampled beam is: {nyq_beam!r}"
                 )
                 if target_beam is not None:
                     commonbeam = target_beam
@@ -731,7 +731,7 @@ def readlogs(datadict, mode):
         datadict[key]["commonbeamlog"] = commonbeam_log
     log.info("Final beams are:")
     for i, commonbeam in enumerate(commonbeams):
-        log.info(f"Channel {i}: {commonbeam}")
+        log.info(f"Channel {i}: {commonbeam!r}")
     return datadict
 
 
@@ -801,7 +801,7 @@ def main(args):
 
         elif not all(nonetest) and not any(nonetest):
             target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
-            log.info(f"Target beam is {target_beam.__repr__()}")
+            log.info(f"Target beam is {target_beam!r}")
 
         files = sorted(args.infile)
         if files == []:
