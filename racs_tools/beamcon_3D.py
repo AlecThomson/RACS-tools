@@ -97,7 +97,7 @@ def copyfile(src, dst, *, follow_symlinks=True):
 
     """
     if _samefile(src, dst):
-        raise SameFileError("{!r} and {!r} are the same file".format(src, dst))
+        raise SameFileError(f"{src!r} and {dst!r} are the same file")
 
     for fn in [src, dst]:
         try:
@@ -174,20 +174,23 @@ def getfacs(datadict, convbeams):
     """
     facs = []
     for conbm, oldbeam in zip(convbeams, datadict["beams"]):
-        fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
-            [
-                conbm.major.to(u.arcsec).value,
-                conbm.minor.to(u.arcsec).value,
-                conbm.pa.to(u.deg).value,
-            ],
-            beamOrig=[
-                oldbeam.major.to(u.arcsec).value,
-                oldbeam.minor.to(u.arcsec).value,
-                oldbeam.pa.to(u.deg).value,
-            ],
-            dx1=datadict["dx"].to(u.arcsec).value,
-            dy1=datadict["dy"].to(u.arcsec).value,
-        )
+        if conbm == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg):
+            fac = 1
+        else:
+            fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
+                [
+                    conbm.major.to(u.arcsec).value,
+                    conbm.minor.to(u.arcsec).value,
+                    conbm.pa.to(u.deg).value,
+                ],
+                beamOrig=[
+                    oldbeam.major.to(u.arcsec).value,
+                    oldbeam.minor.to(u.arcsec).value,
+                    oldbeam.pa.to(u.deg).value,
+                ],
+                dx1=datadict["dx"].to(u.arcsec).value,
+                dy1=datadict["dy"].to(u.arcsec).value,
+            )
         facs.append(fac)
     facs = np.array(facs)
     return facs
@@ -212,6 +215,8 @@ def smooth(image, dx, dy, oldbeam, newbeam, conbeam, sfactor, conv_mode="robust"
     if np.isnan(conbeam):
         return image * np.nan
     if np.isnan(image).all():
+        return image
+    if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
         return image
     else:
         # using Beams package
@@ -532,9 +537,7 @@ def commonbeamer(
                     * u.arcsec,
                     pa=round_up(nyq_beam.pa.to(u.deg), decimals=2),
                 )
-                log.info(
-                    f"Smallest common Nyquist sampled beam is: {nyq_beam!r}"
-                )
+                log.info(f"Smallest common Nyquist sampled beam is: {nyq_beam!r}")
                 if target_beam is not None:
                     commonbeam = target_beam
                     if target_beam < nyq_beam:
@@ -557,7 +560,9 @@ def commonbeamer(
         log.info(f"Channel {i}: {commonbeam!r}")
 
     for key in tqdm(
-        datadict.keys(), desc="Getting convolution data", disable=(log.root.level > log.INFO)
+        datadict.keys(),
+        desc="Getting convolution data",
+        disable=(log.root.level > log.INFO),
     ):
         # Get convolving beams
         conv_bmaj = []
@@ -571,7 +576,22 @@ def commonbeamer(
                     major=np.nan * u.deg, minor=np.nan * u.deg, pa=np.nan * u.deg
                 )
             else:
-                convbeam = commonbeam.deconvolve(oldbeam)
+                oldbeam_check = Beam(
+                    major=my_ceil(oldbeam.major.to(u.arcsec).value, precision=1)
+                    * u.arcsec,
+                    minor=my_ceil(oldbeam.minor.to(u.arcsec).value, precision=1)
+                    * u.arcsec,
+                    pa=round_up(oldbeam.pa.to(u.deg), decimals=2),
+                )
+                if commonbeam == oldbeam_check:
+                    convbeam = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg,)
+                    log.warn(
+                        f"New beam {commonbeam!r} and old beam {oldbeam_check!r} are the same. Won't attempt convolution."
+                    )
+
+                else:
+                    convbeam = commonbeam.deconvolve(oldbeam)
+
             conv_bmaj.append(convbeam.major.value)
             conv_bmin.append(convbeam.minor.value)
             conv_bpa.append(convbeam.pa.to(u.deg).value)
@@ -662,6 +682,7 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
     # Header
     commonbeams = datadict["commonbeams"]
     header = commonbeams[0].attach_to_header(header)
+    data = np.array([0] * len(data.shape), dtype=np.float32)
     primary_hdu = fits.PrimaryHDU(data=data, header=header)
     if mode == "natural":
         header["COMMENT"] = "The PSF in each image plane varies."
@@ -694,8 +715,15 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
     outdir = datadict["outdir"]
     outfile = f"{outdir}/{outname}"
     log.info(f"Initialising to {outfile}")
-
     new_hdulist.writeto(outfile, overwrite=True)
+    shape = tuple(header[f"NAXIS{ii}"] for ii in range(1, header["NAXIS"] + 1))
+    with open(outfile, "rb+") as fobj:
+        fobj.seek(
+            len(header.tostring())
+            + (np.product(shape) * np.abs(header["BITPIX"] // 8))
+            - 1
+        )
+        fobj.write(b"\0")
 
     return outfile
 
@@ -897,7 +925,7 @@ def main(args):
 
         if myPE == 0:
             log.info(f"There are {dims} files to init")
-        log.info(f"My start is {my_start}, my end is {my_end}")
+        log.debug(f"My start is {my_start}, my end is {my_end}")
 
         # Init output files and retrieve file names
         outfile_dict = {}
@@ -952,9 +980,9 @@ def main(args):
             my_end = my_start + (count - 1)
         if myPE == 0:
             log.info(f"There are {nchans} channels, across {len(files)} files")
-        log.info(f"My start is {my_start}, my end is {my_end}")
+        log.debug(f"My start is {my_start}, my end is {my_end}")
 
-        for inp in inputs[my_start : my_end + 1]:
+        for inp in tqdm(inputs[my_start : my_end + 1]):
             key, chan = inp
             newim = worker(chan, datadict[key], conv_mode=conv_mode)
             outfile = datadict[key]["outfile"]
@@ -1146,4 +1174,4 @@ def cli():
 
 
 if __name__ == "__main__":
-    cli()
+    sys.exit(cli())
