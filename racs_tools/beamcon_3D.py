@@ -554,7 +554,7 @@ def commonbeamer(
 
     log.info("Final beams are:")
     for i, commonbeam in enumerate(commonbeams):
-        log.info(f"Channel {i}: {commonbeam}")
+        log.info(f"Channel {i}: {commonbeam!r}")
 
     for key in tqdm(
         datadict.keys(), desc="Getting convolution data", disable=(log.root.level > log.INFO)
