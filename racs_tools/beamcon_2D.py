@@ -182,15 +182,16 @@ def worker(args):
     conbeam, sfactor = getbeam(datadict, new_beam, cutoff=clargs.cutoff,)
 
     datadict.update({"conbeam": conbeam, "final_beam": new_beam, "sfactor": sfactor})
-    newim = smooth(datadict, conv_mode=conv_mode)
-    if datadict["4d"]:
-        # make it back into a 4D image
-        newim = np.expand_dims(np.expand_dims(newim, axis=0), axis=0)
-    datadict.update(
-        {"newimage": newim,}
-    )
+    if not clargs.dryrun:
+        newim = smooth(datadict, conv_mode=conv_mode)
+        if datadict["4d"]:
+            # make it back into a 4D image
+            newim = np.expand_dims(np.expand_dims(newim, axis=0), axis=0)
+        datadict.update(
+            {"newimage": newim,}
+        )
 
-    savefile(datadict, outfile, outdir)
+        savefile(datadict, outfile, outdir)
 
     return datadict
 
@@ -437,11 +438,10 @@ def main(pool, args):
     log.info(f"Final beam is {new_beam.__repr__()}")
     inputs = [[file, outdir, new_beam, conv_mode, args] for i, file in enumerate(files)]
 
-    if not args.dryrun:
-        output = list(pool.map(worker, inputs))
+    output = list(pool.map(worker, inputs))
 
-        if args.log is not None:
-            writelog(output, args.log)
+    if args.log is not None:
+        writelog(output, args.log)
 
     log.info("Done!")
 
