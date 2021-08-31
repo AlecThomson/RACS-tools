@@ -37,7 +37,7 @@ def my_ceil(a, precision=0):
 def getbeam(datadict, new_beam, cutoff=None):
     """Get beam info
     """
-    log.info(f"Current beam is {datadict['oldbeam'].__repr__()}")
+    log.info(f"Current beam is {datadict['oldbeam']!r}")
 
     if (
         cutoff is not None
@@ -46,21 +46,34 @@ def getbeam(datadict, new_beam, cutoff=None):
         return np.nan, np.nan
 
     else:
-        conbm = new_beam.deconvolve(datadict["oldbeam"])
-        fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
-            [
-                conbm.major.to(u.arcsec).value,
-                conbm.minor.to(u.arcsec).value,
-                conbm.pa.to(u.deg).value,
-            ],
-            beamOrig=[
-                datadict["oldbeam"].major.to(u.arcsec).value,
-                datadict["oldbeam"].minor.to(u.arcsec).value,
-                datadict["oldbeam"].pa.to(u.deg).value,
-            ],
-            dx1=datadict["dx"].to(u.arcsec).value,
-            dy1=datadict["dy"].to(u.arcsec).value,
-        )
+        if new_beam == datadict["oldbeam"]:
+            conbm = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg,)
+            fac = 1
+            log.warn(
+                f"New beam {new_beam!r} and old beam {datadict['oldbeam']!r} are the same. Won't attempt convolution."
+            )
+        else:
+            try:
+                conbm = new_beam.deconvolve(datadict["oldbeam"])
+            except Exception as err:
+                log.warn(
+                    f"Could not deconvolve. New: {new_beam!r}, Old: {datadict['oldbeam']!r}"
+                )
+                raise err
+            fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
+                [
+                    conbm.major.to(u.arcsec).value,
+                    conbm.minor.to(u.arcsec).value,
+                    conbm.pa.to(u.deg).value,
+                ],
+                beamOrig=[
+                    datadict["oldbeam"].major.to(u.arcsec).value,
+                    datadict["oldbeam"].minor.to(u.arcsec).value,
+                    datadict["oldbeam"].pa.to(u.deg).value,
+                ],
+                dx1=datadict["dx"].to(u.arcsec).value,
+                dy1=datadict["dy"].to(u.arcsec).value,
+            )
 
         return conbm, fac
 
@@ -110,8 +123,8 @@ def smooth(datadict, conv_mode="robust"):
         return newim
     else:
         # using Beams package
-        log.info(f'Smoothing so beam is {datadict["final_beam"].__repr__()}')
-        log.info(f'Using convolving beam {datadict["conbeam"].__repr__()}')
+        log.info(f'Smoothing so beam is {datadict["final_beam"]!r}')
+        log.info(f'Using convolving beam {datadict["conbeam"]!r}')
         pix_scale = datadict["dy"]
 
         gauss_kern = datadict["conbeam"].as_kernel(pix_scale)
@@ -183,7 +196,13 @@ def worker(args):
 
     datadict.update({"conbeam": conbeam, "final_beam": new_beam, "sfactor": sfactor})
     if not clargs.dryrun:
-        newim = smooth(datadict, conv_mode=conv_mode)
+        if (
+            conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
+            and sfactor == 1
+        ):
+            newim = datadict["image"]
+        else:
+            newim = smooth(datadict, conv_mode=conv_mode)
         if datadict["4d"]:
             # make it back into a 4D image
             newim = np.expand_dims(np.expand_dims(newim, axis=0), axis=0)
@@ -270,7 +289,7 @@ def getmaxbeam(
                 * u.arcsec,
                 pa=round_up(nyq_beam.pa.to(u.deg), decimals=2),
             )
-            log.info(f"Smallest common Nyquist sampled beam is: {nyq_beam.__repr__()}")
+            log.info(f"Smallest common Nyquist sampled beam is: {nyq_beam!r}")
             if target_beam is not None:
                 if target_beam < nyq_beam:
                     log.warn("TARGET BEAM WILL BE UNDERSAMPLED!")
@@ -392,7 +411,7 @@ def main(pool, args):
 
     elif not all(nonetest) and not any(nonetest):
         target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
-        log.info(f"Target beam is {target_beam.__repr__()}")
+        log.info(f"Target beam is {target_beam!r}")
 
     # Find smallest common beam
     big_beam, allbeams = getmaxbeam(
@@ -435,7 +454,7 @@ def main(pool, args):
     else:
         new_beam = big_beam
 
-    log.info(f"Final beam is {new_beam.__repr__()}")
+    log.info(f"Final beam is {new_beam!r}")
     inputs = [[file, outdir, new_beam, conv_mode, args] for i, file in enumerate(files)]
 
     output = list(pool.map(worker, inputs))
