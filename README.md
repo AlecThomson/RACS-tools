@@ -2,7 +2,7 @@
 Useful scripts for RACS
 
 ## Installation
-First `numpy` is required before running `pip install`.
+First, `numpy` and a fortran compiler are required before running `pip install`.
 
 ```bash
 conda install numpy
@@ -22,8 +22,9 @@ pip install RACS-tools
 ```
 $ beamcon_2D -h
 usage: beamcon_2D [-h] [-p PREFIX] [-s SUFFIX] [-o OUTDIR]
-                  [--conv_mode CONV_MODE] [-v] [-d] [--bmaj BMAJ]
-                  [--bmin BMIN] [--bpa BPA] [--log LOG] [-c CUTOFF]
+                  [--conv_mode {robust,scipy,astropy,astropy_fft}] [-v] [-d]
+                  [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA] [--log LOG]
+                  [--logfile LOGFILE] [-c CUTOFF] [--circularise]
                   [-t TOLERANCE] [-e EPSILON] [-n NSAMPS]
                   [--ncores N_CORES | --mpi]
                   infile [infile ...]
@@ -45,20 +46,21 @@ optional arguments:
                         Add suffix to output filenames [...sm.fits].
   -o OUTDIR, --outdir OUTDIR
                         Output directory of smoothed FITS image(s) [same as input file].
-  --conv_mode CONV_MODE
+  --conv_mode {robust,scipy,astropy,astropy_fft}
                         Which method to use for convolution [robust].
                                 'robust' uses the built-in, FFT-based method.
-                                Can also be 'scipy', 'astropy', or 'astropy_fft'.
-                                Note these other methods cannot cope well with small convolving beams.
+                                Note that other methods cannot cope well with small convolving beams.
                                 
-  -v, --verbose         verbose output [False].
+  -v, --verbosity       Increase output verbosity
   -d, --dryrun          Compute common beam and stop [False].
   --bmaj BMAJ           Target BMAJ (arcsec) to convolve to [None].
   --bmin BMIN           Target BMIN (arcsec) to convolve to [None].
   --bpa BPA             Target BPA (deg) to convolve to [None].
   --log LOG             Name of beamlog file. If provided, save beamlog data to a file [None - not saved].
+  --logfile LOGFILE     Save logging output to file
   -c CUTOFF, --cutoff CUTOFF
                         Cutoff BMAJ value (arcsec) -- Blank channels with BMAJ larger than this [None -- no limit]
+  --circularise         Circularise the final PSF -- Sets the BMIN = BMAJ, and BPA=0.
   -t TOLERANCE, --tolerance TOLERANCE
                         tolerance for radio_beam.commonbeam.
   -e EPSILON, --epsilon EPSILON
@@ -72,9 +74,9 @@ optional arguments:
 ```
 $ beamcon_3D -h
 usage: beamcon_3D [-h] [--uselogs] [--mode MODE] [--conv_mode CONV_MODE] [-v]
-                  [-d] [-p PREFIX] [-s SUFFIX] [-o OUTDIR] [--bmaj BMAJ]
-                  [--bmin BMIN] [--bpa BPA] [-c CUTOFF] [-t TOLERANCE]
-                  [-e EPSILON] [-n NSAMPS]
+                  [--logfile LOGFILE] [-d] [-p PREFIX] [-s SUFFIX] [-o OUTDIR]
+                  [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA] [-c CUTOFF]
+                  [--circularise] [-t TOLERANCE] [-e EPSILON] [-n NSAMPS]
                   infile [infile ...]
 
     Smooth a field of 3D cubes to a common resolution.
@@ -101,7 +103,8 @@ optional arguments:
                                 Can also be 'scipy', 'astropy', or 'astropy_fft'.
                                 Note these other methods cannot cope well with small convolving beams.
                                 
-  -v, --verbose         verbose output [False].
+  -v, --verbosity       Increase output verbosity
+  --logfile LOGFILE     Save logging output to file
   -d, --dryrun          Compute common beam and stop [False].
   -p PREFIX, --prefix PREFIX
                         Add prefix to output filenames.
@@ -114,6 +117,7 @@ optional arguments:
   --bpa BPA             BPA to convolve to [0].
   -c CUTOFF, --cutoff CUTOFF
                         Cutoff BMAJ value (arcsec) -- Blank channels with BMAJ larger than this [None -- no limit]
+  --circularise         Circularise the final PSF -- Sets the BMIN = BMAJ, and BPA=0.
   -t TOLERANCE, --tolerance TOLERANCE
                         tolerance for radio_beam.commonbeam.
   -e EPSILON, --epsilon EPSILON
@@ -121,6 +125,8 @@ optional arguments:
   -n NSAMPS, --nsamps NSAMPS
                         nsamps for radio_beam.commonbeam.
 ```
+
+If finding a common beam fails, try tweaking the `tolerance`, `epsilon`, and `nsamps` parameters. See [radio-beam](https://radio-beam.readthedocs.io/en/latest/) for more details.
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
