@@ -48,6 +48,7 @@ else:
 
 warnings.filterwarnings(action="ignore", category=SpectralCubeWarning, append=True)
 warnings.simplefilter("ignore", category=AstropyWarning)
+warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
 
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
