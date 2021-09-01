@@ -25,7 +25,7 @@ from racs_tools import au2
 import logging as log
 
 mpiSwitch = False
-if os.environ.get("OMPI_COMM_WORLD_SIZE") is not None or int(os.environ.get("SLURM_NTASKS")) > 1:
+if os.environ.get("OMPI_COMM_WORLD_SIZE") is not None or int(os.environ.get("SLURM_NTASKS") or 1) > 1:
     mpiSwitch = True
 
 if mpiSwitch:
