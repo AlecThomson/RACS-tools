@@ -674,6 +674,7 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
     Returns:
         datadict: Updated datadict
     """
+    log.debug(f"Reading {datadict['filename']}")
     with fits.open(datadict["filename"], memmap=True, mode="denywrite") as hdulist:
         primary_hdu = hdulist[0]
         data = primary_hdu.data
@@ -682,7 +683,6 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
     # Header
     commonbeams = datadict["commonbeams"]
     header = commonbeams[0].attach_to_header(header)
-    data = np.array([0] * len(data.shape), dtype=np.float32)
     primary_hdu = fits.PrimaryHDU(data=data, header=header)
     if mode == "natural":
         header["COMMENT"] = "The PSF in each image plane varies."
@@ -697,7 +697,7 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
             ],
             names=["BMAJ", "BMIN", "BPA"],
         )
-        primary_hdu = fits.PrimaryHDU(data=data.astype(np.float32), header=header)
+        primary_hdu = fits.PrimaryHDU(data=data, header=header)
         tab_hdu = fits.table_to_hdu(beam_table)
         new_hdulist = fits.HDUList([primary_hdu, tab_hdu])
 
@@ -716,14 +716,6 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
     outfile = f"{outdir}/{outname}"
     log.info(f"Initialising to {outfile}")
     new_hdulist.writeto(outfile, overwrite=True)
-    shape = tuple(header[f"NAXIS{ii}"] for ii in range(1, header["NAXIS"] + 1))
-    with open(outfile, "rb+") as fobj:
-        fobj.seek(
-            len(header.tostring())
-            + (np.product(shape) * np.abs(header["BITPIX"] // 8))
-            - 1
-        )
-        fobj.write(b"\0")
 
     return outfile
 
@@ -982,10 +974,12 @@ def main(args):
             log.info(f"There are {nchans} channels, across {len(files)} files")
         log.debug(f"My start is {my_start}, my end is {my_end}")
 
-        for inp in tqdm(inputs[my_start : my_end + 1]):
+        for inp in inputs[my_start : my_end + 1]:
             key, chan = inp
-            newim = worker(chan, datadict[key], conv_mode=conv_mode)
             outfile = datadict[key]["outfile"]
+            log.debug(f"{outfile}  - channel {chan} - Started")
+            newim = worker(chan, datadict[key], conv_mode=conv_mode)
+            
             with fits.open(outfile, mode="update", memmap=True) as outfh:
                 outfh[0].data[chan, 0, :, :] = newim.astype(
                     np.float32
