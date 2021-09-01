@@ -25,17 +25,20 @@ from racs_tools import au2
 import logging as log
 
 mpiSwitch = False
-if os.environ.get("OMPI_COMM_WORLD_SIZE") is not None or int(os.environ.get("SLURM_NTASKS") or 1) > 1:
+if (
+    os.environ.get("OMPI_COMM_WORLD_SIZE") is not None
+    or int(os.environ.get("SLURM_NTASKS") or 1) > 1
+):
     mpiSwitch = True
 
 if mpiSwitch:
     try:
         from mpi4py import MPI
     except ModuleNotFoundError:
-        raise ModuleNotFoundError("Script called with mpiexec/mpirun/srun, but mpi4py not installed")
-
-# Get the processing environment
-if mpiSwitch:
+        raise ModuleNotFoundError(
+            "Script called with mpiexec/mpirun/srun, but mpi4py not installed"
+        )
+    # Get the processing environment
     comm = MPI.COMM_WORLD
     nPE = comm.Get_size()
     myPE = comm.Get_rank()
@@ -991,7 +994,7 @@ def main(args):
             outfile = datadict[key]["outfile"]
             log.debug(f"{outfile}  - channel {chan} - Started")
             newim = worker(chan, datadict[key], conv_mode=conv_mode)
-            
+
             with fits.open(outfile, mode="update", memmap=True) as outfh:
                 outfh[0].data[chan, 0, :, :] = newim.astype(
                     np.float32
