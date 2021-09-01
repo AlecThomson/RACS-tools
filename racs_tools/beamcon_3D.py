@@ -24,18 +24,15 @@ from tqdm import tqdm, trange
 from racs_tools import au2
 import logging as log
 
-try:
-    from mpi4py import MPI
-
+mpiSwitch = False
+if os.environ.get("OMPI_COMM_WORLD_SIZE") is not None or int(os.environ.get("SLURM_NTASKS")) > 1:
     mpiSwitch = True
-except:
-    mpiSwitch = False
 
-# Fail if script has been started with mpiexec & mpi4py is not installed
-if os.environ.get("OMPI_COMM_WORLD_SIZE") is not None:
-    if not mpiSwitch:
-        log.warn("Script called with mpiexec, but mpi4py not installed")
-        sys.exit()
+if mpiSwitch:
+    try:
+        from mpi4py import MPI
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError("Script called with mpiexec/mpirun/srun, but mpi4py not installed")
 
 # Get the processing environment
 if mpiSwitch:
