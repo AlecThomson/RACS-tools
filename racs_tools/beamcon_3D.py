@@ -278,7 +278,8 @@ def worker(idx, cubedict, conv_mode="robust", start=0):
         ndarray: smoothed image
     """
     cube = SpectralCube.read(cubedict["filename"])
-    plane = cube.unmasked_data[start + idx].value
+    plane = cube.unmasked_data[start + idx].value.astype(np.float32)
+    log.debug(f"Size of plane is {(plane.nbytes*u.byte).to(u.MB)}")
     newim = smooth(
         image=plane,
         dx=cubedict["dx"],
