@@ -233,9 +233,9 @@ def getmaxbeam(
         beams.append(beam)
 
     beams = Beams(
-        [beam.major.value for beam in beams] * u.deg,
-        [beam.minor.value for beam in beams] * u.deg,
-        [beam.pa.value for beam in beams] * u.deg,
+        [beam.major.to(u.deg).value for beam in beams] * u.deg,
+        [beam.minor.to(u.deg).value for beam in beams] * u.deg,
+        [beam.pa.to(u.deg).value for beam in beams] * u.deg,
     )
     if cutoff is not None:
         flags = beams.major > cutoff * u.arcsec
