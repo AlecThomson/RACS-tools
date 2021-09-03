@@ -221,7 +221,9 @@ def smooth(image, dx, dy, oldbeam, newbeam, conbeam, sfactor, conv_mode="robust"
         return image
     else:
         # using Beams package
+        log.debug(f"Old beam is {oldbeam!r}")
         log.debug(f"Using convolving beam {conbeam!r}")
+        log.debug(f"Target beam is {newbeam!r}")
         log.debug(f"Using scaling factor {sfactor}")
         pix_scale = dy
         gauss_kern = conbeam.as_kernel(pix_scale)
