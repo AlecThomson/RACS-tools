@@ -376,17 +376,17 @@ def commonbeamer(
                     major *= np.nan
                     minor *= np.nan
                     pa *= np.nan
-                majors.append(major.value)
-                minors.append(minor.value)
-                pas.append(pa.value)
+                majors.append(major.to(u.arcsec).value)
+                minors.append(minor.to(u.arcsec).value)
+                pas.append(pa.to(u.deg).value)
 
             majors = np.array(majors)
             minors = np.array(minors)
             pas = np.array(pas)
 
-            majors *= major.unit
-            minors *= minor.unit
-            pas *= pa.unit
+            majors *= u.arcsec
+            minors *= u.arcsec
+            pas *= u.deg
             big_beams.append(Beams(major=majors, minor=minors, pa=pas))
 
         # Find common beams
@@ -466,13 +466,13 @@ def commonbeamer(
                         log.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
                         commonbeam = nyq_beam
 
-            bmaj_common.append(commonbeam.major.value)
-            bmin_common.append(commonbeam.minor.value)
-            bpa_common.append(commonbeam.pa.value)
+            bmaj_common.append(commonbeam.major.to(u.arcsec).value)
+            bmin_common.append(commonbeam.minor.to(u.arcsec).value)
+            bpa_common.append(commonbeam.pa.to(u.deg).value)
 
-        bmaj_common *= commonbeam.major.unit
-        bmin_common *= commonbeam.minor.unit
-        bpa_common *= commonbeam.pa.unit
+        bmaj_common *= u.arcsec
+        bmin_common *= u.arcsec
+        bpa_common *= u.deg
 
         # Make Beams object
         commonbeams = Beams(major=bmaj_common, minor=bmin_common, pa=bpa_common)
@@ -488,17 +488,17 @@ def commonbeamer(
             major[datadict[key]["mask"]] *= np.nan
             minor[datadict[key]["mask"]] *= np.nan
             pa[datadict[key]["mask"]] *= np.nan
-            majors.append(major.value)
-            minors.append(minor.value)
-            pas.append(pa.value)
+            majors.append(major.to(u.arcsec).value)
+            minors.append(minor.to(u.arcsec).value)
+            pas.append(pa.to(u.deg).value)
 
         majors = np.array(majors).ravel()
         minors = np.array(minors).ravel()
         pas = np.array(pas).ravel()
 
-        majors *= major.unit
-        minors *= minor.unit
-        pas *= pa.unit
+        majors *= u.arcsec
+        minors *= u.arcsec
+        pas *= u.deg
         big_beams = Beams(major=majors, minor=minors, pa=pas)
 
         log.info("Finding common beam across all channels")
