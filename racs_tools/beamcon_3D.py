@@ -609,12 +609,12 @@ def commonbeamer(
                 else:
                     convbeam = commonbeam.deconvolve(oldbeam)
 
-            conv_bmaj.append(convbeam.major.value)
-            conv_bmin.append(convbeam.minor.value)
+            conv_bmaj.append(convbeam.major.to(u.arcsec).value)
+            conv_bmin.append(convbeam.minor.to(u.arcsec).value)
             conv_bpa.append(convbeam.pa.to(u.deg).value)
 
-        conv_bmaj *= convbeam.major.unit
-        conv_bmin *= convbeam.minor.unit
+        conv_bmaj *= u.arcsec
+        conv_bmin *= u.arcsec
         conv_bpa *= u.deg
 
         # Construct beams object
