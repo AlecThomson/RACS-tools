@@ -15,7 +15,8 @@ import numpy as np
 import scipy.signal
 from astropy import units as u
 from astropy.io import fits, ascii
-import astropy.wcs
+from astropy.wcs import WCS
+from astropy.wcs.utils import proj_plane_pixel_scales
 from astropy.table import Table
 from spectral_cube import SpectralCube
 from radio_beam import Beam, Beams
@@ -313,8 +314,8 @@ def makedata(files, outdir):
         datadict[f"cube_{i}"]["outdir"] = out
         # Get metadata
         header = fits.getheader(file)
-        w = astropy.wcs.WCS(header)
-        pixelscales = astropy.wcs.utils.proj_plane_pixel_scales(w)
+        w = WCS(header)
+        pixelscales = proj_plane_pixel_scales(w)
 
         dxas = pixelscales[0] * u.deg
         dyas = pixelscales[1] * u.deg
@@ -696,10 +697,27 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
         primary_hdu = hdulist[0]
         data = primary_hdu.data
         header = primary_hdu.header
+        wcs = WCS(header)
 
-    # Header
+    ## Header
     commonbeams = datadict["commonbeams"]
-    header = commonbeams[0].attach_to_header(header)
+    # Get reference channel, and attach PSF there
+    spec_axis = wcs.spectral
+    crpix = int(spec_axis.wcs.crpix)
+    crindex = crpix - 1 # For python!
+    ref_psf = commonbeams[crindex]
+    if any(
+        np.isnan(ref_psf.major.value),
+        np.isnan(ref_psf.minor.value),
+        np.isnan(ref_psf.pa.value),
+    ):
+        log.warning("Reference PSF is NaN - replacing with 0 in the header")
+        ref_psf = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
+        header["COMMENT"] = """Reference PSF is NaN
+        - This is likely because the reference channel is masked.
+        - It has been replaced with 0 to keep FITS happy.
+        """
+    header = ref_psf.attach_to_header(header)
     primary_hdu = fits.PrimaryHDU(data=data, header=header)
     if mode == "natural":
         header["COMMENT"] = "The PSF in each image plane varies."
