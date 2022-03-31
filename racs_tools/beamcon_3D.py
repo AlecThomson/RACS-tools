@@ -707,16 +707,17 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
     crindex = crpix - 1 # For python!
     ref_psf = commonbeams[crindex]
     if any(
-        np.isnan(ref_psf.major.value),
-        np.isnan(ref_psf.minor.value),
-        np.isnan(ref_psf.pa.value),
+        (
+            np.isnan(ref_psf.major.value),
+            np.isnan(ref_psf.minor.value),
+            np.isnan(ref_psf.pa.value),
+        )
     ):
         log.warning("Reference PSF is NaN - replacing with 0 in the header")
         ref_psf = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
-        header["COMMENT"] = """Reference PSF is NaN
-        - This is likely because the reference channel is masked.
-        - It has been replaced with 0 to keep FITS happy.
-        """
+        header["COMMENT"] = "Reference PSF is NaN"
+        header["COMMENT"] = "- This is likely because the reference channel is masked."
+        header["COMMENT"] = "- It has been replaced with 0 to keep FITS happy."
     header = ref_psf.attach_to_header(header)
     primary_hdu = fits.PrimaryHDU(data=data, header=header)
     if mode == "natural":
