@@ -731,16 +731,16 @@ def initfiles(datadict, mode, suffix=None, prefix=None, ref_chan=None):
     if ref_chan is None:
         # Get reference channel, and attach PSF there
         crindex = crpix - 1  # For python!
-    elif ref_chan == "first": 
+    elif ref_chan == "first":
         crindex = 0
     elif ref_chan == "last":
         crindex = -1
     elif ref_chan == "mid":
-        # Locate mid Channel 
+        # Locate mid Channel
         # In python's 0-based index, the following will set the mid Channel to
-        # the upper-mid value for even number of channels. For odd-number of 
-        # channels, the mid value is unique. 
-        crindex = nchans//2 
+        # the upper-mid value for even number of channels. For odd-number of
+        # channels, the mid value is unique.
+        crindex = nchans // 2
     ref_psf = commonbeams[crindex]
     # Check the Stokes
     stokes_axis = wcs.sub(["stokes"])
@@ -1012,9 +1012,9 @@ def main(args):
         outfile_dict = {}
         for inp in inputs[my_start : my_end + 1]:
             outfile = initfiles(
-                datadict=datadict[inp], 
-                mode=args.mode, 
-                suffix=args.suffix, 
+                datadict=datadict[inp],
+                mode=args.mode,
+                suffix=args.suffix,
                 prefix=args.prefix,
                 ref_chan=args.ref_chan,
             )
