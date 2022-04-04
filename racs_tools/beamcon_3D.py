@@ -706,6 +706,17 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
     crpix = int(spec_axis.wcs.crpix)
     crindex = crpix - 1 # For python!
     ref_psf = commonbeams[crindex]
+    nchan = spec_axis.array_shape[0]
+    assert nchan == len(commonbeams), "Number of channels in header and commonbeams do not match"
+    chans = np.arange(nchan)
+    # Check the Stokes
+    stokes_axis = wcs.sub(["stokes"])
+    nstokes = stokes_axis.array_shape[0]
+    if nstokes > 1:
+        log.warning(
+            f"More than one Stokes parameter in header. Only the first one will be used."
+        )
+    pols = np.zeros_like(chans) # Zeros because we take the first one
     if any(
         (
             np.isnan(ref_psf.major.value),
@@ -721,6 +732,7 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
     header = ref_psf.attach_to_header(header)
     primary_hdu = fits.PrimaryHDU(data=data, header=header)
     if mode == "natural":
+        header['CASAMBM'] = True
         header["COMMENT"] = "The PSF in each image plane varies."
         header[
             "COMMENT"
@@ -730,11 +742,23 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
                 commonbeams.major.to(u.arcsec),
                 commonbeams.minor.to(u.arcsec),
                 commonbeams.pa.to(u.deg),
+                chans,
+                pols,
             ],
-            names=["BMAJ", "BMIN", "BPA"],
+            names=[
+                "BMAJ", 
+                "BMIN", 
+                "BPA",
+                "CHAN",
+                "POL"
+            ],
         )
         primary_hdu = fits.PrimaryHDU(data=data, header=header)
         tab_hdu = fits.table_to_hdu(beam_table)
+        tab_header = tab_hdu.header
+        tab_header["EXTNAME"] = "BEAMS"
+        tab_header["NCHAN"] = nchan
+        tab_header["NPOL"] = 1 # Only one pol for now
         new_hdulist = fits.HDUList([primary_hdu, tab_hdu])
 
     elif mode == "total":
