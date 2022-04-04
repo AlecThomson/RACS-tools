@@ -139,25 +139,51 @@ def copyfileobj(fsrc, fdst, length=16 * 1024):
             pbar.update(copied)
 
 
-def getbeams(beamlog):
-    """
+def getbeams(i, file, header, datadict):
+    """Get beams from table or log file.
 
-    colnames=['Channel', 'BMAJarcsec', 'BMINarcsec', 'BPAdeg']
-    """
-    # Get beamlog
-    log.info(f"Getting beams from {beamlog}")
+    Args:
+        i (int): Channel number.
+        file (str): FITS filename.
+        header (header): FITS header.
+        datadict (dict): Data dictionary.
 
-    beams = Table.read(beamlog, format="ascii.commented_header")
-    for col in beams.colnames:
-        idx = col.find("[")
-        if idx == -1:
-            new_col = col
-            unit = u.Unit("")
-        else:
-            new_col = col[:idx]
-            unit = u.Unit(col[idx + 1 : -1])
-        beams[col].unit = unit
-        beams[col].name = new_col
+    Returns:
+        Tuple[Table, int]: Table of beams and number of beams.
+    """    
+    # Add beamlog info to dict just in case
+    dirname = os.path.dirname(file)
+    basename = os.path.basename(file)
+    if dirname == "":
+        dirname = "."
+    beamlog = f"{dirname}/beamlog.{basename}".replace(".fits", ".txt")
+    datadict[f"cube_{i}"]["beamlog"] = beamlog
+    # First check for CASA beams
+    if header["CASAMBM"]:
+            log.info("CASA beamtable found in header - will use this table for beam calculations")
+            with fits.open(file) as hdul:
+                hdu = hdul.pop("BEAMS")
+                beams = Table(hdu.data)
+
+    # Otherwise use beamlog file
+    else:
+        log.info("No CASA beamtable found in header - looking for beamlogs")
+        log.info(f"Getting beams from {beamlog}")
+
+        beams = Table.read(beamlog, format="ascii.commented_header")
+        # Header looks like:
+        # colnames=['Channel', 'BMAJarcsec', 'BMINarcsec', 'BPAdeg']
+        # But needs some fix up - astropy can't read the header properly
+        for col in beams.colnames:
+            idx = col.find("[")
+            if idx == -1:
+                new_col = col
+                unit = u.Unit("")
+            else:
+                new_col = col[:idx]
+                unit = u.Unit(col[idx + 1 : -1])
+            beams[col].unit = unit
+            beams[col].name = new_col
     nchan = len(beams)
     return beams, nchan
 
@@ -325,13 +351,12 @@ def makedata(files, outdir):
         if not dxas == dyas:
             raise Exception("GRID MUST BE SAME IN X AND Y")
         # Get beam info
-        dirname = os.path.dirname(file)
-        basename = os.path.basename(file)
-        if dirname == "":
-            dirname = "."
-        beamlog = f"{dirname}/beamlog.{basename}".replace(".fits", ".txt")
-        datadict[f"cube_{i}"]["beamlog"] = beamlog
-        beam, nchan = getbeams(beamlog)
+        beam, nchan = getbeams(
+            i=i, 
+            file=file, 
+            header=header, 
+            datadict=datadict,
+        )
         datadict[f"cube_{i}"]["beam"] = beam
         datadict[f"cube_{i}"]["nchan"] = nchan
     return datadict
@@ -732,6 +757,7 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
     header = ref_psf.attach_to_header(header)
     primary_hdu = fits.PrimaryHDU(data=data, header=header)
     if mode == "natural":
+        # Make a CASA beamtable
         header['CASAMBM'] = True
         header["COMMENT"] = "The PSF in each image plane varies."
         header[
