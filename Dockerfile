@@ -1,4 +1,3 @@
-# FROM mambaorg/micromamba:0.22.0
 FROM continuumio/miniconda3
 
 RUN echo "Updating apt repositories"
