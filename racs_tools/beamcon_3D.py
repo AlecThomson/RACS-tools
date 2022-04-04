@@ -628,7 +628,8 @@ def commonbeamer(
         # Setup conv beamlog
         datadict[key]["convbeams"] = convbeams
         commonbeam_log = datadict[key]["beamlog"].replace(
-            "beamlog.", f"beamlogConvolve-{mode}."
+            #"beamlog.", f"beamlogConvolve-{mode}."
+            ".txt", f".conv.txt"
         )
         datadict[key]["commonbeams"] = commonbeams
         datadict[key]["commonbeamlog"] = commonbeam_log
@@ -682,7 +683,7 @@ def masking(nchans, cutoff, datadict):
     return datadict
 
 
-def initfiles(datadict, mode, suffix=None, prefix=None):
+def initfiles(nchans, ref_beam, datadict, mode, suffix=None, prefix=None):
     """Initialise output files
 
     Args:
@@ -701,22 +702,36 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
 
     ## Header
     commonbeams = datadict["commonbeams"]
+    #nchans = datadict["nchans"]
+    # Locate mid Channel 
+    # In python's 0-based index, the following will set the mid Channel to
+    # the upper-mid value for even number of channels. For odd-number of 
+    # channels, the mid value is unique. 
+    nMidChan = nchans//2 
     # Get reference channel, and attach PSF there
-    spec_axis = wcs.spectral
-    crpix = int(spec_axis.wcs.crpix)
-    crindex = crpix - 1 # For python!
+    # 
+    if ( ref_beam == "first" ): 
+        crindex = 0
+    if (ref_beam == "last" ):
+        crindex = nchans - 1
+    if (ref_beam == "mid" ):
+        crindex = nMidChan
+    #spec_axis = wcs.spectral
+    #crpix = int(spec_axis.wcs.crpix)
+    #crindex = crpix - 1 # For python!
+    log.info(f"Reference PSF in header corresponds to channel number: {crindex}")
+    
     ref_psf = commonbeams[crindex]
-    if any(
-        np.isnan(ref_psf.major.value),
-        np.isnan(ref_psf.minor.value),
-        np.isnan(ref_psf.pa.value),
-    ):
+    if (np.isnan(ref_psf.major.value) or
+        np.isnan(ref_psf.minor.value) or
+        np.isnan(ref_psf.pa.value)):
+
         log.warning("Reference PSF is NaN - replacing with 0 in the header")
         ref_psf = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
-        header["COMMENT"] = """Reference PSF is NaN
-        - This is likely because the reference channel is masked.
-        - It has been replaced with 0 to keep FITS happy.
-        """
+        header["COMMENT"] = "Reference PSF is NaN. \
+        This is likely because the reference channel is masked. \
+        It has been replaced with 0 to keep FITS happy. \
+        "
     header = ref_psf.attach_to_header(header)
     primary_hdu = fits.PrimaryHDU(data=data, header=header)
     if mode == "natural":
@@ -760,7 +775,8 @@ def readlogs(datadict, mode):
     for key in datadict.keys():
         # Read in logs
         commonbeam_log = datadict[key]["beamlog"].replace(
-            "beamlog.", f"beamlogConvolve-{mode}."
+            #"beamlog.", f"beamlogConvolve-{mode}."
+            ".txt", f".conv.txt"
         )
         log.info(f"Reading from {commonbeam_log}")
         try:
@@ -842,6 +858,17 @@ def main(args):
         bmaj = args.bmaj
         bmin = args.bmin
         bpa = args.bpa
+        ref_beam = args.ref_beam
+        log.debug(ref_beam)
+        if (
+            not ref_beam == "first"
+            and not ref_beam == "mid"
+            and not ref_beam == "last"
+        ):
+            raise Exception("Please select valid string (mid, first or last) to specify the reference psf for header!")
+
+        log.info(f"Reference psf in header recorded for {ref_beam} channel")
+
 
         nonetest = [test is None for test in [bmaj, bmin, bpa]]
 
@@ -959,7 +986,7 @@ def main(args):
         outfile_dict = {}
         for inp in inputs[my_start : my_end + 1]:
             outfile = initfiles(
-                datadict[inp], args.mode, suffix=args.suffix, prefix=args.prefix,
+                nchans,ref_beam, datadict[inp], args.mode, suffix=args.suffix, prefix=args.prefix,
             )
             outfile_dict.update({inp: outfile})
 
@@ -1145,6 +1172,18 @@ def cli():
 
     parser.add_argument(
         "--bpa", dest="bpa", type=float, default=None, help="BPA to convolve to [0]."
+    )
+
+    parser.add_argument(
+        "--beamRef",
+        dest="ref_beam",
+        type=str,
+        default="mid",
+        help="""Reference psf for header  [mid]. 
+        first  -- use psf for first frequency channel.
+        last -- use psf for the last frequency channel.
+        mid -- use psf for the centre frequency channel.
+        """,
     )
 
     parser.add_argument(
