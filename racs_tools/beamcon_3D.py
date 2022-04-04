@@ -150,7 +150,7 @@ def getbeams(i, file, header, datadict):
 
     Returns:
         Tuple[Table, int]: Table of beams and number of beams.
-    """    
+    """
     # Add beamlog info to dict just in case
     dirname = os.path.dirname(file)
     basename = os.path.basename(file)
@@ -160,10 +160,12 @@ def getbeams(i, file, header, datadict):
     datadict[f"cube_{i}"]["beamlog"] = beamlog
     # First check for CASA beams
     if header["CASAMBM"]:
-            log.info("CASA beamtable found in header - will use this table for beam calculations")
-            with fits.open(file) as hdul:
-                hdu = hdul.pop("BEAMS")
-                beams = Table(hdu.data)
+        log.info(
+            "CASA beamtable found in header - will use this table for beam calculations"
+        )
+        with fits.open(file) as hdul:
+            hdu = hdul.pop("BEAMS")
+            beams = Table(hdu.data)
 
     # Otherwise use beamlog file
     else:
@@ -351,12 +353,7 @@ def makedata(files, outdir):
         if not dxas == dyas:
             raise Exception("GRID MUST BE SAME IN X AND Y")
         # Get beam info
-        beam, nchan = getbeams(
-            i=i, 
-            file=file, 
-            header=header, 
-            datadict=datadict,
-        )
+        beam, nchan = getbeams(i=i, file=file, header=header, datadict=datadict,)
         datadict[f"cube_{i}"]["beam"] = beam
         datadict[f"cube_{i}"]["nchan"] = nchan
     return datadict
@@ -652,9 +649,7 @@ def commonbeamer(
 
         # Setup conv beamlog
         datadict[key]["convbeams"] = convbeams
-        commonbeam_log = datadict[key]["beamlog"].replace(
-            "beamlog.", f"beamlogConvolve-{mode}."
-        )
+        commonbeam_log = datadict[key]["beamlog"].replace(".txt", ".conv.txt")
         datadict[key]["commonbeams"] = commonbeams
         datadict[key]["commonbeamlog"] = commonbeam_log
 
@@ -707,7 +702,7 @@ def masking(nchans, cutoff, datadict):
     return datadict
 
 
-def initfiles(datadict, mode, suffix=None, prefix=None):
+def initfiles(datadict, mode, suffix=None, prefix=None, ref_chan=None):
     """Initialise output files
 
     Args:
@@ -726,14 +721,27 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
 
     ## Header
     commonbeams = datadict["commonbeams"]
-    # Get reference channel, and attach PSF there
     spec_axis = wcs.spectral
     crpix = int(spec_axis.wcs.crpix)
-    crindex = crpix - 1 # For python!
+    nchans = spec_axis.array_shape[0]
+    assert nchans == len(
+        commonbeams
+    ), "Number of channels in header and commonbeams do not match"
+    chans = np.arange(nchans)
+    if ref_chan is None:
+        # Get reference channel, and attach PSF there
+        crindex = crpix - 1  # For python!
+    elif ref_chan == "first": 
+        crindex = 0
+    elif ref_chan == "last":
+        crindex = -1
+    elif ref_chan == "mid":
+        # Locate mid Channel 
+        # In python's 0-based index, the following will set the mid Channel to
+        # the upper-mid value for even number of channels. For odd-number of 
+        # channels, the mid value is unique. 
+        crindex = nchans//2 
     ref_psf = commonbeams[crindex]
-    nchan = spec_axis.array_shape[0]
-    assert nchan == len(commonbeams), "Number of channels in header and commonbeams do not match"
-    chans = np.arange(nchan)
     # Check the Stokes
     stokes_axis = wcs.sub(["stokes"])
     nstokes = stokes_axis.array_shape[0]
@@ -741,7 +749,7 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
         log.critical(
             f"More than one Stokes parameter in header. Only the first one will be used."
         )
-    pols = np.zeros_like(chans) # Zeros because we take the first one
+    pols = np.zeros_like(chans)  # Zeros because we take the first one
     if any(
         (
             np.isnan(ref_psf.major.value),
@@ -758,7 +766,7 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
     primary_hdu = fits.PrimaryHDU(data=data, header=header)
     if mode == "natural":
         # Make a CASA beamtable
-        header['CASAMBM'] = True
+        header["CASAMBM"] = True
         header["COMMENT"] = "The PSF in each image plane varies."
         header[
             "COMMENT"
@@ -771,20 +779,14 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
                 chans,
                 pols,
             ],
-            names=[
-                "BMAJ", 
-                "BMIN", 
-                "BPA",
-                "CHAN",
-                "POL"
-            ],
+            names=["BMAJ", "BMIN", "BPA", "CHAN", "POL"],
         )
         primary_hdu = fits.PrimaryHDU(data=data, header=header)
         tab_hdu = fits.table_to_hdu(beam_table)
         tab_header = tab_hdu.header
         tab_header["EXTNAME"] = "BEAMS"
-        tab_header["NCHAN"] = nchan
-        tab_header["NPOL"] = 1 # Only one pol for now
+        tab_header["NCHAN"] = nchans
+        tab_header["NPOL"] = 1  # Only one pol for now
         new_hdulist = fits.HDUList([primary_hdu, tab_hdu])
 
     elif mode == "total":
@@ -1010,7 +1012,11 @@ def main(args):
         outfile_dict = {}
         for inp in inputs[my_start : my_end + 1]:
             outfile = initfiles(
-                datadict[inp], args.mode, suffix=args.suffix, prefix=args.prefix,
+                datadict=datadict[inp], 
+                mode=args.mode, 
+                suffix=args.suffix, 
+                prefix=args.prefix,
+                ref_chan=args.ref_chan,
             )
             outfile_dict.update({inp: outfile})
 
@@ -1223,6 +1229,20 @@ def cli():
         "--circularise",
         action="store_true",
         help="Circularise the final PSF -- Sets the BMIN = BMAJ, and BPA=0.",
+    )
+
+    parser.add_argument(
+        "--ref_chan",
+        dest="ref_chan",
+        type=str,
+        default=None,
+        choices=["first", "last", "mid"],
+        help="""Reference psf for header [None]. 
+            first  -- use psf for first frequency channel.
+            last -- use psf for the last frequency channel.
+            mid -- use psf for the centre frequency channel.
+            Will use the CRPIX channel if not set.
+            """,
     )
 
     parser.add_argument(
