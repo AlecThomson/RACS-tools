@@ -738,7 +738,7 @@ def initfiles(datadict, mode, suffix=None, prefix=None):
     stokes_axis = wcs.sub(["stokes"])
     nstokes = stokes_axis.array_shape[0]
     if nstokes > 1:
-        log.warning(
+        log.critical(
             f"More than one Stokes parameter in header. Only the first one will be used."
         )
     pols = np.zeros_like(chans) # Zeros because we take the first one
@@ -1086,7 +1086,15 @@ def cli():
     descStr = """
     Smooth a field of 3D cubes to a common resolution.
 
-    Names of output files are 'infile'.sm.fits
+    - Parallelisation is done using MPI.
+
+    - Default names of output files are /path/to/beamlog{infile//.fits/.{SUFFIX}.fits}
+
+    - By default, the smallest common beam will be automatically computed.
+    - Optionally, you can specify a target beam to use.
+
+    - It is currently assumed that cubes will be 4D with a dummy Stokes axis.
+    - Iterating over Stokes axis is not yet supported.
 
     """
 
@@ -1099,8 +1107,10 @@ def cli():
         "infile",
         metavar="infile",
         type=str,
-        help="""Input FITS image(s) to smooth (can be a wildcard) 
-        - beam info must be in co-located beamlog files.
+        help="""Input FITS image(s) to smooth (can be a wildcard)
+        - CASA beamtable will be used if present i.e. if CASAMBM = T
+        - Otherwise beam info must be in co-located beamlog files.
+        - beamlog must have the name /path/to/beamlog{infile//.fits/.txt}
         """,
         nargs="+",
     )
@@ -1118,7 +1128,7 @@ def cli():
         type=str,
         default="natural",
         help="""Common resolution mode [natural]. 
-        natural  -- allow frequency variation.
+        natural -- allow frequency variation.
         total -- smooth all plans to a common resolution.
         """,
     )
@@ -1128,8 +1138,10 @@ def cli():
         dest="conv_mode",
         type=str,
         default="robust",
+        choices=["robust", "scipy", "astropy", "astropy_fft"],
         help="""Which method to use for convolution [robust].
         'robust' computes the analytic FT of the convolving Gaussian.
+        Note this mode cannot handle NaNs in the data.
         Can also be 'scipy', 'astropy', or 'astropy_fft'.
         Note these other methods cannot cope well with small convolving beams.
         """,
@@ -1166,7 +1178,7 @@ def cli():
         dest="suffix",
         type=str,
         default=None,
-        help="Add suffix to output filenames [...{mode}.fits].",
+        help="Add suffix to output filenames [{MODE}].",
     )
 
     parser.add_argument(

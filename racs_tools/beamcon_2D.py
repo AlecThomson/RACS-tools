@@ -483,7 +483,12 @@ def cli():
     descStr = """
     Smooth a field of 2D images to a common resolution.
 
-    Names of output files are 'infile'.sm.fits
+    - Parallelisation can run using multiprocessing or MPI.
+
+    - Default names of output files are /path/to/beamlog{infile//.fits/.{SUFFIX}.fits}
+
+    - By default, the smallest common beam will be automatically computed.
+    - Optionally, you can specify a target beam to use.
 
     """
 
@@ -515,7 +520,7 @@ def cli():
         dest="suffix",
         type=str,
         default="sm",
-        help="Add suffix to output filenames [...sm.fits].",
+        help="Add suffix to output filenames [sm].",
     )
 
     parser.add_argument(
@@ -530,11 +535,14 @@ def cli():
     parser.add_argument(
         "--conv_mode",
         dest="conv_mode",
+        type=str,
         choices=["robust", "scipy", "astropy", "astropy_fft"],
         default="robust",
         help="""Which method to use for convolution [robust].
-        'robust' uses the built-in, FFT-based method.
-        Note that other methods cannot cope well with small convolving beams.
+        'robust' computes the analytic FT of the convolving Gaussian.
+        Note this mode cannot handle NaNs in the data.
+        Can also be 'scipy', 'astropy', or 'astropy_fft'.
+        Note these other methods cannot cope well with small convolving beams.
         """,
     )
 
