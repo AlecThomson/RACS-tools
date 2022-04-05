@@ -159,7 +159,11 @@ def getbeams(i, file, header, datadict):
     beamlog = f"{dirname}/beamlog.{basename}".replace(".fits", ".txt")
     datadict[f"cube_{i}"]["beamlog"] = beamlog
     # First check for CASA beams
-    if header["CASAMBM"]:
+    try:
+        headcheck = header["CASAMBM"]
+    except KeyError:
+        headcheck = False
+    if headcheck:
         log.info(
             "CASA beamtable found in header - will use this table for beam calculations"
         )
