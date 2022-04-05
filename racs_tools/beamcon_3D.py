@@ -3,7 +3,8 @@
 __author__ = "Alec Thomson"
 
 from typing import Dict, List, Tuple
-from racs_tools.beamcon_2D import my_ceil, round_up, smooth
+from racs_tools.beamcon_2D import my_ceil, round_up
+from racs_tools.convolve_uv import smooth
 from spectral_cube.utils import SpectralCubeWarning
 import warnings
 from astropy.utils.exceptions import AstropyWarning
