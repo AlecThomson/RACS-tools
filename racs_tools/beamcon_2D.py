@@ -6,16 +6,14 @@ import os
 import sys
 from typing import Dict, List, Tuple
 import numpy as np
-import scipy.signal
 from astropy import units as u
 from astropy.io import fits, ascii
 import astropy.wcs
-from astropy.convolution import convolve, convolve_fft
 from astropy.table import Table
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 from racs_tools import au2
-from racs_tools import convolve_uv
+from racs_tools.convolve_uv import smooth
 import schwimmbad
 import psutil
 from tqdm import tqdm
@@ -59,7 +57,6 @@ def getbeam(
     dx: u.Quantity,
     dy: u.Quantity,
     cutoff: float = None,
-    **kwargs,
 ) -> Tuple[Beam, float]:
     """Get the beam to use for smoothing
 
@@ -76,7 +73,6 @@ def getbeam(
     Returns:
         Tuple[Beam, float]: Convolving beam and scaling factor.
     """
-    log.debug(f"Discarding unused kwargs: {kwargs.keys()}")
     log.info(f"Current beam is {old_beam!r}")
 
     if cutoff is not None and old_beam.major.to(u.arcsec) > cutoff * u.arcsec:
@@ -153,77 +149,6 @@ def getimdata(cubenm: str) -> dict:
     return datadict
 
 
-def smooth(
-    image: np.ndarray,
-    old_beam: Beam,
-    final_beam: Beam,
-    dx: u.Quantity,
-    dy: u.Quantity,
-    sfactor: float,
-    conbeam: Beam = None,
-    conv_mode: str = "robust",
-    **kwargs,
-) -> np.ndarray:
-    """Apply smoothing to image
-
-    Args:
-        image (np.ndarray): 2D image array.
-        old_beam (Beam): Current beam.
-        final_beam (Beam): Target beam.
-        dx (u.Quantity): Pixel size in x.
-        dy (u.Quantity): Pixel size in y.
-        sfactor (float): Scaling factor.
-        conbeam (Beam, optional): Convoling beam to use. Defaults to None.
-        conv_mode (str, optional): Convolution mode to use. Defaults to "robust".
-
-    Returns:
-        np.ndarray: Smoothed image.
-    """
-    log.debug(f"Discarding unused kwargs: {kwargs.keys()}")
-    if np.isnan(sfactor):
-        log.warning("Beam larger than cutoff -- blanking")
-
-        newim = np.ones_like(image) * np.nan
-        return newim
-    if conbeam is None:
-        conbeam = final_beam.deconvolve(old_beam)
-    if np.isnan(conbeam):
-        return image * np.nan
-    if np.isnan(image).all():
-        return image
-    if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
-        return image
-    # using Beams package
-    log.debug(f"Old beam is {old_beam!r}")
-    log.debug(f"Using convolving beam {conbeam!r}")
-    log.debug(f"Target beam is {final_beam!r}")
-    log.debug(f"Using scaling factor {sfactor}")
-    pix_scale = dy
-
-    gauss_kern = conbeam.as_kernel(pix_scale)
-    conbm1 = gauss_kern.array / gauss_kern.array.max()
-    fac = sfactor
-    if conv_mode == "robust":
-        newim, fac = convolve_uv.convolve(
-            image.astype("f8"), old_beam, final_beam, dx, dy,
-        )
-        # keep the new sfactor computed by this method
-        sfactor = fac
-    if conv_mode == "scipy":
-        newim = scipy.signal.convolve(image.astype("f8"), conbm1, mode="same")
-    elif conv_mode == "astropy":
-        newim = convolve(image.astype("f8"), conbm1, normalize_kernel=False,)
-    elif conv_mode == "astropy_fft":
-        newim = convolve_fft(
-            image.astype("f8"), conbm1, normalize_kernel=False, allow_huge=True,
-        )
-    log.info(f"Using scaling factor {fac}")
-    if np.any(np.isnan(newim)):
-        log.warning(f"{np.isnan(newim).sum()} NaNs present in smoothed output")
-
-    newim *= fac
-    return newim
-
 
 def savefile(
     newimage: np.ndarray,
@@ -264,7 +189,13 @@ def worker(args):
         outfile = clargs.prefix + outfile
     datadict = getimdata(file)
 
-    conbeam, sfactor = getbeam(**datadict, new_beam=new_beam, cutoff=clargs.cutoff,)
+    conbeam, sfactor = getbeam(
+        old_beam=datadict["old_beam"], 
+        new_beam=new_beam,
+        dx=datadict["dx"],
+        dy=datadict["dy"],
+        cutoff=clargs.cutoff,
+    )
 
     datadict.update({"conbeam": conbeam, "final_beam": new_beam, "sfactor": sfactor})
     if not clargs.dryrun:
@@ -274,7 +205,16 @@ def worker(args):
         ):
             newim = datadict["image"]
         else:
-            newim = smooth(conv_mode=conv_mode, **datadict,)
+            newim = smooth(
+                image=datadict["image"],
+                old_beam=datadict["old_beam"],
+                new_beam=datadict["new_beam"],
+                dx=datadict["dx"],
+                dy=datadict["dy"],
+                sfactor=datadict["sfactor"],
+                conbeam=datadict["conbeam"],
+                conv_mode=conv_mode,
+            )
         if datadict["4d"]:
             # make it back into a 4D image
             newim = np.expand_dims(np.expand_dims(newim, axis=0), axis=0)
