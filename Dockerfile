@@ -10,7 +10,7 @@ RUN apt autoremove -y
 RUN apt clean -y
 # RUN cd / \
 # && git clone https://github.com/AlecThomson/RACS-tools
-WORKDIR /RACS-tools
+WORKDIR ./
 
 ADD environment.yml /tmp/environment.yml
 RUN conda env create -f environment.yml
