@@ -187,9 +187,17 @@ def smooth(
         return newim
     if conbeam is None:
         conbeam = final_beam.deconvolve(old_beam)
+    if np.isnan(conbeam):
+        return image * np.nan
+    if np.isnan(image).all():
+        return image
+    if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
+        return image
     # using Beams package
-    log.info(f"Smoothing so beam is {final_beam!r}")
-    log.info(f"Using convolving beam {conbeam!r}")
+    log.debug(f"Old beam is {old_beam!r}")
+    log.debug(f"Using convolving beam {conbeam!r}")
+    log.debug(f"Target beam is {final_beam!r}")
+    log.debug(f"Using scaling factor {sfactor}")
     pix_scale = dy
 
     gauss_kern = conbeam.as_kernel(pix_scale)
@@ -311,16 +319,16 @@ def getmaxbeam(
     Returns:
         Tuple[Beam, Beams]: Common beam and all beams.
     """
-    beams = []
+    beams_list = []
     for file in files:
         header = fits.getheader(file, memmap=True)
         beam = Beam.from_fits_header(header)
-        beams.append(beam)
+        beams_list.append(beam)
 
     beams = Beams(
-        [beam.major.to(u.deg).value for beam in beams] * u.deg,
-        [beam.minor.to(u.deg).value for beam in beams] * u.deg,
-        [beam.pa.to(u.deg).value for beam in beams] * u.deg,
+        [beam.major.to(u.deg).value for beam in beams_list] * u.deg,
+        [beam.minor.to(u.deg).value for beam in beams_list] * u.deg,
+        [beam.pa.to(u.deg).value for beam in beams_list] * u.deg,
     )
     if cutoff is not None:
         flags = beams.major > cutoff * u.arcsec
