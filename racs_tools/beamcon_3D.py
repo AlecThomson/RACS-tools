@@ -246,30 +246,31 @@ def cpu_to_use(max_cpu: int, count: int) -> int:
     return max(factors[factors <= max_cpu])
 
 
-def worker(idx: int, cubedict: dict, conv_mode: str = "robust", start: int = 0):
-    """parallel worker function
+def worker(
+    filename: str,
+    idx: int,
+    **kwargs,
+) -> np.ndarray:
+    """Smooth worker function.
+
+    Extracts a single image from a FITS cube and smooths it.
 
     Args:
-        idx (int): channel index
-        cubedict (dict): Datadict referring to single image cube
-        conv_mode (str): Convolution mode
-        start (int, optional): index to start at. Defaults to 0.
+        filename (str): FITS cube filename.
+        idx (int): Channel index.
+
+    Kwargs:
+        Passed to :func:`smooth`.
 
     Returns:
-        ndarray: smoothed image
+        np.ndarray: Smoothed channel image.
     """
-    cube = SpectralCube.read(cubedict["filename"])
-    plane = cube.unmasked_data[start + idx].value.astype(np.float32)
+    cube = SpectralCube.read(filename)
+    plane = cube.unmasked_data[idx].value.astype(np.float32)
     log.debug(f"Size of plane is {(plane.nbytes*u.byte).to(u.MB)}")
     newim = smooth(
         image=plane,
-        dx=cubedict["dx"],
-        dy=cubedict["dy"],
-        old_beam=cubedict["beams"][start + idx],
-        final_beam=cubedict["commonbeams"][start + idx],
-        conbeam=cubedict["convbeams"][start + idx],
-        sfactor=cubedict["facs"][start + idx],
-        conv_mode=conv_mode,
+        **kwargs
     )
     return newim
 
@@ -1037,7 +1038,19 @@ def main(args):
             key, chan = inp
             outfile = datadict[key]["outfile"]
             log.debug(f"{outfile}  - channel {chan} - Started")
-            newim = worker(chan, datadict[key], conv_mode=conv_mode)
+
+            cubedict = datadict[key]
+            newim = worker(
+                filename=cubedict["filename"],
+                idx=chan,
+                dx=cubedict["dx"],
+                dy=cubedict["dy"],
+                old_beam=cubedict["beams"][chan],
+                final_beam=cubedict["commonbeams"][chan],
+                conbeam=cubedict["convbeams"][chan],
+                sfactor=cubedict["facs"][chan],
+                conv_mode=conv_mode
+            )
 
             with fits.open(outfile, mode="update", memmap=True) as outfh:
                 outfh[0].data[chan, 0, :, :] = newim.astype(
