@@ -12,7 +12,7 @@ RUN apt clean -y
 # && git clone https://github.com/AlecThomson/RACS-tools
 WORKDIR ./
 
-ADD environment.yml /tmp/environment.yml
+ADD . /tmp/
 RUN conda env create -f /tmp/environment.yml
 # Pull the environment name out of the environment.yml
 RUN echo "source activate racs-tools" > ~/.bashrc
