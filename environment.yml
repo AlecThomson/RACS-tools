@@ -10,6 +10,7 @@ dependencies:
 - numpy
 - scipy
 - astropy
+- gfortran
 - pip:
   - spectral_cube
   - radio_beam
