@@ -84,7 +84,7 @@ def getbeam(
 
     if new_beam == old_beam:
         conbm = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg,)
-        fac = 1
+        fac = 1.0
         log.warning(
             f"New beam {new_beam!r} and old beam {old_beam!r} are the same. Won't attempt convolution."
         )
@@ -95,7 +95,7 @@ def getbeam(
         log.warning(f"Could not deconvolve. New: {new_beam!r}, Old: {old_beam!r}")
         raise err
     fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
-        [
+        beamConv=[
             conbm.major.to(u.arcsec).value,
             conbm.minor.to(u.arcsec).value,
             conbm.pa.to(u.deg).value,
