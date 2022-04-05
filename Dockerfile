@@ -13,7 +13,7 @@ RUN apt clean -y
 WORKDIR ./
 
 ADD environment.yml /tmp/environment.yml
-RUN conda env create -f environment.yml
+RUN conda env create -f /tmp/environment.yml
 # Pull the environment name out of the environment.yml
 RUN echo "source activate racs-tools" > ~/.bashrc
 ENV PATH /opt/conda/envs/racs-tools/bin:$PATH
