@@ -8,8 +8,8 @@ build-essential \
 gfortran
 RUN apt autoremove -y
 RUN apt clean -y
-RUN cd / \
-&& git clone https://github.com/AlecThomson/RACS-tools
+# RUN cd / \
+# && git clone https://github.com/AlecThomson/RACS-tools
 WORKDIR /RACS-tools
 
 ADD environment.yml /tmp/environment.yml
