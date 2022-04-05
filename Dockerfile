@@ -8,12 +8,12 @@ build-essential \
 gfortran
 RUN apt autoremove -y
 RUN apt clean -y
-RUN cd / \
-&& git clone https://github.com/AlecThomson/RACS-tools
-WORKDIR /RACS-tools
+# RUN cd / \
+# && git clone https://github.com/AlecThomson/RACS-tools
+WORKDIR ./
 
-ADD environment.yml /tmp/environment.yml
-RUN conda env create -f environment.yml
+ADD . /tmp/
+RUN conda env create -f /tmp/environment.yml
 # Pull the environment name out of the environment.yml
 RUN echo "source activate racs-tools" > ~/.bashrc
 ENV PATH /opt/conda/envs/racs-tools/bin:$PATH
