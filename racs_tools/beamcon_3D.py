@@ -7,8 +7,6 @@ from racs_tools.beamcon_2D import my_ceil, round_up, smooth
 from spectral_cube.utils import SpectralCubeWarning
 import warnings
 from astropy.utils.exceptions import AstropyWarning
-from astropy.convolution import convolve, convolve_fft
-from racs_tools import convolve_uv
 import os
 import stat
 import sys
@@ -206,10 +204,10 @@ def getfacs(
     facs_list = []
     for conbm, old_beam in zip(convbeams, beams):
         if conbm == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg):
-            fac = 1
+            fac = 1.0
         else:
             fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
-                [
+                beamConv=[
                     conbm.major.to(u.arcsec).value,
                     conbm.minor.to(u.arcsec).value,
                     conbm.pa.to(u.deg).value,
