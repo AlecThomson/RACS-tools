@@ -157,16 +157,20 @@ def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
     beamlog = f"{dirname}/beamlog.{basename}".replace(".fits", ".txt")
 
     # First check for CASA beams
-    if header["CASAMBM"]:
-        log.info(
-            "CASA beamtable found in header - will use this table for beam calculations"
-        )
-        with fits.open(file) as hdul:
-            hdu = hdul.pop("BEAMS")
-            beams = Table(hdu.data)
+    try:
+        if header["CASAMBM"]:
+            headcheck = True
+            log.info(
+                "CASA beamtable found in header - will use this table for beam calculations"
+            )
+            with fits.open(file) as hdul:
+                hdu = hdul.pop("BEAMS")
+                beams = Table(hdu.data)
+    except KeyError:
+        headcheck = False
 
     # Otherwise use beamlog file
-    else:
+    if not headcheck:
         log.info("No CASA beamtable found in header - looking for beamlogs")
         log.info(f"Getting beams from {beamlog}")
 
