@@ -2,7 +2,8 @@
 """ Convolve ASKAP cubes to common resolution """
 __author__ = "Alec Thomson"
 
-from racs_tools.beamcon_2D import my_ceil, round_up
+from typing import Dict, List, Tuple
+from racs_tools.beamcon_2D import my_ceil, round_up, smooth
 from spectral_cube.utils import SpectralCubeWarning
 import warnings
 from astropy.utils.exceptions import AstropyWarning
@@ -139,17 +140,15 @@ def copyfileobj(fsrc, fdst, length=16 * 1024):
             pbar.update(copied)
 
 
-def getbeams(i, file, header, datadict):
-    """Get beams from table or log file.
+def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
+    """Get beam information from a fits file or beamlog.
 
     Args:
-        i (int): Channel number.
         file (str): FITS filename.
-        header (header): FITS header.
-        datadict (dict): Data dictionary.
+        header (fits.Header): FITS header.
 
     Returns:
-        Tuple[Table, int]: Table of beams and number of beams.
+        Tuple[Table, int, str]: Table of beams, number of beams, and beamlog filename.
     """
     # Add beamlog info to dict just in case
     dirname = os.path.dirname(file)
@@ -157,7 +156,7 @@ def getbeams(i, file, header, datadict):
     if dirname == "":
         dirname = "."
     beamlog = f"{dirname}/beamlog.{basename}".replace(".fits", ".txt")
-    datadict[f"cube_{i}"]["beamlog"] = beamlog
+
     # First check for CASA beams
     if header["CASAMBM"]:
         log.info(
@@ -187,23 +186,25 @@ def getbeams(i, file, header, datadict):
             beams[col].unit = unit
             beams[col].name = new_col
     nchan = len(beams)
-    return beams, nchan
+    return beams, nchan, beamlog
 
 
-def getfacs(datadict, convbeams):
-    """Get smoothing unit factor
+def getfacs(
+    beams: Beams, convbeams: Beams, dx: u.Quantity, dy: u.Quantity
+) -> np.ndarray:
+    """Get the conversion factors for each beam.
 
     Args:
-        datadict (dict): Dict of input data
-        convbeams (Beams): Convolving beams
+        beams (Beams): Old beams.
+        convbeams (Beams): Convolving beams.
+        dx (u.Quantity): Pixel size in x direction.
+        dy (u.Quantity): Pixel size in y direction.
 
     Returns:
-        list: factors to keep units of Jy/beam after convolution
-    """ """Get beam info
-    
+        np.ndarray: Conversion factors.
     """
-    facs = []
-    for conbm, oldbeam in zip(convbeams, datadict["beams"]):
+    facs_list = []
+    for conbm, old_beam in zip(convbeams, beams):
         if conbm == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg):
             fac = 1
         else:
@@ -214,89 +215,39 @@ def getfacs(datadict, convbeams):
                     conbm.pa.to(u.deg).value,
                 ],
                 beamOrig=[
-                    oldbeam.major.to(u.arcsec).value,
-                    oldbeam.minor.to(u.arcsec).value,
-                    oldbeam.pa.to(u.deg).value,
+                    old_beam.major.to(u.arcsec).value,
+                    old_beam.minor.to(u.arcsec).value,
+                    old_beam.pa.to(u.deg).value,
                 ],
-                dx1=datadict["dx"].to(u.arcsec).value,
-                dy1=datadict["dy"].to(u.arcsec).value,
+                dx1=dx.to(u.arcsec).value,
+                dy1=dy.to(u.arcsec).value,
             )
-        facs.append(fac)
-    facs = np.array(facs)
+        facs_list.append(fac)
+    facs = np.array(facs_list)
     return facs
 
 
-def smooth(image, dx, dy, oldbeam, newbeam, conbeam, sfactor, conv_mode="robust"):
-    """smooth an image in Jy/beam
-
-    Args:
-        image (ndarray): Image plane from FITS file
-        dx (Quantity): deg per pixel in image
-        dy (Quantity): deg per pixel in image
-        oldbeam (Beam): Original PSF
-        newbeam (Beam): Target PSF
-        conbeam (Beam): Convolving beam
-        sfactor (float): factor to keep units in Jy/beam
-        conv_mode (str): Convolution mode
-
-    Returns:
-        ndarray: Smoothed image
-    """
-    if np.isnan(conbeam):
-        return image * np.nan
-    if np.isnan(image).all():
-        return image
-    if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
-        return image
-    else:
-        # using Beams package
-        log.debug(f"Old beam is {oldbeam!r}")
-        log.debug(f"Using convolving beam {conbeam!r}")
-        log.debug(f"Target beam is {newbeam!r}")
-        log.debug(f"Using scaling factor {sfactor}")
-        pix_scale = dy
-        gauss_kern = conbeam.as_kernel(pix_scale)
-
-        conbm1 = gauss_kern.array / gauss_kern.array.max()
-        fac = sfactor
-        if conv_mode == "robust":
-            newim, fac = convolve_uv.convolve(
-                image.astype("f8"), oldbeam, newbeam, dx, dy,
-            )
-        if conv_mode == "scipy":
-            newim = scipy.signal.convolve(image.astype("f8"), conbm1, mode="same")
-        elif conv_mode == "astropy":
-            newim = convolve(image.astype("f8"), conbm1, normalize_kernel=False,)
-        elif conv_mode == "astropy_fft":
-            newim = convolve_fft(
-                image.astype("f8"), conbm1, normalize_kernel=False, allow_huge=True,
-            )
-    log.debug(f"Using scaling factor {fac}")
-    newim *= fac
-    return newim
-
-
-def cpu_to_use(max_cpu, count):
+def cpu_to_use(max_cpu: int, count: int) -> int:
     """Find number of cpus to use.
     Find the right number of cpus to use when dividing up a task, such
     that there are no remainders.
     Args:
         max_cpu (int): Maximum number of cores to use for a process.
-        count (float): Number of tasks.
+        count (int): Number of tasks.
 
     Returns:
-        Maximum number of cores to be used that divides into the number
-        of tasks (int).
+        int: Maximum number of cores to be used that divides into the number
+        of tasks.
     """
-    factors = []
+    factors_list = []
     for i in range(1, count + 1):
         if count % i == 0:
-            factors.append(i)
-    factors = np.array(factors)
+            factors_list.append(i)
+    factors = np.array(factors_list)
     return max(factors[factors <= max_cpu])
 
 
-def worker(idx, cubedict, conv_mode="robust", start=0):
+def worker(idx: int, cubedict: dict, conv_mode: str = "robust", start: int = 0):
     """parallel worker function
 
     Args:
@@ -315,8 +266,8 @@ def worker(idx, cubedict, conv_mode="robust", start=0):
         image=plane,
         dx=cubedict["dx"],
         dy=cubedict["dy"],
-        oldbeam=cubedict["beams"][start + idx],
-        newbeam=cubedict["commonbeams"][start + idx],
+        old_beam=cubedict["beams"][start + idx],
+        final_beam=cubedict["commonbeams"][start + idx],
         conbeam=cubedict["convbeams"][start + idx],
         sfactor=cubedict["facs"][start + idx],
         conv_mode=conv_mode,
@@ -324,17 +275,20 @@ def worker(idx, cubedict, conv_mode="robust", start=0):
     return newim
 
 
-def makedata(files, outdir):
-    """init datadict
+def makedata(files: List[str], outdir: str) -> Dict[str, dict]:
+    """Create data dictionary.
 
     Args:
-        files (list): list of input files
-        outdir (list): list of output dirs
+        files (List[str]): List of filenames.
+        outdir (str): Output directory.
+
+    Raises:
+        Exception: If pixel grid in X and Y is not the same.
 
     Returns:
-        datadict: Main data dictionary
+        Dict[Dict]: Data and metadata for each channel and image.
     """
-    datadict = {}
+    datadict = {}  # type: Dict[str,dict]
     for i, (file, out) in enumerate(zip(files, outdir)):
         # Set up files
         datadict[f"cube_{i}"] = {}
@@ -353,34 +307,43 @@ def makedata(files, outdir):
         if not dxas == dyas:
             raise Exception("GRID MUST BE SAME IN X AND Y")
         # Get beam info
-        beam, nchan = getbeams(i=i, file=file, header=header, datadict=datadict,)
+        beam, nchan, beamlog = getbeams(file=file, header=header)
+        datadict[f"cube_{i}"]["beamlog"] = beamlog
         datadict[f"cube_{i}"]["beam"] = beam
         datadict[f"cube_{i}"]["nchan"] = nchan
     return datadict
 
 
 def commonbeamer(
-    datadict,
-    nchans,
-    args,
-    conv_mode="robust",
-    mode="natural",
-    target_beam=None,
-    circularise=False,
-):
-    """Find common beams
+    datadict: Dict[str, dict],
+    nchans: int,
+    conv_mode: str = "robust",
+    mode: str = "natural",
+    target_beam: Beam = None,
+    circularise: bool = False,
+    tolerance: float = 0.0001,
+    nsamps: int = 200,
+    epsilon: float = 0.0005,
+) -> Dict[str, dict]:
+    """Find common beam for all channels.
+    Computed beams will be written to convolving beam log.
 
     Args:
-        datadict (dict): Main data dict
-        nchans (int): Number of channels
-        args (args): Command line args
-        conv_mode (str, optional): Convolution method
-        mode (str, optional): 'total' or 'natural. Defaults to 'natural'.
-        target_beam (Beam, optional): Target PSF
-        circularise (bool, optional): Circularise the common beam
+        datadict (Dict[str, dict]): Main data dictionary.
+        nchans (int): Number of channels.
+        conv_mode (str, optional): Convolution mode. Defaults to "robust".
+        mode (str, optional): Frequency mode. Defaults to "natural".
+        target_beam (Beam, optional): Target PSF. Defaults to None.
+        circularise (bool, optional): Circularise PSF. Defaults to False.
+        tolerance (float, optional): Common beam tolerance. Defaults to 0.0001.
+        nsamps (int, optional): Common beam samples. Defaults to 200.
+        epsilon (float, optional): Common beam epsilon. Defaults to 0.0005.
+
+    Raises:
+        Exception: If convolving beam will be undersampled on pixel grid.
 
     Returns:
-        dict: updated datadict
+        Dict[str, dict]: Updated data dictionary.
     """
     ### Natural mode ###
     if mode == "natural":
@@ -388,9 +351,9 @@ def commonbeamer(
         for n in trange(
             nchans, desc="Constructing beams", disable=(log.root.level > log.INFO)
         ):
-            majors = []
-            minors = []
-            pas = []
+            majors_list = []
+            minors_list = []
+            pas_list = []
             for key in datadict.keys():
                 major = datadict[key]["beams"][n].major
                 minor = datadict[key]["beams"][n].minor
@@ -399,13 +362,13 @@ def commonbeamer(
                     major *= np.nan
                     minor *= np.nan
                     pa *= np.nan
-                majors.append(major.to(u.arcsec).value)
-                minors.append(minor.to(u.arcsec).value)
-                pas.append(pa.to(u.deg).value)
+                majors_list.append(major.to(u.arcsec).value)
+                minors_list.append(minor.to(u.arcsec).value)
+                pas_list.append(pa.to(u.deg).value)
 
-            majors = np.array(majors)
-            minors = np.array(minors)
-            pas = np.array(pas)
+            majors = np.array(majors_list)
+            minors = np.array(minors_list)
+            pas = np.array(pas_list)
 
             majors *= u.arcsec
             minors *= u.arcsec
@@ -429,18 +392,14 @@ def commonbeamer(
             else:
                 try:
                     commonbeam = beams[~np.isnan(beams)].common_beam(
-                        tolerance=args.tolerance,
-                        nsamps=args.nsamps,
-                        epsilon=args.epsilon,
+                        tolerance=tolerance, nsamps=nsamps, epsilon=epsilon,
                     )
                 except BeamError:
                     log.warn("Couldn't find common beam with defaults")
                     log.warn("Trying again with smaller tolerance")
 
                     commonbeam = beams[~np.isnan(beams)].common_beam(
-                        tolerance=args.tolerance * 0.1,
-                        nsamps=args.nsamps,
-                        epsilon=args.epsilon,
+                        tolerance=tolerance * 0.1, nsamps=nsamps, epsilon=epsilon,
                     )
                 # Round up values
                 commonbeam = Beam(
@@ -501,9 +460,9 @@ def commonbeamer(
         commonbeams = Beams(major=bmaj_common, minor=bmin_common, pa=bpa_common)
 
     elif mode == "total":
-        majors = []
-        minors = []
-        pas = []
+        majors_list = []
+        minors_list = []
+        pas_list = []
         for key in datadict.keys():
             major = datadict[key]["beams"].major
             minor = datadict[key]["beams"].minor
@@ -511,13 +470,13 @@ def commonbeamer(
             major[datadict[key]["mask"]] *= np.nan
             minor[datadict[key]["mask"]] *= np.nan
             pa[datadict[key]["mask"]] *= np.nan
-            majors.append(major.to(u.arcsec).value)
-            minors.append(minor.to(u.arcsec).value)
-            pas.append(pa.to(u.deg).value)
+            majors_list.append(major.to(u.arcsec).value)
+            minors_list.append(minor.to(u.arcsec).value)
+            pas_list.append(pa.to(u.deg).value)
 
-        majors = np.array(majors).ravel()
-        minors = np.array(minors).ravel()
-        pas = np.array(pas).ravel()
+        majors = np.array(majors_list).ravel()
+        minors = np.array(minors_list).ravel()
+        pas = np.array(pas_list).ravel()
 
         majors *= u.arcsec
         minors *= u.arcsec
@@ -529,14 +488,14 @@ def commonbeamer(
 
         try:
             commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
-                tolerance=args.tolerance, nsamps=args.nsamps, epsilon=args.epsilon
+                tolerance=tolerance, nsamps=nsamps, epsilon=epsilon
             )
         except BeamError:
             log.warn("Couldn't find common beam with defaults")
             log.warn("Trying again with smaller tolerance")
 
             commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
-                tolerance=args.tolerance * 0.1, nsamps=args.nsamps, epsilon=args.epsilon
+                tolerance=tolerance * 0.1, nsamps=nsamps, epsilon=epsilon
             )
         if target_beam is not None:
             commonbeam = target_beam
@@ -608,29 +567,29 @@ def commonbeamer(
         conv_bmaj = []
         conv_bmin = []
         conv_bpa = []
-        oldbeams = datadict[key]["beams"]
+        old_beams = datadict[key]["beams"]
         masks = datadict[key]["mask"]
-        for commonbeam, oldbeam, mask in zip(commonbeams, oldbeams, masks):
+        for commonbeam, old_beam, mask in zip(commonbeams, old_beams, masks):
             if mask:
                 convbeam = Beam(
                     major=np.nan * u.deg, minor=np.nan * u.deg, pa=np.nan * u.deg
                 )
             else:
-                oldbeam_check = Beam(
-                    major=my_ceil(oldbeam.major.to(u.arcsec).value, precision=1)
+                old_beam_check = Beam(
+                    major=my_ceil(old_beam.major.to(u.arcsec).value, precision=1)
                     * u.arcsec,
-                    minor=my_ceil(oldbeam.minor.to(u.arcsec).value, precision=1)
+                    minor=my_ceil(old_beam.minor.to(u.arcsec).value, precision=1)
                     * u.arcsec,
-                    pa=round_up(oldbeam.pa.to(u.deg), decimals=2),
+                    pa=round_up(old_beam.pa.to(u.deg), decimals=2),
                 )
-                if commonbeam == oldbeam_check:
+                if commonbeam == old_beam_check:
                     convbeam = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg,)
                     log.warn(
-                        f"New beam {commonbeam!r} and old beam {oldbeam_check!r} are the same. Won't attempt convolution."
+                        f"New beam {commonbeam!r} and old beam {old_beam_check!r} are the same. Won't attempt convolution."
                     )
 
                 else:
-                    convbeam = commonbeam.deconvolve(oldbeam)
+                    convbeam = commonbeam.deconvolve(old_beam)
 
             conv_bmaj.append(convbeam.major.to(u.arcsec).value)
             conv_bmin.append(convbeam.minor.to(u.arcsec).value)
@@ -644,7 +603,12 @@ def commonbeamer(
         convbeams = Beams(major=conv_bmaj, minor=conv_bmin, pa=conv_bpa)
 
         # Get gaussian beam factors
-        facs = getfacs(datadict[key], convbeams)
+        facs = getfacs(
+            beams=datadict[key],
+            convbeams=convbeams,
+            dx=datadict[key]["dx"],
+            dy=datadict[key]["dy"],
+        )
         datadict[key]["facs"] = facs
 
         # Setup conv beamlog
@@ -961,6 +925,9 @@ def main(args):
                 target_beam=target_beam,
                 mode=mode,
                 circularise=args.circularise,
+                tolerance=args.tolerance,
+                nsamps=args.nsamps,
+                epsilon=args.epsilon,
             )
         else:
             datadict = readlogs(datadict, mode=mode,)
