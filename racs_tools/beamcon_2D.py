@@ -233,7 +233,7 @@ def worker(
             newim = smooth(
                 image=datadict["image"],
                 old_beam=datadict["old_beam"],
-                final_beam=datadict["new_beam"],
+                final_beam=datadict["final_beam"],
                 dx=datadict["dx"],
                 dy=datadict["dy"],
                 sfactor=datadict["sfactor"],
@@ -248,7 +248,7 @@ def worker(
         )
         savefile(
             newimage=datadict["newimage"],
-            filename=datadict["filename"],
+            filename=outfile,
             header=datadict["header"],
             final_beam=datadict["final_beam"],
             outdir=outdir,
