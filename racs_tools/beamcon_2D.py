@@ -2,6 +2,8 @@
 """ Convolve ASKAP images to common resolution """
 __author__ = "Alec Thomson"
 
+from functools import partial
+from hashlib import new
 import os
 import sys
 from typing import Dict, List, Tuple
@@ -173,8 +175,31 @@ def savefile(
     fits.writeto(outfile, newimage.astype(np.float32), header=header, overwrite=True)
 
 
-def worker(args):
-    file, outdir, new_beam, conv_mode, clargs = args
+def worker(
+    file:str, 
+    outdir:str, 
+    new_beam:Beam, 
+    conv_mode:str, 
+    suffix:str="", 
+    prefix:str="", 
+    cutoff:float=None,
+    dryrun:bool=False,
+) -> dict:
+    """Parallel worker function
+
+    Args:
+        file (str): FITS file to smooth.
+        outdir (str): Output directory.
+        new_beam (Beam): Target PSF.
+        conv_mode (str): Convolving mode.
+        suffix (str, optional): Filename suffix. Defaults to "".
+        prefix (str, optional): Filename prefix. Defaults to "".
+        cutoff (float, optional): PSF cutoff. Defaults to None.
+        dryrun (bool, optional): Do a dryrun. Defaults to False.
+
+    Returns:
+        dict: Output data.
+    """
     log.info(f"Working on {file}")
 
     if outdir is None:
@@ -184,9 +209,9 @@ def worker(args):
         outdir = "."
 
     outfile = os.path.basename(file)
-    outfile = outfile.replace(".fits", f".{clargs.suffix}.fits")
-    if clargs.prefix is not None:
-        outfile = clargs.prefix + outfile
+    outfile = outfile.replace(".fits", f".{suffix}.fits")
+    if prefix is not None:
+        outfile = prefix + outfile
     datadict = getimdata(file)
 
     conbeam, sfactor = getbeam(
@@ -194,11 +219,11 @@ def worker(args):
         new_beam=new_beam,
         dx=datadict["dx"],
         dy=datadict["dy"],
-        cutoff=clargs.cutoff,
+        cutoff=cutoff,
     )
 
     datadict.update({"conbeam": conbeam, "final_beam": new_beam, "sfactor": sfactor})
-    if not clargs.dryrun:
+    if not dryrun:
         if (
             conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
             and sfactor == 1
@@ -208,7 +233,7 @@ def worker(args):
             newim = smooth(
                 image=datadict["image"],
                 old_beam=datadict["old_beam"],
-                new_beam=datadict["new_beam"],
+                final_beam=datadict["new_beam"],
                 dx=datadict["dx"],
                 dy=datadict["dy"],
                 sfactor=datadict["sfactor"],
@@ -502,9 +527,22 @@ def main(pool, args):
         new_beam = Beam(major=new_beam.major, minor=new_beam.major, pa=0 * u.deg,)
 
     log.info(f"Final beam is {new_beam!r}")
-    inputs = [[file, outdir, new_beam, conv_mode, args] for i, file in enumerate(files)]
 
-    output = list(pool.map(worker, inputs))
+    output = list(
+        pool.map(
+            partial(
+                worker,
+                outdir=outdir,
+                new_beam=new_beam,
+                conv_mode=conv_mode,
+                suffix=args.suffix,
+                prefix=args.prefix,
+                cutoff=args.cutoff,
+                dryrun=args.dryrun,
+            ), 
+            files
+        )
+    )
 
     if args.log is not None:
         writelog(output, args.log)
