@@ -652,7 +652,17 @@ def commonbeamer(
     return datadict
 
 
-def masking(nchans, cutoff, datadict):
+def masking(nchans:int, datadict: dict, cutoff: u.Quantity=None) -> dict:
+    """Apply masking to data.
+
+    Args:
+        nchans (int): Number of channels in cubes.
+        datadict (dict): Data dictionary.
+        cutoff (None, optional): Cutoff BMAJ size for masking. Defaults to None.
+
+    Returns:
+        dict: Updated data dictionary.
+    """    
     for key in datadict.keys():
         mask = np.array([False] * nchans)
         datadict[key]["mask"] = mask
@@ -670,7 +680,7 @@ def masking(nchans, cutoff, datadict):
     return datadict
 
 
-def initfiles(datadict, mode, suffix=None, prefix=None, ref_chan=None):
+def initfiles(filename: str, commonbeams: Beams, outdir:str, mode:str, suffix=None, prefix=None, ref_chan=None):
     """Initialise output files
 
     Args:
@@ -680,15 +690,14 @@ def initfiles(datadict, mode, suffix=None, prefix=None, ref_chan=None):
     Returns:
         datadict: Updated datadict
     """
-    log.debug(f"Reading {datadict['filename']}")
-    with fits.open(datadict["filename"], memmap=True, mode="denywrite") as hdulist:
+    log.debug(f"Reading {filename}")
+    with fits.open(filename, memmap=True, mode="denywrite") as hdulist:
         primary_hdu = hdulist[0]
         data = primary_hdu.data
         header = primary_hdu.header
         wcs = WCS(header)
 
     ## Header
-    commonbeams = datadict["commonbeams"]
     spec_axis = wcs.spectral
     crpix = int(spec_axis.wcs.crpix)
     nchans = spec_axis.array_shape[0]
@@ -763,13 +772,12 @@ def initfiles(datadict, mode, suffix=None, prefix=None, ref_chan=None):
     # Set up output file
     if suffix is None:
         suffix = mode
-    outname = os.path.basename(datadict["filename"])
+    outname = os.path.basename(filename)
     outname = outname.replace(".fits", f".{suffix}.fits")
     if prefix is not None:
         outname = prefix + outname
 
-    outdir = datadict["outdir"]
-    outfile = f"{outdir}/{outname}"
+    outfile = os.path.join(outdir,outname)
     log.info(f"Initialising to {outfile}")
     new_hdulist.writeto(outfile, overwrite=True)
 
@@ -918,7 +926,7 @@ def main(args):
             datadict[key]["beams"] = beams
 
         # Apply some masking
-        datadict = masking(nchans, cutoff, datadict,)
+        datadict = masking(nchans=nchans, datadict=datadict, cutoff=cutoff)
 
         if not args.uselogs:
             datadict = commonbeamer(
@@ -990,7 +998,9 @@ def main(args):
         outfile_dict = {}
         for inp in inputs[my_start : my_end + 1]:
             outfile = initfiles(
-                datadict=datadict[inp],
+                filename=datadict[inp]["filename"],
+                commonbeams=datadict[inp]["commonbeams"],
+                outdir=datadict[inp]["outdir"],
                 mode=args.mode,
                 suffix=args.suffix,
                 prefix=args.prefix,
