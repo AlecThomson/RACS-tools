@@ -1,3 +1,4 @@
+[![Docker Build and Push](https://github.com/AlecThomson/RACS-tools/actions/workflows/docker.yml/badge.svg)](https://github.com/AlecThomson/RACS-tools/actions/workflows/docker.yml)
 # RACS-tools
 Useful scripts for RACS
 
