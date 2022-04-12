@@ -776,39 +776,39 @@ def initfiles(datadict, mode, suffix=None, prefix=None, ref_chan=None):
     return outfile
 
 
-def readlogs(datadict, mode):
-    log.info("Reading from beamlogConvolve files")
-    for key in datadict.keys():
-        # Read in logs
-        commonbeam_log = datadict[key]["beamlog"].replace(
-            "beamlog.", f"beamlogConvolve-{mode}."
-        )
-        log.info(f"Reading from {commonbeam_log}")
-        try:
-            commonbeam_tab = Table.read(commonbeam_log, format="ascii.commented_header")
-        except FileNotFoundError:
-            raise Exception("beamlogConvolve must be co-located with image")
-        # Convert to Beams
-        commonbeams = Beams(
-            major=commonbeam_tab["Target BMAJ"] * u.arcsec,
-            minor=commonbeam_tab["Target BMIN"] * u.arcsec,
-            pa=commonbeam_tab["Target BPA"] * u.deg,
-        )
-        convbeams = Beams(
-            major=commonbeam_tab["Convolving BMAJ"] * u.arcsec,
-            minor=commonbeam_tab["Convolving BMIN"] * u.arcsec,
-            pa=commonbeam_tab["Convolving BPA"] * u.deg,
-        )
-        facs = np.array(commonbeam_tab["Convolving factor"])
-        # Save to datadict
-        datadict[key]["facs"] = facs
-        datadict[key]["convbeams"] = convbeams
-        datadict[key]["commonbeams"] = commonbeams
-        datadict[key]["commonbeamlog"] = commonbeam_log
+def readlogs(commonbeam_log: str) -> Tuple[Beams, Beams, np.ndarray]:
+    """Read convolving log files
+
+    Args:
+        commonbeam_log (str): Filename of the common beam log
+
+    Raises:
+        Exception: If the log file is not found
+
+    Returns:
+        Tuple[Beams, Beams, np.ndarray]: Common beams, convolving beams, and scaling factors
+    """    
+    log.info(f"Reading from {commonbeam_log}")
+    try:
+        commonbeam_tab = Table.read(commonbeam_log, format="ascii.commented_header")
+    except FileNotFoundError:
+        raise Exception("beamlogConvolve must be co-located with image")
+    # Convert to Beams
+    commonbeams = Beams(
+        major=commonbeam_tab["Target BMAJ"] * u.arcsec,
+        minor=commonbeam_tab["Target BMIN"] * u.arcsec,
+        pa=commonbeam_tab["Target BPA"] * u.deg,
+    )
+    convbeams = Beams(
+        major=commonbeam_tab["Convolving BMAJ"] * u.arcsec,
+        minor=commonbeam_tab["Convolving BMIN"] * u.arcsec,
+        pa=commonbeam_tab["Convolving BPA"] * u.deg,
+    )
+    facs = np.array(commonbeam_tab["Convolving factor"])
     log.info("Final beams are:")
     for i, commonbeam in enumerate(commonbeams):
         log.info(f"Channel {i}: {commonbeam!r}")
-    return datadict
+    return commonbeams, convbeams, facs
 
 
 def main(args):
@@ -934,8 +934,15 @@ def main(args):
                 epsilon=args.epsilon,
             )
         else:
-            datadict = readlogs(datadict, mode=mode,)
-
+            log.info("Reading from convolve beamlog files")
+            for key in datadict.keys():
+                commonbeam_log = datadict[key]["beamlog"].replace(".txt", ".conv.txt")
+                commonbeams, convbeams, facs = readlogs(commonbeam_log)
+                # Save to datadict
+                datadict[key]["facs"] = facs
+                datadict[key]["convbeams"] = convbeams
+                datadict[key]["commonbeams"] = commonbeams
+                datadict[key]["commonbeamlog"] = commonbeam_log
     else:
         if not args.dryrun:
             files = None
