@@ -2,19 +2,20 @@
 """ Convolve ASKAP images to common resolution """
 __author__ = "Alec Thomson"
 
+from functools import partial
+from hashlib import new
 import os
 import sys
+from typing import Dict, List, Tuple
 import numpy as np
-import scipy.signal
 from astropy import units as u
 from astropy.io import fits, ascii
 import astropy.wcs
-from astropy.convolution import convolve, convolve_fft
 from astropy.table import Table
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 from racs_tools import au2
-from racs_tools import convolve_uv
+from racs_tools.convolve_uv import smooth
 import schwimmbad
 import psutil
 from tqdm import tqdm
@@ -25,61 +26,98 @@ import logging as log
 #############################################
 
 
-def round_up(n, decimals=0):
+def round_up(n: float, decimals: int = 0) -> float:
+    """Round to number of decimals 
+
+    Args:
+        n (float): Number to round.
+        decimals (int, optional): Number of decimals. Defaults to 0.
+
+    Returns:
+        float: Rounded number.
+    """
     multiplier = 10 ** decimals
     return np.ceil(n * multiplier) / multiplier
 
 
-def my_ceil(a, precision=0):
+def my_ceil(a: float, precision: float = 0) -> float:
+    """Modified ceil function to round up to precision
+
+    Args:
+        a (float): Number to round.
+        precision (float, optional): Precision of rounding. Defaults to 0.
+
+    Returns:
+        float: Rounded number.
+    """
     return np.round(a + 0.5 * 10 ** (-precision), precision)
 
 
-def getbeam(datadict, new_beam, cutoff=None):
-    """Get beam info
-    """
-    log.info(f"Current beam is {datadict['oldbeam']!r}")
+def getbeam(
+    old_beam: Beam,
+    new_beam: Beam,
+    dx: u.Quantity,
+    dy: u.Quantity,
+    cutoff: float = None,
+) -> Tuple[Beam, float]:
+    """Get the beam to use for smoothing
 
-    if (
-        cutoff is not None
-        and datadict["oldbeam"].major.to(u.arcsec) > cutoff * u.arcsec
-    ):
+    Args:
+        old_beam (Beam): Current beam.
+        new_beam (Beam): Target beam.
+        dx (u.Quantity): Pixel size in x.
+        dy (u.Quantity): Pixel size in y.
+        cutoff (float, optional): Cutoff for beamsize in arcsec. Defaults to None.
+
+    Raises:
+        err: If beam deconvolution fails.
+
+    Returns:
+        Tuple[Beam, float]: Convolving beam and scaling factor.
+    """
+    log.info(f"Current beam is {old_beam!r}")
+
+    if cutoff is not None and old_beam.major.to(u.arcsec) > cutoff * u.arcsec:
         return np.nan, np.nan
 
-    else:
-        if new_beam == datadict["oldbeam"]:
-            conbm = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg,)
-            fac = 1
-            log.warn(
-                f"New beam {new_beam!r} and old beam {datadict['oldbeam']!r} are the same. Won't attempt convolution."
-            )
-        else:
-            try:
-                conbm = new_beam.deconvolve(datadict["oldbeam"])
-            except Exception as err:
-                log.warn(
-                    f"Could not deconvolve. New: {new_beam!r}, Old: {datadict['oldbeam']!r}"
-                )
-                raise err
-            fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
-                [
-                    conbm.major.to(u.arcsec).value,
-                    conbm.minor.to(u.arcsec).value,
-                    conbm.pa.to(u.deg).value,
-                ],
-                beamOrig=[
-                    datadict["oldbeam"].major.to(u.arcsec).value,
-                    datadict["oldbeam"].minor.to(u.arcsec).value,
-                    datadict["oldbeam"].pa.to(u.deg).value,
-                ],
-                dx1=datadict["dx"].to(u.arcsec).value,
-                dy1=datadict["dy"].to(u.arcsec).value,
-            )
-
+    if new_beam == old_beam:
+        conbm = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg,)
+        fac = 1.0
+        log.warning(
+            f"New beam {new_beam!r} and old beam {old_beam!r} are the same. Won't attempt convolution."
+        )
         return conbm, fac
+    try:
+        conbm = new_beam.deconvolve(old_beam)
+    except Exception as err:
+        log.warning(f"Could not deconvolve. New: {new_beam!r}, Old: {old_beam!r}")
+        raise err
+    fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
+        beamConv=[
+            conbm.major.to(u.arcsec).value,
+            conbm.minor.to(u.arcsec).value,
+            conbm.pa.to(u.deg).value,
+        ],
+        beamOrig=[
+            old_beam.major.to(u.arcsec).value,
+            old_beam.minor.to(u.arcsec).value,
+            old_beam.pa.to(u.deg).value,
+        ],
+        dx1=dx.to(u.arcsec).value,
+        dy1=dy.to(u.arcsec).value,
+    )
+
+    return conbm, fac
 
 
-def getimdata(cubenm):
-    """Get fits image data
+def getimdata(cubenm: str) -> dict:
+    """Get image data from FITS file
+
+    Args:
+        cubenm (str): File name of image.
+
+    Returns:
+        dict: Data and metadata.
     """
     log.info(f"Getting image data from {cubenm}")
     with fits.open(cubenm, memmap=True, mode="denywrite") as hdu:
@@ -104,7 +142,7 @@ def getimdata(cubenm):
             "image": data,
             "4d": (len(hdu[0].data.shape) == 4),
             "header": hdu[0].header,
-            "oldbeam": old_beam,
+            "old_beam": old_beam,
             "nx": nx,
             "ny": ny,
             "dx": dxas,
@@ -113,71 +151,55 @@ def getimdata(cubenm):
     return datadict
 
 
-def smooth(datadict, conv_mode="robust"):
-    """Do the smoothing
-    """
-    if np.isnan(datadict["sfactor"]):
-        log.warning("Beam larger than cutoff -- blanking")
 
-        newim = np.ones_like(datadict["image"]) * np.nan
-        return newim
-    else:
-        # using Beams package
-        log.info(f'Smoothing so beam is {datadict["final_beam"]!r}')
-        log.info(f'Using convolving beam {datadict["conbeam"]!r}')
-        pix_scale = datadict["dy"]
+def savefile(
+    newimage: np.ndarray,
+    filename: str,
+    header: fits.Header,
+    final_beam: Beam,
+    outdir: str = ".",
+) -> None:
+    """Save smoothed image to FITS file
 
-        gauss_kern = datadict["conbeam"].as_kernel(pix_scale)
-        conbm1 = gauss_kern.array / gauss_kern.array.max()
-        fac = datadict["sfactor"]
-        if conv_mode == "robust":
-            newim, fac = convolve_uv.convolve(
-                datadict["image"].astype("f8"),
-                datadict["oldbeam"],
-                datadict["final_beam"],
-                datadict["dx"],
-                datadict["dy"],
-            )
-            # keep the new sfactor computed by this method
-            datadict["sfactor"] = fac
-        if conv_mode == "scipy":
-            newim = scipy.signal.convolve(
-                datadict["image"].astype("f8"), conbm1, mode="same"
-            )
-        elif conv_mode == "astropy":
-            newim = convolve(
-                datadict["image"].astype("f8"), conbm1, normalize_kernel=False,
-            )
-        elif conv_mode == "astropy_fft":
-            newim = convolve_fft(
-                datadict["image"].astype("f8"),
-                conbm1,
-                normalize_kernel=False,
-                allow_huge=True,
-            )
-        log.info(f"Using scaling factor {fac}")
-        if np.any(np.isnan(newim)):
-            log.warning(f"{np.isnan(newim).sum()} NaNs present in smoothed output")
-
-        newim *= fac
-        return newim
-
-
-def savefile(datadict, filename, outdir="."):
-    """Save file to disk
+    Args:
+        newimage (np.ndarray): Smoothed image.
+        filename (str): File name.
+        header (fits.Header): FITS header.
+        final_beam (Beam): New beam.
+        outdir (str, optional): Output directory. Defaults to ".".
     """
     outfile = f"{outdir}/{filename}"
     log.info(f"Saving to {outfile}")
-    header = datadict["header"]
-    beam = datadict["final_beam"]
+    beam = final_beam
     header = beam.attach_to_header(header)
-    fits.writeto(
-        outfile, datadict["newimage"].astype(np.float32), header=header, overwrite=True
-    )
+    fits.writeto(outfile, newimage.astype(np.float32), header=header, overwrite=True)
 
 
-def worker(args):
-    file, outdir, new_beam, conv_mode, clargs = args
+def worker(
+    file:str, 
+    outdir:str, 
+    new_beam:Beam, 
+    conv_mode:str, 
+    suffix:str="", 
+    prefix:str="", 
+    cutoff:float=None,
+    dryrun:bool=False,
+) -> dict:
+    """Parallel worker function
+
+    Args:
+        file (str): FITS file to smooth.
+        outdir (str): Output directory.
+        new_beam (Beam): Target PSF.
+        conv_mode (str): Convolving mode.
+        suffix (str, optional): Filename suffix. Defaults to "".
+        prefix (str, optional): Filename prefix. Defaults to "".
+        cutoff (float, optional): PSF cutoff. Defaults to None.
+        dryrun (bool, optional): Do a dryrun. Defaults to False.
+
+    Returns:
+        dict: Output data.
+    """
     log.info(f"Working on {file}")
 
     if outdir is None:
@@ -187,55 +209,91 @@ def worker(args):
         outdir = "."
 
     outfile = os.path.basename(file)
-    outfile = outfile.replace(".fits", f".{clargs.suffix}.fits")
-    if clargs.prefix is not None:
-        outfile = clargs.prefix + outfile
+    outfile = outfile.replace(".fits", f".{suffix}.fits")
+    if prefix is not None:
+        outfile = prefix + outfile
     datadict = getimdata(file)
 
-    conbeam, sfactor = getbeam(datadict, new_beam, cutoff=clargs.cutoff,)
+    conbeam, sfactor = getbeam(
+        old_beam=datadict["old_beam"], 
+        new_beam=new_beam,
+        dx=datadict["dx"],
+        dy=datadict["dy"],
+        cutoff=cutoff,
+    )
 
     datadict.update({"conbeam": conbeam, "final_beam": new_beam, "sfactor": sfactor})
-    if not clargs.dryrun:
+    if not dryrun:
         if (
             conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
             and sfactor == 1
         ):
             newim = datadict["image"]
         else:
-            newim = smooth(datadict, conv_mode=conv_mode)
+            newim = smooth(
+                image=datadict["image"],
+                old_beam=datadict["old_beam"],
+                final_beam=datadict["final_beam"],
+                dx=datadict["dx"],
+                dy=datadict["dy"],
+                sfactor=datadict["sfactor"],
+                conbeam=datadict["conbeam"],
+                conv_mode=conv_mode,
+            )
         if datadict["4d"]:
             # make it back into a 4D image
             newim = np.expand_dims(np.expand_dims(newim, axis=0), axis=0)
         datadict.update(
             {"newimage": newim,}
         )
-
-        savefile(datadict, outfile, outdir)
+        savefile(
+            newimage=datadict["newimage"],
+            filename=outfile,
+            header=datadict["header"],
+            final_beam=datadict["final_beam"],
+            outdir=outdir,
+        )
 
     return datadict
 
 
 def getmaxbeam(
-    files,
-    conv_mode="robust",
-    target_beam=None,
-    cutoff=None,
-    tolerance=0.0001,
-    nsamps=200,
-    epsilon=0.0005,
-):
-    """Get smallest common beam
+    files: List[str],
+    conv_mode: str = "robust",
+    target_beam: Beam = None,
+    cutoff: float = None,
+    tolerance: float = 0.0001,
+    nsamps: float = 200,
+    epsilon: float = 0.0005,
+) -> Tuple[Beam, Beams]:
+    """Get the smallest common beam.
+
+    Args:
+        files (List[str]): List of FITS files.
+        conv_mode (str, optional): Convolution mode. Defaults to "robust".
+        target_beam (Beam, optional): Target PSF. Defaults to None.
+        cutoff (float, optional): Cutoff PSF BMAJ in arcsec. Defaults to None.
+        tolerance (float, optional): Common beam tolerance. Defaults to 0.0001.
+        nsamps (float, optional): Common beam samples. Defaults to 200.
+        epsilon (float, optional): Commonn beam epsilon. Defaults to 0.0005.
+
+    Raises:
+        Exception: X and Y pixel sizes are not the same.
+        Exception: Convolving beam will be undersampled on pixel grid.
+
+    Returns:
+        Tuple[Beam, Beams]: Common beam and all beams.
     """
-    beams = []
+    beams_list = []
     for file in files:
         header = fits.getheader(file, memmap=True)
         beam = Beam.from_fits_header(header)
-        beams.append(beam)
+        beams_list.append(beam)
 
     beams = Beams(
-        [beam.major.to(u.deg).value for beam in beams] * u.deg,
-        [beam.minor.to(u.deg).value for beam in beams] * u.deg,
-        [beam.pa.to(u.deg).value for beam in beams] * u.deg,
+        [beam.major.to(u.deg).value for beam in beams_list] * u.deg,
+        [beam.minor.to(u.deg).value for beam in beams_list] * u.deg,
+        [beam.pa.to(u.deg).value for beam in beams_list] * u.deg,
     )
     if cutoff is not None:
         flags = beams.major > cutoff * u.arcsec
@@ -292,36 +350,36 @@ def getmaxbeam(
             log.info(f"Smallest common Nyquist sampled beam is: {nyq_beam!r}")
             if target_beam is not None:
                 if target_beam < nyq_beam:
-                    log.warn("TARGET BEAM WILL BE UNDERSAMPLED!")
+                    log.warning("TARGET BEAM WILL BE UNDERSAMPLED!")
                     raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
             else:
-                log.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
-                log.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
+                log.warning("COMMON BEAM WILL BE UNDERSAMPLED!")
+                log.warning("SETTING COMMON BEAM TO NYQUIST BEAM")
                 cmn_beam = nyq_beam
 
     return cmn_beam, beams
 
 
-def writelog(output, commonbeam_log):
-    """Write beamlog file
+def writelog(output: List[Dict], commonbeam_log: str):
+    """Write beamlog file.
 
     Args:
-        output (list): Output dicts from worker opertation
-        commonbeam_log (str): Filename to save log
+        output (List[Dict]): List of dictionaries containing output.
+        commonbeam_log (str): Name of log file.
     """
     commonbeam_tab = Table()
     commonbeam_tab.add_column([out["filename"] for out in output], name="FileName")
     # Origina
     commonbeam_tab.add_column(
-        [out["oldbeam"].major.to(u.deg).value for out in output] * u.deg,
+        [out["old_beam"].major.to(u.deg).value for out in output] * u.deg,
         name="Original BMAJ",
     )
     commonbeam_tab.add_column(
-        [out["oldbeam"].minor.to(u.deg).value for out in output] * u.deg,
+        [out["old_beam"].minor.to(u.deg).value for out in output] * u.deg,
         name="Original BMIN",
     )
     commonbeam_tab.add_column(
-        [out["oldbeam"].pa.to(u.deg).value for out in output] * u.deg,
+        [out["old_beam"].pa.to(u.deg).value for out in output] * u.deg,
         name="Original BPA",
     )
     # Target
@@ -365,8 +423,18 @@ def writelog(output, commonbeam_log):
 
 
 def main(pool, args):
-    """Main script
-    """
+    """Main script.
+
+    Args:
+        pool (method): Multiprocessing or schwimmbad Pool.
+        args (Namespace): Commandline args.
+
+    Raises:
+        Exception: If no files are found.
+        Exception: If invalid convolution mode is specified.
+        Exception: If partial target beam is specified.
+        Exception: If target beam cannot be used.
+    """    
     if args.dryrun:
         log.info("Doing a dry run -- no files will be saved")
     # Fix up outdir
@@ -443,8 +511,8 @@ def main(pool, args):
                 mask_count += 1
                 failed.append(file)
         if mask_count > 0:
-            log.warn("The following images could not reach target resolution:")
-            log.warn(failed)
+            log.warning("The following images could not reach target resolution:")
+            log.warning(failed)
 
             raise Exception("Please choose a larger target beam!")
 
@@ -454,19 +522,27 @@ def main(pool, args):
     else:
         new_beam = big_beam
 
-
     if args.circularise:
         log.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
-        new_beam = Beam(
-            major=new_beam.major,
-            minor=new_beam.major,
-            pa=0*u.deg,
-        )
+        new_beam = Beam(major=new_beam.major, minor=new_beam.major, pa=0 * u.deg,)
 
     log.info(f"Final beam is {new_beam!r}")
-    inputs = [[file, outdir, new_beam, conv_mode, args] for i, file in enumerate(files)]
 
-    output = list(pool.map(worker, inputs))
+    output = list(
+        pool.map(
+            partial(
+                worker,
+                outdir=outdir,
+                new_beam=new_beam,
+                conv_mode=conv_mode,
+                suffix=args.suffix,
+                prefix=args.prefix,
+                cutoff=args.cutoff,
+                dryrun=args.dryrun,
+            ), 
+            files
+        )
+    )
 
     if args.log is not None:
         writelog(output, args.log)
@@ -605,7 +681,7 @@ def cli():
 
     parser.add_argument(
         "--circularise",
-        action='store_true',
+        action="store_true",
         help="Circularise the final PSF -- Sets the BMIN = BMAJ, and BPA=0.",
     )
 
