@@ -1027,6 +1027,8 @@ def main(args):
         if mpiSwitch:
             # Send to master proc
             outlist = comm.gather(outfile_dict, root=0)
+        else:
+            outlist = [outfile_dict]
 
         if mpiSwitch:
             comm.Barrier()
