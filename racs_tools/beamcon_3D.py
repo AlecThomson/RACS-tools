@@ -930,9 +930,8 @@ def main(args):
 
         if not args.uselogs:
             datadict = commonbeamer(
-                datadict,
-                nchans,
-                args,
+                datadict=datadict,
+                nchans=nchans,
                 conv_mode=conv_mode,
                 target_beam=target_beam,
                 mode=mode,
