@@ -159,11 +159,17 @@ def getbeams(i, file, header, datadict):
     beamlog = f"{dirname}/beamlog.{basename}".replace(".fits", ".txt")
     datadict[f"cube_{i}"]["beamlog"] = beamlog
     # First check for CASA beams
-    if header["CASAMBM"]:
-            log.info("CASA beamtable found in header - will use this table for beam calculations")
-            with fits.open(file) as hdul:
-                hdu = hdul.pop("BEAMS")
-                beams = Table(hdu.data)
+    try:
+        headcheck = header["CASAMBM"]
+    except KeyError:
+        headcheck = False
+    if headcheck:
+        log.info(
+            "CASA beamtable found in header - will use this table for beam calculations"
+        )
+        with fits.open(file) as hdul:
+            hdu = hdul.pop("BEAMS")
+            beams = Table(hdu.data)
 
     # Otherwise use beamlog file
     else:
