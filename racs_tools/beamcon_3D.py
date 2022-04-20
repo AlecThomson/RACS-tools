@@ -323,6 +323,7 @@ def commonbeamer(
     nchans: int,
     conv_mode: str = "robust",
     mode: str = "natural",
+    suffix: str = None,
     target_beam: Beam = None,
     circularise: bool = False,
     tolerance: float = 0.0001,
@@ -349,6 +350,8 @@ def commonbeamer(
     Returns:
         Dict[str, dict]: Updated data dictionary.
     """
+    if suffix is None:
+        suffix = mode
     ### Natural mode ###
     if mode == "natural":
         big_beams = []
@@ -617,7 +620,7 @@ def commonbeamer(
 
         # Setup conv beamlog
         datadict[key]["convbeams"] = convbeams
-        commonbeam_log = datadict[key]["beamlog"].replace(".txt", ".conv.txt")
+        commonbeam_log = datadict[key]["beamlog"].replace(".txt", f".{suffix}.txt")
         datadict[key]["commonbeams"] = commonbeams
         datadict[key]["commonbeamlog"] = commonbeam_log
 
@@ -918,6 +921,11 @@ def main(args):
         else:
             nchans = nchans[0]
 
+        # Check suffix
+        suffix = args.suffix
+        if suffix is None:
+            suffix = mode
+
         # Construct Beams objects
         for key in datadict.keys():
             beam = datadict[key]["beam"]
@@ -937,6 +945,7 @@ def main(args):
                 conv_mode=conv_mode,
                 target_beam=target_beam,
                 mode=mode,
+                suffix=suffix,
                 circularise=args.circularise,
                 tolerance=args.tolerance,
                 nsamps=args.nsamps,
@@ -945,7 +954,7 @@ def main(args):
         else:
             log.info("Reading from convolve beamlog files")
             for key in datadict.keys():
-                commonbeam_log = datadict[key]["beamlog"].replace(".txt", ".conv.txt")
+                commonbeam_log = datadict[key]["beamlog"].replace(".txt", f".{suffix}.txt")
                 commonbeams, convbeams, facs = readlogs(commonbeam_log)
                 # Save to datadict
                 datadict[key]["facs"] = facs
@@ -1003,7 +1012,7 @@ def main(args):
                 commonbeams=datadict[inp]["commonbeams"],
                 outdir=datadict[inp]["outdir"],
                 mode=args.mode,
-                suffix=args.suffix,
+                suffix=suffix,
                 prefix=args.prefix,
                 ref_chan=args.ref_chan,
             )
