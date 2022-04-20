@@ -608,7 +608,7 @@ def commonbeamer(
 
         # Get gaussian beam factors
         facs = getfacs(
-            beams=datadict[key],
+            beams=datadict[key]["beams"],
             convbeams=convbeams,
             dx=datadict[key]["dx"],
             dy=datadict[key]["dy"],
@@ -721,6 +721,8 @@ def initfiles(filename: str, commonbeams: Beams, outdir:str, mode:str, suffix=No
     ref_psf = commonbeams[crindex]
     # Check the Stokes
     stokes_axis = wcs.sub(["stokes"])
+    if stokes_axis.array_shape == ():
+        raise ValueError("No Stokes axis found")
     nstokes = stokes_axis.array_shape[0]
     if nstokes > 1:
         log.critical(
