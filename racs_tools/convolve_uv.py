@@ -124,7 +124,7 @@ def smooth(
         newim = convolution.convolve_fft(
             image.astype("f8"), conbm1, normalize_kernel=False, allow_huge=True,
         )
-    log.info(f"Using scaling factor {fac}")
+    log.debug(f"Using scaling factor {fac}")
     if np.any(np.isnan(newim)):
         log.warning(f"{np.isnan(newim).sum()} NaNs present in smoothed output")
 
