@@ -748,7 +748,6 @@ def initfiles(filename: str, commonbeams: Beams, outdir:str, mode:str, suffix=No
     primary_hdu = fits.PrimaryHDU(data=data, header=header)
     if mode == "natural":
         # Make a CASA beamtable
-        header["COMMENT"] = "BEEP BOOP THIS IS A TEST"
         header["CASAMBM"] = True
         header["COMMENT"] = "The PSF in each image plane varies."
         header[
@@ -763,6 +762,7 @@ def initfiles(filename: str, commonbeams: Beams, outdir:str, mode:str, suffix=No
                 pols,
             ],
             names=["BMAJ", "BMIN", "BPA", "CHAN", "POL"],
+            dtype=["f8", "f8", "f8", "i4", "i4"],
         )
         primary_hdu = fits.PrimaryHDU(data=data, header=header)
         tab_hdu = fits.table_to_hdu(beam_table)
