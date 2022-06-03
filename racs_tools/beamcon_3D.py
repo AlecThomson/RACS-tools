@@ -762,7 +762,7 @@ def initfiles(filename: str, commonbeams: Beams, outdir:str, mode:str, suffix=No
                 pols,
             ],
             names=["BMAJ", "BMIN", "BPA", "CHAN", "POL"],
-            dtype=["f8", "f8", "f8", "i4", "i4"],
+            dtype=["f4", "f4", "f4", "i4", "i4"],
         )
         primary_hdu = fits.PrimaryHDU(data=data, header=header)
         tab_hdu = fits.table_to_hdu(beam_table)
