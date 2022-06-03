@@ -748,6 +748,7 @@ def initfiles(filename: str, commonbeams: Beams, outdir:str, mode:str, suffix=No
     primary_hdu = fits.PrimaryHDU(data=data, header=header)
     if mode == "natural":
         # Make a CASA beamtable
+        header["COMMENT"] = "BEEP BOOP THIS IS A TEST"
         header["CASAMBM"] = True
         header["COMMENT"] = "The PSF in each image plane varies."
         header[
