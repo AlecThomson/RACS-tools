@@ -665,7 +665,7 @@ def masking(nchans:int, datadict: dict, cutoff: u.Quantity=None) -> dict:
 
     Returns:
         dict: Updated data dictionary.
-    """    
+    """
     for key in datadict.keys():
         mask = np.array([False] * nchans)
         datadict[key]["mask"] = mask
@@ -755,9 +755,9 @@ def initfiles(filename: str, commonbeams: Beams, outdir:str, mode:str, suffix=No
         ] = "Full beam information is stored in the second FITS extension."
         beam_table = Table(
             data=[
-                commonbeams.major.to(u.arcsec),
-                commonbeams.minor.to(u.arcsec),
-                commonbeams.pa.to(u.deg),
+                np.nan_to_num(commonbeams.major.to(u.arcsec)),
+                np.nan_to_num(commonbeams.minor.to(u.arcsec)),
+                np.nan_to_num(commonbeams.pa.to(u.deg)),
                 chans,
                 pols,
             ],
@@ -801,7 +801,7 @@ def readlogs(commonbeam_log: str) -> Tuple[Beams, Beams, np.ndarray]:
 
     Returns:
         Tuple[Beams, Beams, np.ndarray]: Common beams, convolving beams, and scaling factors
-    """    
+    """
     log.info(f"Reading from {commonbeam_log}")
     try:
         commonbeam_tab = Table.read(commonbeam_log, format="ascii.commented_header")
@@ -1146,7 +1146,7 @@ def cli():
         dest="mode",
         type=str,
         default="natural",
-        help="""Common resolution mode [natural]. 
+        help="""Common resolution mode [natural].
         natural -- allow frequency variation.
         total -- smooth all plans to a common resolution.
         """,
@@ -1250,7 +1250,7 @@ def cli():
         type=str,
         default=None,
         choices=["first", "last", "mid"],
-        help="""Reference psf for header [None]. 
+        help="""Reference psf for header [None].
             first  -- use psf for first frequency channel.
             last -- use psf for the last frequency channel.
             mid -- use psf for the centre frequency channel.
