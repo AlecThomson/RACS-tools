@@ -677,8 +677,13 @@ def masking(nchans:int, datadict: dict, cutoff: u.Quantity=None) -> dict:
 
     # Check for pipeline masking
     nullbeam = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
+    tiny = np.finfo(np.float32).tiny # Smallest positive number - used to mask
+    smallbeam = Beam(major=tiny * u.deg, minor=tiny * u.deg, pa=tiny * u.deg)
     for key in datadict.keys():
-        nullmask = datadict[key]["beams"] == nullbeam
+        nullmask = np.logical_or(
+            datadict[key]["beams"] == nullbeam,
+            datadict[key]["beams"] == smallbeam,
+        )
         datadict[key]["mask"] += nullmask
     return datadict
 
@@ -753,17 +758,22 @@ def initfiles(filename: str, commonbeams: Beams, outdir:str, mode:str, suffix=No
         header[
             "COMMENT"
         ] = "Full beam information is stored in the second FITS extension."
+        tiny = np.finfo(np.float32).tiny
         beam_table = Table(
             data=[
-                np.nan_to_num(commonbeams.major.to(u.arcsec)),
-                np.nan_to_num(commonbeams.minor.to(u.arcsec)),
-                np.nan_to_num(commonbeams.pa.to(u.deg)),
+                # Replace NaNs with np.finfo(np.float32).tiny - this is the smallest
+                # positive number that can be represented in float32
+                # We use this to keep CASA happy
+                np.nan_to_num(commonbeams.major.to(u.arcsec), nan=tiny),
+                np.nan_to_num(commonbeams.minor.to(u.arcsec), nan=tiny),
+                np.nan_to_num(commonbeams.pa.to(u.deg), nan=tiny),
                 chans,
                 pols,
             ],
             names=["BMAJ", "BMIN", "BPA", "CHAN", "POL"],
             dtype=["f4", "f4", "f4", "i4", "i4"],
         )
+        header["COMMENT"] = f"The value '{tiny}' repsenents a NaN PSF in the beamtable."
         primary_hdu = fits.PrimaryHDU(data=data, header=header)
         tab_hdu = fits.table_to_hdu(beam_table)
         tab_header = tab_hdu.header
