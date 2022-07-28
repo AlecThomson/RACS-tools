@@ -764,9 +764,9 @@ def initfiles(filename: str, commonbeams: Beams, outdir:str, mode:str, suffix=No
                 # Replace NaNs with np.finfo(np.float32).tiny - this is the smallest
                 # positive number that can be represented in float32
                 # We use this to keep CASA happy
-                np.nan_to_num(commonbeams.major.to(u.arcsec), nan=tiny),
-                np.nan_to_num(commonbeams.minor.to(u.arcsec), nan=tiny),
-                np.nan_to_num(commonbeams.pa.to(u.deg), nan=tiny),
+                np.nan_to_num(commonbeams.major.to(u.arcsec), nan=tiny*u.arcsec),
+                np.nan_to_num(commonbeams.minor.to(u.arcsec), nan=tiny*u.arcsec),
+                np.nan_to_num(commonbeams.pa.to(u.deg), nan=tiny*u.deg),
                 chans,
                 pols,
             ],
