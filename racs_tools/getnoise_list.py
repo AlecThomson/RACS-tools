@@ -26,7 +26,7 @@ def myfit(x, y, fn):
     # Find the width of a Gaussian distribution by computing the second moment of
     # the data (y) on a given axis (x)
 
-    w = np.sqrt(abs(sum(x ** 2 * y) / sum(y)))
+    w = np.sqrt(abs(sum(x**2 * y) / sum(y)))
 
     # Or something like this. Probably a Gauss plus a power-law with a lower cutoff is necessary
     # func = lambda x, a, b: np.exp(0.5*x**2/a**2) + x**(-1.*b)
@@ -42,7 +42,7 @@ def myfit(x, y, fn):
         plt.ioff()
         plt.semilogy(x, y, "+", label="Data")
         # plt.semilogy(x, np.exp(-0.5*x**2/a**2) + x**(-1.*b), label="Noise fit")
-        plt.semilogy(x, np.exp(-0.5 * x ** 2 / w ** 2), label="Noise fit")
+        plt.semilogy(x, np.exp(-0.5 * x**2 / w**2), label="Noise fit")
         plt.title("Normalized pixel distribution")
         plt.ylabel("Rel. Num. of Pixels")
         plt.xlabel("Pixel brightness (Jy/beam)")
@@ -54,8 +54,7 @@ def myfit(x, y, fn):
 
 
 def calcnoise(args):
-    """Get noise in plane from cube.
-    """
+    """Get noise in plane from cube."""
     i, file, totalbad, update = args
     if update:
         print(f"Checking channel {i}")
@@ -103,18 +102,17 @@ def getcube(filename):
 def getbadchans(
     pool, qcube, ucube, ufile, qfile, totalbad=None, cliplev=5, update=False
 ):
-    """Find deviated channels
-    """
+    """Find deviated channels"""
     assert len(ucube.spectral_axis) == len(qcube.spectral_axis)
     inputs = [[i, qfile, totalbad, update] for i in range(len(qcube.spectral_axis))]
-    if pool.__class__.__name__=="MPIPool" or pool.__class__.__name__=="SerialPool":
+    if pool.__class__.__name__ == "MPIPool" or pool.__class__.__name__ == "SerialPool":
         print(f"Checking Q...")
         tic = time.perf_counter()
         qnoisevals = list(pool.map(calcnoise, inputs))
         toc = time.perf_counter()
         print(f"Time taken was {toc - tic}s")
 
-    elif pool.__class__.__name__=="MultiPool":
+    elif pool.__class__.__name__ == "MultiPool":
         qnoisevals = list(
             tqdm(
                 pool.imap_unordered(calcnoise, inputs),
@@ -125,14 +123,14 @@ def getbadchans(
     qnoisevals = np.array(qnoisevals)
 
     inputs = [[i, ufile, totalbad, update] for i in range(len(ucube.spectral_axis))]
-    if pool.__class__.__name__=="MPIPool" or pool.__class__.__name__=="SerialPool":
+    if pool.__class__.__name__ == "MPIPool" or pool.__class__.__name__ == "SerialPool":
         print(f"Checking U...")
         tic = time.perf_counter()
         unoisevals = list(pool.map(calcnoise, inputs))
         toc = time.perf_counter()
         print(f"Time taken was {toc - tic}s")
 
-    elif pool.__class__.__name__=="MultiPool":
+    elif pool.__class__.__name__ == "MultiPool":
         unoisevals = list(
             tqdm(
                 pool.imap_unordered(calcnoise, inputs),
@@ -176,8 +174,7 @@ def getbadchans(
 
 
 def blankchans(qcube, ucube, totalbad, blank=False):
-    """Mask out bad chans
-    """
+    """Mask out bad chans"""
     chans = np.array([i for i, chan in enumerate(qcube.spectral_axis)])
     badchans = chans[totalbad]
     badfreqs = qcube.spectral_axis[totalbad]
@@ -194,8 +191,7 @@ def blankchans(qcube, ucube, totalbad, blank=False):
 
 
 def writefits(qcube, ucube, clargs):
-    """Write output to disk
-    """
+    """Write output to disk"""
     outfile = clargs.qfitslist.replace(".fits", ".blanked.fits")
     print(f"Writing to {outfile}")
     qcube.write(outfile, format="fits", overwrite=True)

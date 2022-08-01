@@ -272,10 +272,7 @@ def worker(
     cube = SpectralCube.read(filename)
     plane = cube.unmasked_data[idx].value.astype(np.float32)
     log.debug(f"Size of plane is {(plane.nbytes*u.byte).to(u.MB)}")
-    newim = smooth(
-        image=plane,
-        **kwargs
-    )
+    newim = smooth(image=plane, **kwargs)
     return newim
 
 
@@ -399,14 +396,18 @@ def commonbeamer(
             else:
                 try:
                     commonbeam = beams[~np.isnan(beams)].common_beam(
-                        tolerance=tolerance, nsamps=nsamps, epsilon=epsilon,
+                        tolerance=tolerance,
+                        nsamps=nsamps,
+                        epsilon=epsilon,
                     )
                 except BeamError:
                     log.warn("Couldn't find common beam with defaults")
                     log.warn("Trying again with smaller tolerance")
 
                     commonbeam = beams[~np.isnan(beams)].common_beam(
-                        tolerance=tolerance * 0.1, nsamps=nsamps, epsilon=epsilon,
+                        tolerance=tolerance * 0.1,
+                        nsamps=nsamps,
+                        epsilon=epsilon,
                     )
                 # Round up values
                 commonbeam = Beam(
@@ -558,7 +559,9 @@ def commonbeamer(
     if circularise:
         log.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
         commonbeams = Beams(
-            major=commonbeams.major, minor=commonbeams.major, pa=commonbeams.pa * 0,
+            major=commonbeams.major,
+            minor=commonbeams.major,
+            pa=commonbeams.pa * 0,
         )
 
     log.info("Final beams are:")
@@ -590,7 +593,11 @@ def commonbeamer(
                     pa=round_up(old_beam.pa.to(u.deg), decimals=2),
                 )
                 if commonbeam == old_beam_check:
-                    convbeam = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg,)
+                    convbeam = Beam(
+                        major=0 * u.deg,
+                        minor=0 * u.deg,
+                        pa=0 * u.deg,
+                    )
                     log.warn(
                         f"New beam {commonbeam!r} and old beam {old_beam_check!r} are the same. Won't attempt convolution."
                     )
@@ -655,7 +662,7 @@ def commonbeamer(
     return datadict
 
 
-def masking(nchans:int, datadict: dict, cutoff: u.Quantity=None) -> dict:
+def masking(nchans: int, datadict: dict, cutoff: u.Quantity = None) -> dict:
     """Apply masking to data.
 
     Args:
@@ -677,7 +684,7 @@ def masking(nchans:int, datadict: dict, cutoff: u.Quantity=None) -> dict:
 
     # Check for pipeline masking
     nullbeam = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
-    tiny = np.finfo(np.float32).tiny # Smallest positive number - used to mask
+    tiny = np.finfo(np.float32).tiny  # Smallest positive number - used to mask
     smallbeam = Beam(major=tiny * u.deg, minor=tiny * u.deg, pa=tiny * u.deg)
     for key in datadict.keys():
         nullmask = np.logical_or(
@@ -688,7 +695,15 @@ def masking(nchans:int, datadict: dict, cutoff: u.Quantity=None) -> dict:
     return datadict
 
 
-def initfiles(filename: str, commonbeams: Beams, outdir:str, mode:str, suffix=None, prefix=None, ref_chan=None):
+def initfiles(
+    filename: str,
+    commonbeams: Beams,
+    outdir: str,
+    mode: str,
+    suffix=None,
+    prefix=None,
+    ref_chan=None,
+):
     """Initialise output files
 
     Args:
@@ -764,9 +779,9 @@ def initfiles(filename: str, commonbeams: Beams, outdir:str, mode:str, suffix=No
                 # Replace NaNs with np.finfo(np.float32).tiny - this is the smallest
                 # positive number that can be represented in float32
                 # We use this to keep CASA happy
-                np.nan_to_num(commonbeams.major.to(u.arcsec), nan=tiny*u.arcsec),
-                np.nan_to_num(commonbeams.minor.to(u.arcsec), nan=tiny*u.arcsec),
-                np.nan_to_num(commonbeams.pa.to(u.deg), nan=tiny*u.deg),
+                np.nan_to_num(commonbeams.major.to(u.arcsec), nan=tiny * u.arcsec),
+                np.nan_to_num(commonbeams.minor.to(u.arcsec), nan=tiny * u.arcsec),
+                np.nan_to_num(commonbeams.pa.to(u.deg), nan=tiny * u.deg),
                 chans,
                 pols,
             ],
@@ -793,7 +808,7 @@ def initfiles(filename: str, commonbeams: Beams, outdir:str, mode:str, suffix=No
     if prefix is not None:
         outname = prefix + outname
 
-    outfile = os.path.join(outdir,outname)
+    outfile = os.path.join(outdir, outname)
     log.info(f"Initialising to {outfile}")
     new_hdulist.writeto(outfile, overwrite=True)
 
@@ -965,7 +980,9 @@ def main(args):
         else:
             log.info("Reading from convolve beamlog files")
             for key in datadict.keys():
-                commonbeam_log = datadict[key]["beamlog"].replace(".txt", f".{suffix}.txt")
+                commonbeam_log = datadict[key]["beamlog"].replace(
+                    ".txt", f".{suffix}.txt"
+                )
                 commonbeams, convbeams, facs = readlogs(commonbeam_log)
                 # Save to datadict
                 datadict[key]["facs"] = facs
@@ -1093,7 +1110,7 @@ def main(args):
                 final_beam=cubedict["commonbeams"][chan],
                 conbeam=cubedict["convbeams"][chan],
                 sfactor=cubedict["facs"][chan],
-                conv_mode=conv_mode
+                conv_mode=conv_mode,
             )
 
             with fits.open(outfile, mode="update", memmap=True) as outfh:
@@ -1107,8 +1124,7 @@ def main(args):
 
 
 def cli():
-    """Command-line interface
-    """
+    """Command-line interface"""
     import argparse
 
     # Help string to be shown using the -h option
@@ -1181,7 +1197,10 @@ def cli():
     )
 
     parser.add_argument(
-        "--logfile", default=None, type=str, help="Save logging output to file",
+        "--logfile",
+        default=None,
+        type=str,
+        help="Save logging output to file",
     )
 
     parser.add_argument(

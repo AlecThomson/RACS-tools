@@ -48,13 +48,13 @@ def gaussianDeconvolve(smaj, smin, spa, bmaj, bmin, bpa):
         - (bmin * cos(bpa)) ** 2
     )
     gamma = 2 * (
-        (smin ** 2 - smaj ** 2) * sin(spa) * cos(spa)
-        - (bmin ** 2 - bmaj ** 2) * sin(bpa) * cos(bpa)
+        (smin**2 - smaj**2) * sin(spa) * cos(spa)
+        - (bmin**2 - bmaj**2) * sin(bpa) * cos(bpa)
     )
     #    print smaj,smin
     #    print alpha,beta,gamma
     s = alpha + beta
-    t = sqrt((alpha - beta) ** 2 + gamma ** 2)
+    t = sqrt((alpha - beta) ** 2 + gamma**2)
     #    print s,t
     dmaj = sqrt(0.5 * (s + t))
     if s > t:
@@ -144,11 +144,11 @@ def gauss_factor(
         + (bmin2 * cospa2) ** 2
     )
     gamma = 2 * (
-        (bmin1 ** 2 - bmaj1 ** 2) * sinpa1 * cospa1
-        + (bmin2 ** 2 - bmaj2 ** 2) * sinpa2 * cospa2
+        (bmin1**2 - bmaj1**2) * sinpa1 * cospa1
+        + (bmin2**2 - bmaj2**2) * sinpa2 * cospa2
     )
     s = alpha + beta
-    t = math.sqrt((alpha - beta) ** 2 + gamma ** 2)
+    t = math.sqrt((alpha - beta) ** 2 + gamma**2)
     bmaj = math.sqrt(0.5 * (s + t))
     bmin = math.sqrt(0.5 * (s - t))
     if (abs(gamma) + abs(alpha - beta)) == 0:
@@ -165,6 +165,6 @@ def gauss_factor(
         * bmin2
         / math.sqrt(alpha * beta - 0.25 * gamma * gamma)
     )
-    fac = ((math.sqrt(dx1 ** 2) * math.sqrt(dy1 ** 2))) / amp
+    fac = ((math.sqrt(dx1**2) * math.sqrt(dy1**2))) / amp
 
     return fac, amp, bmaj, bmin, np.degrees(bpa)
