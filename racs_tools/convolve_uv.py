@@ -12,11 +12,12 @@ import scipy.signal
 import racs_tools.gaussft as gaussft
 import logging as log
 
+
 def convolve(
     image: np.ndarray, old_beam: Beam, new_beam: Beam, dx: u.Quantity, dy: u.Quantity
 ) -> Tuple[np.ndarray, float]:
     """Convolve by X-ing in the Fourier domain.
-        - convolution with Gaussian kernels only 
+        - convolution with Gaussian kernels only
         - no need for generation of a kernel image
         - direct computation of the FT of the kernel
         - dimension of FT = dimension of image
@@ -112,17 +113,28 @@ def smooth(
     fac = sfactor
     if conv_mode == "robust":
         newim, fac = convolve(
-            image.astype("f8"), old_beam, final_beam, dx, dy,
+            image.astype("f8"),
+            old_beam,
+            final_beam,
+            dx,
+            dy,
         )
         # keep the new sfactor computed by this method
         sfactor = fac
     if conv_mode == "scipy":
         newim = scipy.signal.convolve(image.astype("f8"), conbm1, mode="same")
     elif conv_mode == "astropy":
-        newim = convolution.convolve(image.astype("f8"), conbm1, normalize_kernel=False,)
+        newim = convolution.convolve(
+            image.astype("f8"),
+            conbm1,
+            normalize_kernel=False,
+        )
     elif conv_mode == "astropy_fft":
         newim = convolution.convolve_fft(
-            image.astype("f8"), conbm1, normalize_kernel=False, allow_huge=True,
+            image.astype("f8"),
+            conbm1,
+            normalize_kernel=False,
+            allow_huge=True,
         )
     log.debug(f"Using scaling factor {fac}")
     if np.any(np.isnan(newim)):

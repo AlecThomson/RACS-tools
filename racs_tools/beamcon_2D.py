@@ -27,7 +27,7 @@ import logging as log
 
 
 def round_up(n: float, decimals: int = 0) -> float:
-    """Round to number of decimals 
+    """Round to number of decimals
 
     Args:
         n (float): Number to round.
@@ -36,7 +36,7 @@ def round_up(n: float, decimals: int = 0) -> float:
     Returns:
         float: Rounded number.
     """
-    multiplier = 10 ** decimals
+    multiplier = 10**decimals
     return np.ceil(n * multiplier) / multiplier
 
 
@@ -81,7 +81,11 @@ def getbeam(
         return np.nan, np.nan
 
     if new_beam == old_beam:
-        conbm = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg,)
+        conbm = Beam(
+            major=0 * u.deg,
+            minor=0 * u.deg,
+            pa=0 * u.deg,
+        )
         fac = 1.0
         log.warning(
             f"New beam {new_beam!r} and old beam {old_beam!r} are the same. Won't attempt convolution."
@@ -151,7 +155,6 @@ def getimdata(cubenm: str) -> dict:
     return datadict
 
 
-
 def savefile(
     newimage: np.ndarray,
     filename: str,
@@ -176,14 +179,14 @@ def savefile(
 
 
 def worker(
-    file:str, 
-    outdir:str, 
-    new_beam:Beam, 
-    conv_mode:str, 
-    suffix:str="", 
-    prefix:str="", 
-    cutoff:float=None,
-    dryrun:bool=False,
+    file: str,
+    outdir: str,
+    new_beam: Beam,
+    conv_mode: str,
+    suffix: str = "",
+    prefix: str = "",
+    cutoff: float = None,
+    dryrun: bool = False,
 ) -> dict:
     """Parallel worker function
 
@@ -215,7 +218,7 @@ def worker(
     datadict = getimdata(file)
 
     conbeam, sfactor = getbeam(
-        old_beam=datadict["old_beam"], 
+        old_beam=datadict["old_beam"],
         new_beam=new_beam,
         dx=datadict["dx"],
         dy=datadict["dy"],
@@ -244,7 +247,9 @@ def worker(
             # make it back into a 4D image
             newim = np.expand_dims(np.expand_dims(newim, axis=0), axis=0)
         datadict.update(
-            {"newimage": newim,}
+            {
+                "newimage": newim,
+            }
         )
         savefile(
             newimage=datadict["newimage"],
@@ -434,7 +439,7 @@ def main(pool, args):
         Exception: If invalid convolution mode is specified.
         Exception: If partial target beam is specified.
         Exception: If target beam cannot be used.
-    """    
+    """
     if args.dryrun:
         log.info("Doing a dry run -- no files will be saved")
     # Fix up outdir
@@ -524,7 +529,11 @@ def main(pool, args):
 
     if args.circularise:
         log.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
-        new_beam = Beam(major=new_beam.major, minor=new_beam.major, pa=0 * u.deg,)
+        new_beam = Beam(
+            major=new_beam.major,
+            minor=new_beam.major,
+            pa=0 * u.deg,
+        )
 
     log.info(f"Final beam is {new_beam!r}")
 
@@ -539,8 +548,8 @@ def main(pool, args):
                 prefix=args.prefix,
                 cutoff=args.cutoff,
                 dryrun=args.dryrun,
-            ), 
-            files
+            ),
+            files,
         )
     )
 
@@ -551,8 +560,7 @@ def main(pool, args):
 
 
 def cli():
-    """Command-line interface
-    """
+    """Command-line interface"""
     import argparse
 
     # Help string to be shown using the -h option
@@ -667,7 +675,10 @@ def cli():
     )
 
     parser.add_argument(
-        "--logfile", default=None, type=str, help="Save logging output to file",
+        "--logfile",
+        default=None,
+        type=str,
+        help="Save logging output to file",
     )
 
     parser.add_argument(
