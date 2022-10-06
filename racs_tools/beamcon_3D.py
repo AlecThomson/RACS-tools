@@ -1129,7 +1129,7 @@ def main(
             log.info(f"{outfile}  - channel {chan} - Done")
 
     log.info("Done!")
-
+    return datadict
 
 def cli():
     """Command-line interface"""
@@ -1339,7 +1339,7 @@ def cli():
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
-    main(**args)
+    _ = main(**args)
 
 
 if __name__ == "__main__":

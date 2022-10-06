@@ -583,6 +583,7 @@ def main(
         writelog(output, log)
 
     logger.info("Done!")
+    return new_beam
 
 
 def cli():
@@ -793,7 +794,7 @@ def cli():
             pool.wait()
             sys.exit(0)
 
-    main(pool, **args)
+    _ = main(pool, **args)
     pool.close()
 
 
