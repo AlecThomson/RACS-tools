@@ -227,7 +227,10 @@ def worker(
 
     datadict.update({"conbeam": conbeam, "final_beam": new_beam, "sfactor": sfactor})
     if not dryrun:
-        if (
+        if np.isnan(sfactor) or np.isnan(conbeam):
+            logger.warning(f"Setting {outfile} to NaN")
+            newim = datadict["image"] * np.nan
+        elif (
             conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
             and sfactor == 1
         ):
