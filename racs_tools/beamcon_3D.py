@@ -850,7 +850,25 @@ def readlogs(commonbeam_log: str) -> Tuple[Beams, Beams, np.ndarray]:
     return commonbeams, convbeams, facs
 
 
-def main(args):
+def main(
+    infile: list,
+    uselogs: bool = False,
+    mode: str = "natural",
+    conv_mode: str = "robust",
+    dryrun: bool = False,
+    prefix: str = None,
+    suffix: str = None,
+    outdir: str = None,
+    bmaj: float = None,
+    bmin: float = None,
+    bpa: float = None,
+    cutoff: float = None,
+    circularise: bool = False,
+    ref_chan: int = None,
+    tolerance: float = 0.0001,
+    epsilon: float = 0.0005,
+    nsamps: int = 200,
+):
     """main script
 
     Args:
@@ -861,11 +879,10 @@ def main(args):
     if myPE == 0:
         log.info(f"Total number of MPI ranks = {nPE}")
         # Parse args
-        if args.dryrun:
+        if dryrun:
             log.info("Doing a dry run -- no files will be saved")
 
         # Check mode
-        mode = args.mode
         log.info(f"Mode is {mode}")
         if mode == "natural" and mode == "total":
             raise Exception("'mode' must be 'natural' or 'total'")
@@ -875,13 +892,11 @@ def main(args):
             log.info("Smoothing all channels to a common resolution")
 
         # Check cutoff
-        cutoff = args.cutoff
-        if args.cutoff is not None:
-            cutoff = args.cutoff * u.arcsec
+        if cutoff is not None:
+            cutoff *= u.arcsec
             log.info(f"Cutoff is: {cutoff}")
 
         # Check target
-        conv_mode = args.conv_mode
         log.debug(conv_mode)
         if (
             not conv_mode == "robust"
@@ -899,10 +914,6 @@ def main(args):
         else:
             log.info("This is slower, but robust to NaNs, but not to small PSF changes")
 
-        bmaj = args.bmaj
-        bmin = args.bmin
-        bpa = args.bpa
-
         nonetest = [test is None for test in [bmaj, bmin, bpa]]
 
         if not all(nonetest) and mode != "total":
@@ -918,11 +929,10 @@ def main(args):
             target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
             log.info(f"Target beam is {target_beam!r}")
 
-        files = sorted(args.infile)
+        files = sorted(infile)
         if files == []:
             raise Exception("No files found!")
 
-        outdir = args.outdir
         if outdir is not None:
             if outdir[-1] == "/":
                 outdir = outdir[:-1]
@@ -948,7 +958,6 @@ def main(args):
             nchans = nchans[0]
 
         # Check suffix
-        suffix = args.suffix
         if suffix is None:
             suffix = mode
 
@@ -964,7 +973,7 @@ def main(args):
         # Apply some masking
         datadict = masking(nchans=nchans, datadict=datadict, cutoff=cutoff)
 
-        if not args.uselogs:
+        if not uselogs:
             datadict = commonbeamer(
                 datadict=datadict,
                 nchans=nchans,
@@ -972,10 +981,10 @@ def main(args):
                 target_beam=target_beam,
                 mode=mode,
                 suffix=suffix,
-                circularise=args.circularise,
-                tolerance=args.tolerance,
-                nsamps=args.nsamps,
-                epsilon=args.epsilon,
+                circularise=circularise,
+                tolerance=tolerance,
+                nsamps=nsamps,
+                epsilon=epsilon,
             )
         else:
             log.info("Reading from convolve beamlog files")
@@ -990,7 +999,7 @@ def main(args):
                 datadict[key]["commonbeams"] = commonbeams
                 datadict[key]["commonbeamlog"] = commonbeam_log
     else:
-        if not args.dryrun:
+        if not dryrun:
             files = None
             datadict = None
             nchans = None
@@ -999,7 +1008,7 @@ def main(args):
         comm.Barrier()
 
     # Init the files in parallel
-    if not args.dryrun:
+    if not dryrun:
         if myPE == 0:
             log.info("Initialising output files")
         if mpiSwitch:
@@ -1007,7 +1016,6 @@ def main(args):
             datadict = comm.bcast(datadict, root=0)
             nchans = comm.bcast(nchans, root=0)
 
-        conv_mode = args.conv_mode
         inputs = list(datadict.keys())
         dims = len(inputs)
 
@@ -1039,10 +1047,10 @@ def main(args):
                 filename=datadict[inp]["filename"],
                 commonbeams=datadict[inp]["commonbeams"],
                 outdir=datadict[inp]["outdir"],
-                mode=args.mode,
+                mode=mode,
                 suffix=suffix,
-                prefix=args.prefix,
-                ref_chan=args.ref_chan,
+                prefix=prefix,
+                ref_chan=ref_chan,
             )
             outfile_dict.update({inp: outfile})
 
@@ -1331,7 +1339,7 @@ def cli():
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
-    main(args)
+    main(**args)
 
 
 if __name__ == "__main__":
