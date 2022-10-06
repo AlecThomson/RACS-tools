@@ -19,7 +19,7 @@ from racs_tools.convolve_uv import smooth
 import schwimmbad
 import psutil
 from tqdm import tqdm
-import logging as log
+import logging as logger
 
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
@@ -75,7 +75,7 @@ def getbeam(
     Returns:
         Tuple[Beam, float]: Convolving beam and scaling factor.
     """
-    log.info(f"Current beam is {old_beam!r}")
+    logger.info(f"Current beam is {old_beam!r}")
 
     if cutoff is not None and old_beam.major.to(u.arcsec) > cutoff * u.arcsec:
         return np.nan, np.nan
@@ -87,14 +87,14 @@ def getbeam(
             pa=0 * u.deg,
         )
         fac = 1.0
-        log.warning(
+        logger.warning(
             f"New beam {new_beam!r} and old beam {old_beam!r} are the same. Won't attempt convolution."
         )
         return conbm, fac
     try:
         conbm = new_beam.deconvolve(old_beam)
     except Exception as err:
-        log.warning(f"Could not deconvolve. New: {new_beam!r}, Old: {old_beam!r}")
+        logger.warning(f"Could not deconvolve. New: {new_beam!r}, Old: {old_beam!r}")
         raise err
     fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
         beamConv=[
@@ -123,7 +123,7 @@ def getimdata(cubenm: str) -> dict:
     Returns:
         dict: Data and metadata.
     """
-    log.info(f"Getting image data from {cubenm}")
+    logger.info(f"Getting image data from {cubenm}")
     with fits.open(cubenm, memmap=True, mode="denywrite") as hdu:
 
         w = astropy.wcs.WCS(hdu[0])
@@ -172,7 +172,7 @@ def savefile(
         outdir (str, optional): Output directory. Defaults to ".".
     """
     outfile = f"{outdir}/{filename}"
-    log.info(f"Saving to {outfile}")
+    logger.info(f"Saving to {outfile}")
     beam = final_beam
     header = beam.attach_to_header(header)
     fits.writeto(outfile, newimage.astype(np.float32), header=header, overwrite=True)
@@ -203,7 +203,7 @@ def worker(
     Returns:
         dict: Output data.
     """
-    log.info(f"Working on {file}")
+    logger.info(f"Working on {file}")
 
     if outdir is None:
         outdir = os.path.dirname(file)
@@ -309,7 +309,7 @@ def getmaxbeam(
             tolerance=tolerance, epsilon=epsilon, nsamps=nsamps
         )
     except BeamError:
-        log.warning(
+        logger.warning(
             "Couldn't find common beam with defaults\nTrying again with smaller tolerance"
         )
         cmn_beam = beams[~flags].common_beam(
@@ -352,14 +352,14 @@ def getmaxbeam(
                 * u.arcsec,
                 pa=round_up(nyq_beam.pa.to(u.deg), decimals=2),
             )
-            log.info(f"Smallest common Nyquist sampled beam is: {nyq_beam!r}")
+            logger.info(f"Smallest common Nyquist sampled beam is: {nyq_beam!r}")
             if target_beam is not None:
                 if target_beam < nyq_beam:
-                    log.warning("TARGET BEAM WILL BE UNDERSAMPLED!")
+                    logger.warning("TARGET BEAM WILL BE UNDERSAMPLED!")
                     raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
             else:
-                log.warning("COMMON BEAM WILL BE UNDERSAMPLED!")
-                log.warning("SETTING COMMON BEAM TO NYQUIST BEAM")
+                logger.warning("COMMON BEAM WILL BE UNDERSAMPLED!")
+                logger.warning("SETTING COMMON BEAM TO NYQUIST BEAM")
                 cmn_beam = nyq_beam
 
     return cmn_beam, beams
@@ -424,15 +424,47 @@ def writelog(output: List[Dict], commonbeam_log: str):
     ascii.write(
         commonbeam_tab, output=commonbeam_log, format="commented_header", overwrite=True
     )
-    log.info(f"Convolving log written to {commonbeam_log}")
+    logger.info(f"Convolving log written to {commonbeam_log}")
 
 
-def main(pool, args):
+def main(
+    pool,
+    infile: list = [],
+    prefix: str = None,
+    suffix: str = None,
+    outdir: str = None,
+    conv_mode: str = "robust",
+    dryrun: bool = False,
+    bmaj: float = None,
+    bmin: float = None,
+    bpa: float = None,
+    log: str = None,
+    circularise: bool = False,
+    cutoff: float = None,
+    tolerance: float = 0.0001,
+    nsamps: int = 200,
+    epsilon: float = 0.0005,
+):
     """Main script.
 
     Args:
-        pool (method): Multiprocessing or schwimmbad Pool.
-        args (Namespace): Commandline args.
+        pool (mp.Pool): Multiprocessing pool.
+        infile (list, optional): List of images to convolve. Defaults to [].
+        prefix (str, optional): Output prefix. Defaults to None.
+        suffix (str, optional): Output suffix. Defaults to None.
+        outdir (str, optional): Output directory. Defaults to None.
+        conv_mode (str, optional): Colvolution mode. Defaults to "robust".
+        dryrun (bool, optional): Do a dryrun. Defaults to False.
+        bmaj (float, optional): Target BMAJ. Defaults to None.
+        bmin (float, optional): Target BMIN. Defaults to None.
+        bpa (float, optional): Target BPA. Defaults to None.
+        log (str, optional): Input beamlog. Defaults to None.
+        circularise (bool, optional): Make beam circular. Defaults to False.
+        cutoff (float, optional): Cutoff beams. Defaults to None.
+        tolerance (float, optional): Common tolerance. Defaults to 0.0001.
+        nsamps (int, optional): Common samples. Defaults to 200.
+        epsilon (float, optional): Common epsilon. Defaults to 0.0005.
+
 
     Raises:
         Exception: If no files are found.
@@ -440,39 +472,30 @@ def main(pool, args):
         Exception: If partial target beam is specified.
         Exception: If target beam cannot be used.
     """
-    if args.dryrun:
-        log.info("Doing a dry run -- no files will be saved")
+
+    if dryrun:
+        logger.info("Doing a dry run -- no files will be saved")
     # Fix up outdir
-    outdir = args.outdir
     if outdir is not None:
-        if outdir[-1] == "/":
-            outdir = outdir[:-1]
-    else:
-        outdir = None
+        outdir  = os.path.abspath(outdir)
 
     # Get file list
-    files = sorted(args.infile)
+    files = sorted(infile)
     if files == []:
         raise Exception("No files found!")
 
     # Parse args
-
-    conv_mode = args.conv_mode
-    log.info(f"Convolution mode: {conv_mode}")
+    logger.info(f"Convolution mode: {conv_mode}")
     if not conv_mode in ["robust", "scipy", "astropy", "astropy_fft"]:
         raise Exception("Please select valid convolution method!")
 
-    log.info(f"Using convolution method {conv_mode}")
+    logger.info(f"Using convolution method {conv_mode}")
     if conv_mode == "robust":
-        log.info("This is the most robust method. And fast!")
+        logger.info("This is the most robust method. And fast!")
     elif conv_mode == "scipy":
-        log.info("This fast, but not robust to NaNs or small PSF changes")
+        logger.info("This fast, but not robust to NaNs or small PSF changes")
     else:
-        log.info("This is slower, but robust to NaNs, but not to small PSF changes")
-
-    bmaj = args.bmaj
-    bmin = args.bmin
-    bpa = args.bpa
+        logger.info("This is slower, but robust to NaNs, but not to small PSF changes")
 
     nonetest = [test is None for test in [bmaj, bmin, bpa]]
 
@@ -484,21 +507,21 @@ def main(pool, args):
 
     elif not all(nonetest) and not any(nonetest):
         target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
-        log.info(f"Target beam is {target_beam!r}")
+        logger.info(f"Target beam is {target_beam!r}")
 
     # Find smallest common beam
     big_beam, allbeams = getmaxbeam(
         files,
         conv_mode=conv_mode,
         target_beam=target_beam,
-        cutoff=args.cutoff,
-        tolerance=args.tolerance,
-        nsamps=args.nsamps,
-        epsilon=args.epsilon,
+        cutoff=cutoff,
+        tolerance=tolerance,
+        nsamps=nsamps,
+        epsilon=epsilon,
     )
 
     if target_beam is not None:
-        log.info("Checking that target beam will deconvolve...")
+        logger.info("Checking that target beam will deconvolve...")
 
         mask_count = 0
         failed = []
@@ -507,7 +530,7 @@ def main(pool, args):
                 zip(allbeams, files),
                 total=len(allbeams),
                 desc="Deconvolving",
-                disable=(log.root.level > log.INFO),
+                disable=(logger.root.level > logger.INFO),
             )
         ):
             try:
@@ -516,8 +539,8 @@ def main(pool, args):
                 mask_count += 1
                 failed.append(file)
         if mask_count > 0:
-            log.warning("The following images could not reach target resolution:")
-            log.warning(failed)
+            logger.warning("The following images could not reach target resolution:")
+            logger.warning(failed)
 
             raise Exception("Please choose a larger target beam!")
 
@@ -527,15 +550,15 @@ def main(pool, args):
     else:
         new_beam = big_beam
 
-    if args.circularise:
-        log.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
+    if circularise:
+        logger.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
         new_beam = Beam(
             major=new_beam.major,
             minor=new_beam.major,
             pa=0 * u.deg,
         )
 
-    log.info(f"Final beam is {new_beam!r}")
+    logger.info(f"Final beam is {new_beam!r}")
 
     output = list(
         pool.map(
@@ -544,19 +567,19 @@ def main(pool, args):
                 outdir=outdir,
                 new_beam=new_beam,
                 conv_mode=conv_mode,
-                suffix=args.suffix,
-                prefix=args.prefix,
-                cutoff=args.cutoff,
-                dryrun=args.dryrun,
+                suffix=suffix,
+                prefix=prefix,
+                cutoff=cutoff,
+                dryrun=dryrun,
             ),
             files,
         )
     )
 
-    if args.log is not None:
-        writelog(output, args.log)
+    if log is not None:
+        writelog(output, log)
 
-    log.info("Done!")
+    logger.info("Done!")
 
 
 def cli():
@@ -748,16 +771,16 @@ def cli():
         except AttributeError:
             myPE = 0
     if args.verbosity == 1:
-        log.basicConfig(
+        logger.basicConfig(
             filename=args.logfile,
-            level=log.INFO,
+            level=logger.INFO,
             format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     elif args.verbosity >= 2:
-        log.basicConfig(
+        logger.basicConfig(
             filename=args.logfile,
-            level=log.DEBUG,
+            level=logger.DEBUG,
             format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
@@ -767,7 +790,7 @@ def cli():
             pool.wait()
             sys.exit(0)
 
-    main(pool, args)
+    main(pool, **args)
     pool.close()
 
 
