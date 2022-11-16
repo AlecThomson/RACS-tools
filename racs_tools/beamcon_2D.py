@@ -794,7 +794,14 @@ def cli():
             pool.wait()
             sys.exit(0)
 
-    _ = main(pool, **args)
+    arg_dict = vars(args)
+    # pop unwanted arguments
+    _ = arg_dict.pop("mpi")
+    _ = arg_dict.pop("n_cores")
+    _ = arg_dict.pop("verbosity")
+    _ = arg_dict.pop("logfile")
+
+    _ = main(pool, **arg_dict)
     pool.close()
 
 
