@@ -1339,7 +1339,13 @@ def cli():
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
-    _ = main(**args)
+    arg_dict = vars(args)
+    # Pop the verbosity argument
+    _ = arg_dict.pop("verbosity")
+    # Pop the logfile argument
+    _ = arg_dict.pop("logfile")
+
+    _ = main(**arg_dict)
 
 
 if __name__ == "__main__":
