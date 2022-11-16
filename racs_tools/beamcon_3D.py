@@ -167,7 +167,7 @@ def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
         )
         with fits.open(file) as hdul:
             hdu = hdul.pop("BEAMS")
-            beams = Table(hdu.data)
+            beams = Table.read(hdu)
 
     # Otherwise use beamlog file
     else:
