@@ -270,7 +270,16 @@ def worker(
         np.ndarray: Smoothed channel image.
     """
     cube = SpectralCube.read(filename)
-    plane = cube.unmasked_data[idx].value.astype(np.float32)
+    # Get spectral axis
+    wcs = cube.wcs
+    axis_type_dict = wcs.get_axis_types()[::-1] # Reverse order for fits
+    axis_names = [i["coordinate_type"] for i in axis_type_dict]
+    spec_idx = axis_names.index("spectral")
+    slicer = [slice(None)] * len(cube.unmasked_data.shape)
+    slicer[spec_idx] = idx
+    slicer = tuple(slicer)
+
+    plane = cube.unmasked_data[slicer].value.astype(np.float32)
     log.debug(f"Size of plane is {(plane.nbytes*u.byte).to(u.MB)}")
     newim = smooth(image=plane, **kwargs)
     return newim
@@ -1122,7 +1131,18 @@ def main(
             )
 
             with fits.open(outfile, mode="update", memmap=True) as outfh:
-                outfh[0].data[chan, 0, :, :] = newim.astype(
+                # Find which axis is the spectral and stokes
+                wcs = WCS(outfh[0])
+                axis_type_dict = wcs.get_axis_types()[::-1] # Reverse order for fits
+                axis_names = [i["coordinate_type"] for i in axis_type_dict]
+                spec_idx = axis_names.index("spectral")
+                stokes_idx = axis_names.index("stokes")
+                slicer = [slice(None)] * len(outfh[0].data.shape)
+                slicer[spec_idx] = chan
+                slicer[stokes_idx] = 0 # only do single stokes
+                slicer = tuple(slicer)
+
+                outfh[0].data[slicer] = newim.astype(
                     np.float32
                 )  # make sure data is 32-bit
                 outfh.flush()
