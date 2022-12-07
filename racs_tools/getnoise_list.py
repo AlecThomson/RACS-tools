@@ -55,19 +55,23 @@ def getbadchans(
         parallel=False,
         use_memmap=True,
         ignore_nan=True,
-    )[:,0,0]
+    )[:, 0, 0]
     unoisevals = ucube.apply_function_parallel_spatial(
         function=mad_std,
         parallel=False,
         use_memmap=True,
         ignore_nan=True,
-    )[:,0,0]
+    )[:, 0, 0]
     qmeannoise = np.nanmedian(qnoisevals)
     qstdnoise = mad_std(qnoisevals, ignore_nan=True)
-    print(f"Median Q noise=({qmeannoise.value:0.3f}±{qstdnoise.value:0.3f}) / ({qmeannoise.unit})")
+    print(
+        f"Median Q noise=({qmeannoise.value:0.3f}±{qstdnoise.value:0.3f}) / ({qmeannoise.unit})"
+    )
     umeannoise = np.nanmedian(unoisevals)
     ustdnoise = mad_std(unoisevals, ignore_nan=True)
-    print(f"Median U noise=({umeannoise.value:0.3f}±{ustdnoise.value:0.3f}) / ({umeannoise.unit})")
+    print(
+        f"Median U noise=({umeannoise.value:0.3f}±{ustdnoise.value:0.3f}) / ({umeannoise.unit})"
+    )
     qbadones = np.logical_or(
         qnoisevals > (qmeannoise + cliplev * qstdnoise), ~np.isfinite(qnoisevals)
     )
