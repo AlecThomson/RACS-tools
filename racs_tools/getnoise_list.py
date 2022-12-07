@@ -2,7 +2,6 @@
 """ Find bad channels by checking statistics of each channel image. """
 
 import argparse
-import functools
 import warnings
 from typing import List, Tuple, Union
 
@@ -13,9 +12,6 @@ from spectral_cube import SpectralCube
 from spectral_cube.utils import SpectralCubeWarning
 
 warnings.filterwarnings(action="ignore", category=SpectralCubeWarning, append=True)
-import psutil
-
-print = functools.partial(print, f"[{psutil.Process().cpu_num()}]", flush=True)
 
 
 #############################################
