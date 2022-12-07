@@ -55,13 +55,13 @@ def getbadchans(
         parallel=False,
         use_memmap=True,
         ignore_nan=True,
-    )[:, 0, 0]
+    )[:, 0, 0].unitless_filled_data[:] * qcube.unit
     unoisevals = ucube.apply_function_parallel_spatial(
         function=mad_std,
         parallel=False,
         use_memmap=True,
         ignore_nan=True,
-    )[:, 0, 0]
+    )[:, 0, 0].unitless_filled_data[:] * ucube.unit
     qmeannoise = np.nanmedian(qnoisevals)
     qstdnoise = mad_std(qnoisevals, ignore_nan=True)
     print(
