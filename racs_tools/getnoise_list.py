@@ -2,14 +2,11 @@
 
 import argparse
 import functools
-import sys
-import time
 import warnings
 from typing import List, Tuple, Union
 
 import astropy.units as u
 import numpy as np
-import schwimmbad
 from astropy.stats import mad_std
 from spectral_cube import SpectralCube
 from spectral_cube.utils import SpectralCubeWarning
