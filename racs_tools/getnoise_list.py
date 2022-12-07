@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from typing import List, Tuple, Union
 import functools
 import astropy.units as u
 import numpy as np
@@ -53,41 +54,36 @@ def myfit(x, y, fn):
     return w
 
 
-def calcnoise(args):
+def calcnoise(args: Tuple[int,str,Union[np.ndarray,None],bool]) -> u.Quantity:
     """Get noise in plane from cube."""
     i, file, totalbad, update = args
+    cube = getcube(file)
+    plane = cube.unmasked_data[i]
+    unit = plane.unit
     if update:
         print(f"Checking channel {i}")
     if totalbad is not None and totalbad[i]:
-        return -1
-    else:
-        cube = getcube(file)
-        plane = cube.unmasked_data[i]
-        imsize = plane.shape
-        assert len(imsize) == 2
-        nx = imsize[-1]
-        ny = imsize[-2]
-        Id = plane[ny // 3 : 2 * ny // 3, nx // 3 : 2 * nx // 3].flatten()
-        if len(Id[np.isnan(Id)]) == len(Id):
-            return -1.0
-        else:
-            rms = np.std(Id)
-            mval = np.mean(Id)
-            Id = Id[np.logical_and(Id < mval + 3.0 * rms, Id > mval - 3.0 * rms)]
-            # print mval,rms,len(Id)
-
-            # hrange = (-1,1)
-            # , range=hrange) # 0 = values, 1 = left bin edges
-            Ih = np.histogram(Id, bins=100)
-            if max(Ih[0]) == 0.0:
-                return -1.0
-            Ix = Ih[1][:-1] + 0.5 * (Ih[1][1] - Ih[1][0])
-            Iv = Ih[0] / float(max(Ih[0]))
-            Inoise = myfit(Ix, Iv, "")
-            return Inoise
+        return -1 * unit
+    imsize = plane.shape
+    assert len(imsize) == 2
+    nx = imsize[-1]
+    ny = imsize[-2]
+    Id = plane[ny // 3 : 2 * ny // 3, nx // 3 : 2 * nx // 3].flatten()
+    if len(Id[np.isnan(Id)]) == len(Id):
+        return -1.0 * unit
+    rms = np.std(Id)
+    mval = np.mean(Id)
+    Id = Id[np.logical_and(Id < mval + 3.0 * rms, Id > mval - 3.0 * rms)]
+    Ih = np.histogram(Id, bins=100)
+    if max(Ih[0]) == 0.0:
+        return -1.0
+    Ix = Ih[1][:-1] + 0.5 * (Ih[1][1] - Ih[1][0])
+    Iv = Ih[0] / float(max(Ih[0]))
+    Inoise = myfit(Ix, Iv, "")
+    return Inoise
 
 
-def getcube(filename):
+def getcube(filename:str) -> SpectralCube:
     """Read FITS file as SpectralCube
 
     Masks out 0Jy/beam pixels
@@ -101,44 +97,44 @@ def getcube(filename):
 
 def getbadchans(
     pool, qcube, ucube, ufile, qfile, totalbad=None, cliplev=5, update=False
-):
+) -> np.ndarray:
     """Find deviated channels"""
     assert len(ucube.spectral_axis) == len(qcube.spectral_axis)
     inputs = [[i, qfile, totalbad, update] for i in range(len(qcube.spectral_axis))]
     if pool.__class__.__name__ == "MPIPool" or pool.__class__.__name__ == "SerialPool":
         print(f"Checking Q...")
         tic = time.perf_counter()
-        qnoisevals = list(pool.map(calcnoise, inputs))
+        qnoisevals_list = list(pool.map(calcnoise, inputs))
         toc = time.perf_counter()
         print(f"Time taken was {toc - tic}s")
 
     elif pool.__class__.__name__ == "MultiPool":
-        qnoisevals = list(
+        qnoisevals_list = list(
             tqdm(
                 pool.imap_unordered(calcnoise, inputs),
                 total=len(ucube.spectral_axis),
                 desc="Checking Q",
             )
         )
-    qnoisevals = np.array(qnoisevals)
+    qnoisevals = np.array([q.value for q in qnoisevals_list]) * qnoisevals_list[0].unit
 
     inputs = [[i, ufile, totalbad, update] for i in range(len(ucube.spectral_axis))]
     if pool.__class__.__name__ == "MPIPool" or pool.__class__.__name__ == "SerialPool":
         print(f"Checking U...")
         tic = time.perf_counter()
-        unoisevals = list(pool.map(calcnoise, inputs))
+        unoisevals_list = list(pool.map(calcnoise, inputs))
         toc = time.perf_counter()
         print(f"Time taken was {toc - tic}s")
 
     elif pool.__class__.__name__ == "MultiPool":
-        unoisevals = list(
+        unoisevals_list = list(
             tqdm(
                 pool.imap_unordered(calcnoise, inputs),
                 total=len(ucube.spectral_axis),
                 desc="Checking U",
             )
         )
-    unoisevals = np.array(unoisevals)
+    unoisevals = np.array([u.valye for u in unoisevals_list]) * unoisevals_list[0].unit
     qmeannoise = np.median(qnoisevals[abs(qnoisevals) < 1.0])
     qstdnoise = np.std(qnoisevals[abs(qnoisevals) < 1.0])
     print("Q median, std:", qmeannoise, qstdnoise)
