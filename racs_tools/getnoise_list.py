@@ -7,10 +7,10 @@ import time
 import warnings
 from typing import List, Tuple, Union
 
-from astropy.stats import mad_std
 import astropy.units as u
 import numpy as np
 import schwimmbad
+from astropy.stats import mad_std
 from spectral_cube import SpectralCube
 from spectral_cube.utils import SpectralCubeWarning
 from tqdm import tqdm, trange
@@ -162,7 +162,9 @@ def main(
     qcube = getcube(qfile)
     ucube = getcube(ufile)
 
-    assert len(ucube.spectral_axis) == len(qcube.spectral_axis), "Cubes have different number of channels"
+    assert len(ucube.spectral_axis) == len(
+        qcube.spectral_axis
+    ), "Cubes have different number of channels"
 
     # Iterate
     for i in range(iterate):
@@ -174,7 +176,6 @@ def main(
             ncores=ncores,
         )
         qcube, ucube = blankchans(qcube, ucube, totalbad, blank=blank)
-
 
     if blank:
         writefits(qcube, qcube, qfile, ufile)
