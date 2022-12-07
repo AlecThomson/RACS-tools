@@ -7,6 +7,7 @@ import time
 import warnings
 from typing import List, Tuple, Union
 
+from astropy.stats import mad_std
 import astropy.units as u
 import numpy as np
 import schwimmbad
@@ -23,18 +24,6 @@ print = functools.partial(print, f"[{psutil.Process().cpu_num()}]", flush=True)
 #############################################
 ####### ADAPTED FROM SCRIPT BY G. HEALD #####
 #############################################
-
-
-def myfit(
-    x: Union[u.Quantity, np.ndarray], y: Union[u.Quantity, np.ndarray]
-) -> Union[u.Quantity, np.float_]:
-    # Find the width of a Gaussian distribution by computing the second moment of
-    # the data (y) on a given axis (x)
-    width = np.sqrt(np.abs(np.sum(x**2 * y) / np.sum(y)))
-    # Or something like this. Probably a Gauss plus a power-law with a lower cutoff is necessary
-    return width
-
-
 def calcnoise(args: Tuple[int, str, Union[np.ndarray, None], bool]) -> u.Quantity:
     """Get noise in plane from cube."""
     i, file, totalbad, update = args
@@ -44,7 +33,7 @@ def calcnoise(args: Tuple[int, str, Union[np.ndarray, None], bool]) -> u.Quantit
     if update:
         print(f"Checking channel {i}")
     if totalbad is not None and totalbad[i]:
-        return -1 * unit
+        return np.nan * unit
     imsize = plane.shape
     assert len(imsize) == 2
     nx = imsize[-1]
@@ -123,6 +112,7 @@ def getbadchans(
             )
         )
     unoisevals = np.array([u.valye for u in unoisevals_list]) * unoisevals_list[0].unit
+
     qmeannoise = np.median(qnoisevals[abs(qnoisevals) < 1.0])
     qstdnoise = np.std(qnoisevals[abs(qnoisevals) < 1.0])
     print("Q median, std:", qmeannoise, qstdnoise)
@@ -176,7 +166,7 @@ def blankchans(
     return q_msk, u_msk
 
 
-def writefits(qcube: SpectralCube, ucube: SpectralCube, clargs: argparse.Namespace):
+def writefits(qcube: SpectralCube, ucube: SpectralCube, clargs: argparse.Namespace) -> None:
     """Write output to disk"""
     outfile = clargs.qfitslist.replace(".fits", ".blanked.fits")
     print(f"Writing to {outfile}")
@@ -235,8 +225,6 @@ def main(pool, clargs):
 
 
 def cli():
-    import argparse
-
     descStr = """
     Find bad channels by checking statistics of each channel image.
 
@@ -301,15 +289,13 @@ def cli():
 
     args = ap.parse_args()
 
-    pool = schwimmbad.choose_pool(mpi=args.mpi, processes=args.n_cores)
-    if args.mpi:
-        if not pool.is_master():
-            pool.wait()
-            sys.exit(0)
+    with schwimmbad.choose_pool(mpi=args.mpi, processes=args.n_cores) as pool:
+        if args.mpi:
+            if not pool.is_master():
+                pool.wait()
+                sys.exit(0)
 
-    main(pool, args)
-
-    pool.close()
+        main(pool, args)
 
 
 if __name__ == "__main__":
