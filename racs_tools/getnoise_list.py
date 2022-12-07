@@ -10,7 +10,6 @@ import numpy as np
 from astropy.stats import mad_std
 from spectral_cube import SpectralCube
 from spectral_cube.utils import SpectralCubeWarning
-from tqdm import tqdm, trange
 
 warnings.filterwarnings(action="ignore", category=SpectralCubeWarning, append=True)
 import psutil
