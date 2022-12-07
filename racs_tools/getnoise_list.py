@@ -37,7 +37,6 @@ def getbadchans(
     qcube: SpectralCube,
     ucube: SpectralCube,
     cliplev: float = 5,
-    ncores: int = 1,
 ) -> np.ndarray:
     """Find bad channels in Stokes Q and U cubes
 
@@ -45,34 +44,30 @@ def getbadchans(
         qcube (SpectralCube): Stokes Q data
         ucube (SpectralCube): Stokes U data
         cliplev (float, optional): Number stddev above median to clip. Defaults to 5.
-        ncores (int, optional): Number of cores to use. Defaults to 1.
 
     Returns:
         np.ndarray: Bad channel boolean array
     """
     assert len(ucube.spectral_axis) == len(qcube.spectral_axis)
 
-    qnoisevals = qcube.apply_function_parallel_spectral(
+    qnoisevals = qcube.apply_function_parallel_spatial(
         function=mad_std,
-        num_cores=ncores,
-        parallel=True,
+        parallel=False,
         use_memmap=True,
-        kwargs=dict(ignore_nan=True),
-    )
-    unoisevals = ucube.apply_function_parallel_spectral(
+        ignore_nan=True,
+    )[:,0,0]
+    unoisevals = ucube.apply_function_parallel_spatial(
         function=mad_std,
-        num_cores=ncores,
-        parallel=True,
+        parallel=False,
         use_memmap=True,
-        kwargs=dict(ignore_nan=True),
-    )
+        ignore_nan=True,
+    )[:,0,0]
     qmeannoise = np.nanmedian(qnoisevals)
     qstdnoise = mad_std(qnoisevals, ignore_nan=True)
-    print(f"Q noise={qmeannoise:0.3f}±{qstdnoise:0.3f}")
+    print(f"Median Q noise=({qmeannoise.value:0.3f}±{qstdnoise.value:0.3f}) / ({qmeannoise.unit})")
     umeannoise = np.nanmedian(unoisevals)
     ustdnoise = mad_std(unoisevals, ignore_nan=True)
-    print(f"U noise={umeannoise:0.3f}±{ustdnoise:0.3f}")
-
+    print(f"Median U noise=({umeannoise.value:0.3f}±{ustdnoise.value:0.3f}) / ({umeannoise.unit})")
     qbadones = np.logical_or(
         qnoisevals > (qmeannoise + cliplev * qstdnoise), ~np.isfinite(qnoisevals)
     )
@@ -138,7 +133,6 @@ def main(
     blank: bool = False,
     cliplev: float = 5,
     iterate: int = 1,
-    ncores: int = 1,
     outfile: str = None,
 ) -> None:
     """Flag bad channels in Stokes Q and U cubes
@@ -149,7 +143,6 @@ def main(
         blank (bool, optional): Flag bad data and save to disk. Defaults to False.
         cliplev (float, optional): Number of stddev above median to flag. Defaults to 5.
         iterate (int, optional): Number of flagging iterations. Defaults to 1.
-        ncores (int, optional): Number of cores to use. Defaults to 1.
         outfile (str, optional): File to write flagged channels to. Defaults to None.
     """
     qcube = getcube(qfile)
@@ -166,7 +159,6 @@ def main(
             qcube,
             ucube,
             cliplev=cliplev,
-            ncores=ncores,
         )
         qcube, ucube = blankchans(qcube, ucube, totalbad, blank=blank)
 
@@ -223,14 +215,6 @@ def cli() -> None:
         type=str,
     )
 
-    parser.add_argument(
-        "--ncores",
-        dest="n_cores",
-        default=1,
-        type=int,
-        help="Number of processes (uses joblib).",
-    )
-
     args = parser.parse_args()
 
     main(
@@ -239,7 +223,6 @@ def cli() -> None:
         blank=args.blank,
         cliplev=args.cliplev,
         iterate=args.iterate,
-        ncores=args.n_cores,
         outfile=args.file,
     )
 
