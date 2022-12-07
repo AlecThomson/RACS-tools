@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+""" Find bad channels by checking statistics of each channel image. """
 
 import argparse
 import functools
@@ -182,10 +183,6 @@ def main(
 
 
 def cli() -> None:
-    descStr = """
-    Find bad channels by checking statistics of each channel image.
-
-    """
     warnings.filterwarnings(
         "ignore",
         message="Cube is a Stokes cube, returning spectral cube for I component",
@@ -196,7 +193,7 @@ def cli() -> None:
 
     # Parse the command line options
     parser = argparse.ArgumentParser(
-        description=descStr, formatter_class=argparse.RawTextHelpFormatter
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument("qfile", type=str, help="Stokes Q fits file")
     parser.add_argument("ufile", type=str, help="Stokes U fits file")
