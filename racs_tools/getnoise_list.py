@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import argparse
 from typing import List, Tuple, Union
 import functools
 import astropy.units as u
@@ -23,35 +24,12 @@ print = functools.partial(print, f"[{psutil.Process().cpu_num()}]", flush=True)
 #############################################
 
 
-def myfit(x, y, fn):
+def myfit(x: Union[u.Quantity, np.ndarray], y: Union[u.Quantity, np.ndarray]) -> Union[u.Quantity, np.float_]:
     # Find the width of a Gaussian distribution by computing the second moment of
     # the data (y) on a given axis (x)
-
-    w = np.sqrt(abs(sum(x**2 * y) / sum(y)))
-
+    width = np.sqrt(np.abs(np.sum(x**2 * y) / np.sum(y)))
     # Or something like this. Probably a Gauss plus a power-law with a lower cutoff is necessary
-    # func = lambda x, a, b: np.exp(0.5*x**2/a**2) + x**(-1.*b)
-
-    # [popt, pvar] = curve_fit(func, x, y)
-    # Need a newer version of scipy for this to work...
-
-    # a = popt[0]
-    # b = popt[1]
-    if fn != "":
-        import matplotlib.pyplot as plt
-
-        plt.ioff()
-        plt.semilogy(x, y, "+", label="Data")
-        # plt.semilogy(x, np.exp(-0.5*x**2/a**2) + x**(-1.*b), label="Noise fit")
-        plt.semilogy(x, np.exp(-0.5 * x**2 / w**2), label="Noise fit")
-        plt.title("Normalized pixel distribution")
-        plt.ylabel("Rel. Num. of Pixels")
-        plt.xlabel("Pixel brightness (Jy/beam)")
-        plt.legend(loc=3)
-        plt.savefig(fn)
-        # plt.show()
-        plt.close()
-    return w
+    return width
 
 
 def calcnoise(args: Tuple[int,str,Union[np.ndarray,None],bool]) -> u.Quantity:
@@ -79,7 +57,7 @@ def calcnoise(args: Tuple[int,str,Union[np.ndarray,None],bool]) -> u.Quantity:
         return -1.0
     Ix = Ih[1][:-1] + 0.5 * (Ih[1][1] - Ih[1][0])
     Iv = Ih[0] / float(max(Ih[0]))
-    Inoise = myfit(Ix, Iv, "")
+    Inoise = myfit(Ix, Iv)
     return Inoise
 
 
@@ -96,12 +74,19 @@ def getcube(filename:str) -> SpectralCube:
 
 
 def getbadchans(
-    pool, qcube, ucube, ufile, qfile, totalbad=None, cliplev=5, update=False
+    pool: Union[schwimmbad.SerialPool, schwimmbad.MultiPool, schwimmbad.MPIPool],
+    qcube: SpectralCube,
+    ucube: SpectralCube,
+    ufile: str,
+    qfile: str,
+    totalbad: Union[np.ndarray,None] = None,
+    cliplev: float=5,
+    update:bool = False
 ) -> np.ndarray:
     """Find deviated channels"""
     assert len(ucube.spectral_axis) == len(qcube.spectral_axis)
     inputs = [[i, qfile, totalbad, update] for i in range(len(qcube.spectral_axis))]
-    if pool.__class__.__name__ == "MPIPool" or pool.__class__.__name__ == "SerialPool":
+    if isinstance(pool, schwimmbad.SerialPool) or isinstance(pool, schwimmbad.MPIPool):
         print(f"Checking Q...")
         tic = time.perf_counter()
         qnoisevals_list = list(pool.map(calcnoise, inputs))
@@ -159,17 +144,22 @@ def getbadchans(
         len(ucube.spectral_axis),
         "are bad (U)",
     )
-    totalbad = np.logical_or(qbadones, ubadones)
+    new_totalbad = np.logical_or(qbadones, ubadones)
     print(
-        sum(np.asarray(totalbad, dtype=int)),
+        np.sum(np.asarray(new_totalbad, dtype=int)),
         "of",
         len(qcube.spectral_axis),
         "are bad in Q -or- U",
     )
-    return totalbad
+    return new_totalbad
 
 
-def blankchans(qcube, ucube, totalbad, blank=False):
+def blankchans(
+    qcube: SpectralCube,
+    ucube: SpectralCube,
+    totalbad:np.ndarray,
+    blank:bool=False
+) -> Tuple[SpectralCube, SpectralCube]:
     """Mask out bad chans"""
     chans = np.array([i for i, chan in enumerate(qcube.spectral_axis)])
     badchans = chans[totalbad]
@@ -186,7 +176,7 @@ def blankchans(qcube, ucube, totalbad, blank=False):
     return q_msk, u_msk
 
 
-def writefits(qcube, ucube, clargs):
+def writefits(qcube: SpectralCube, ucube: SpectralCube, clargs: argparse.Namespace):
     """Write output to disk"""
     outfile = clargs.qfitslist.replace(".fits", ".blanked.fits")
     print(f"Writing to {outfile}")
