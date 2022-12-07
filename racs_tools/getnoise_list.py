@@ -182,6 +182,7 @@ def cli() -> None:
     warnings.filterwarnings("ignore", message="Invalid value encountered in less")
     warnings.filterwarnings("ignore", message="Invalid value encountered in greater")
     warnings.filterwarnings("ignore", message="overflow encountered in square")
+    warnings.filterwarnings("ignore", message="All-NaN slice encountered")
 
     # Parse the command line options
     parser = argparse.ArgumentParser(
