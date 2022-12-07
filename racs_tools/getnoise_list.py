@@ -26,9 +26,13 @@ print = functools.partial(print, f"[{psutil.Process().cpu_num()}]", flush=True)
 #############################################
 def getcube(filename: str) -> SpectralCube:
     """Read FITS file as SpectralCube
-
     Masks out 0Jy/beam pixels
 
+    Args:
+        filename (str): Filename
+
+    Returns:
+        SpectralCube: Data cube
     """
     cube = SpectralCube.read(filename)
     mask = ~(cube == 0 * u.jansky / u.beam)
@@ -42,7 +46,17 @@ def getbadchans(
     cliplev: float = 5,
     ncores: int = 1,
 ) -> np.ndarray:
-    """Find deviated channels"""
+    """Find bad channels in Stokes Q and U cubes
+
+    Args:
+        qcube (SpectralCube): Stokes Q data
+        ucube (SpectralCube): Stokes U data
+        cliplev (float, optional): Number stddev above median to clip. Defaults to 5.
+        ncores (int, optional): Number of cores to use. Defaults to 1.
+
+    Returns:
+        np.ndarray: Bad channel boolean array
+    """
     assert len(ucube.spectral_axis) == len(qcube.spectral_axis)
 
     qnoisevals = qcube.apply_function_parallel_spectral(
@@ -82,8 +96,18 @@ def getbadchans(
 def blankchans(
     qcube: SpectralCube, ucube: SpectralCube, totalbad: np.ndarray, blank: bool = False
 ) -> Tuple[SpectralCube, SpectralCube]:
-    """Mask out bad chans"""
-    chans = np.array([i for i, chan in enumerate(qcube.spectral_axis)])
+    """Mask out bad channels
+
+    Args:
+        qcube (SpectralCube): Stokes Q data
+        ucube (SpectralCube): Stokes U data
+        totalbad (np.ndarray): Flagged bad channels
+        blank (bool, optional): Print flags to screen. Defaults to False.
+
+    Returns:
+        Tuple[SpectralCube, SpectralCube]: _description_
+    """
+    chans = np.arange(len(qcube.spectral_axis))
     badchans = chans[totalbad]
     badfreqs = qcube.spectral_axis[totalbad]
     if not blank:
@@ -99,7 +123,14 @@ def blankchans(
 
 
 def writefits(qcube: SpectralCube, ucube: SpectralCube, qfile: str, ufile: str) -> None:
-    """Write output to disk"""
+    """Write output to disk
+
+    Args:
+        qcube (SpectralCube): Stokes Q data
+        ucube (SpectralCube): Stokes U data
+        qfile (str): Original Q file
+        ufile (str): Original U file
+    """
     outfile = qfile.replace(".fits", ".blanked.fits")
     print(f"Writing to {outfile}")
     qcube.write(outfile, format="fits", overwrite=True)
@@ -122,7 +153,7 @@ def main(
     Args:
         qfile (str): Stokes Q fits file
         ufile (str): Stokes U fits file
-        blank (bool, optional): Flag bad data when saved to disk. Defaults to False.
+        blank (bool, optional): Flag bad data and save to disk. Defaults to False.
         cliplev (float, optional): Number of stddev above median to flag. Defaults to 5.
         iterate (int, optional): Number of flagging iterations. Defaults to 1.
         ncores (int, optional): Number of cores to use. Defaults to 1.
