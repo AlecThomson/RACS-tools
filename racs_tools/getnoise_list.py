@@ -1,17 +1,18 @@
 #!/usr/bin/env python
 
 import argparse
-from typing import List, Tuple, Union
 import functools
-import astropy.units as u
-import numpy as np
-from spectral_cube import SpectralCube
-from tqdm import tqdm, trange
-import schwimmbad
+import sys
 import time
 import warnings
-import sys
+from typing import List, Tuple, Union
+
+import astropy.units as u
+import numpy as np
+import schwimmbad
+from spectral_cube import SpectralCube
 from spectral_cube.utils import SpectralCubeWarning
+from tqdm import tqdm, trange
 
 warnings.filterwarnings(action="ignore", category=SpectralCubeWarning, append=True)
 import psutil
@@ -24,7 +25,9 @@ print = functools.partial(print, f"[{psutil.Process().cpu_num()}]", flush=True)
 #############################################
 
 
-def myfit(x: Union[u.Quantity, np.ndarray], y: Union[u.Quantity, np.ndarray]) -> Union[u.Quantity, np.float_]:
+def myfit(
+    x: Union[u.Quantity, np.ndarray], y: Union[u.Quantity, np.ndarray]
+) -> Union[u.Quantity, np.float_]:
     # Find the width of a Gaussian distribution by computing the second moment of
     # the data (y) on a given axis (x)
     width = np.sqrt(np.abs(np.sum(x**2 * y) / np.sum(y)))
@@ -32,7 +35,7 @@ def myfit(x: Union[u.Quantity, np.ndarray], y: Union[u.Quantity, np.ndarray]) ->
     return width
 
 
-def calcnoise(args: Tuple[int,str,Union[np.ndarray,None],bool]) -> u.Quantity:
+def calcnoise(args: Tuple[int, str, Union[np.ndarray, None], bool]) -> u.Quantity:
     """Get noise in plane from cube."""
     i, file, totalbad, update = args
     cube = getcube(file)
@@ -61,7 +64,7 @@ def calcnoise(args: Tuple[int,str,Union[np.ndarray,None],bool]) -> u.Quantity:
     return Inoise
 
 
-def getcube(filename:str) -> SpectralCube:
+def getcube(filename: str) -> SpectralCube:
     """Read FITS file as SpectralCube
 
     Masks out 0Jy/beam pixels
@@ -79,9 +82,9 @@ def getbadchans(
     ucube: SpectralCube,
     ufile: str,
     qfile: str,
-    totalbad: Union[np.ndarray,None] = None,
-    cliplev: float=5,
-    update:bool = False
+    totalbad: Union[np.ndarray, None] = None,
+    cliplev: float = 5,
+    update: bool = False,
 ) -> np.ndarray:
     """Find deviated channels"""
     assert len(ucube.spectral_axis) == len(qcube.spectral_axis)
@@ -155,10 +158,7 @@ def getbadchans(
 
 
 def blankchans(
-    qcube: SpectralCube,
-    ucube: SpectralCube,
-    totalbad:np.ndarray,
-    blank:bool=False
+    qcube: SpectralCube, ucube: SpectralCube, totalbad: np.ndarray, blank: bool = False
 ) -> Tuple[SpectralCube, SpectralCube]:
     """Mask out bad chans"""
     chans = np.array([i for i, chan in enumerate(qcube.spectral_axis)])

@@ -9,9 +9,8 @@ import os
 import sys
 from shutil import rmtree
 
-from setuptools import find_packages, Command  # setup,
 from numpy.distutils.core import Extension, setup
-
+from setuptools import Command, find_packages  # setup,
 
 # Package meta-data.
 NAME = "RACS-tools"

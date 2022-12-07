@@ -2,28 +2,30 @@
 """ Convolve ASKAP cubes to common resolution """
 __author__ = "Alec Thomson"
 
-from typing import Dict, List, Tuple
-from racs_tools.beamcon_2D import my_ceil, round_up
-from racs_tools.convolve_uv import smooth
-from spectral_cube.utils import SpectralCubeWarning
-import warnings
-from astropy.utils.exceptions import AstropyWarning
+import logging as log
 import os
 import stat
 import sys
+import warnings
+from typing import Dict, List, Tuple
+
 import numpy as np
 import scipy.signal
 from astropy import units as u
-from astropy.io import fits, ascii
+from astropy.io import ascii, fits
+from astropy.table import Table
+from astropy.utils.exceptions import AstropyWarning
 from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
-from astropy.table import Table
-from spectral_cube import SpectralCube
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
+from spectral_cube import SpectralCube
+from spectral_cube.utils import SpectralCubeWarning
 from tqdm import tqdm, trange
+
 from racs_tools import au2
-import logging as log
+from racs_tools.beamcon_2D import my_ceil, round_up
+from racs_tools.convolve_uv import smooth
 
 mpiSwitch = False
 if (
@@ -272,7 +274,7 @@ def worker(
     cube = SpectralCube.read(filename)
     # Get spectral axis
     wcs = cube.wcs
-    axis_type_dict = wcs.get_axis_types()[::-1] # Reverse order for fits
+    axis_type_dict = wcs.get_axis_types()[::-1]  # Reverse order for fits
     axis_names = [i["coordinate_type"] for i in axis_type_dict]
     spec_idx = axis_names.index("spectral")
     slicer = [slice(None)] * len(cube.unmasked_data.shape)
@@ -1133,13 +1135,13 @@ def main(
             with fits.open(outfile, mode="update", memmap=True) as outfh:
                 # Find which axis is the spectral and stokes
                 wcs = WCS(outfh[0])
-                axis_type_dict = wcs.get_axis_types()[::-1] # Reverse order for fits
+                axis_type_dict = wcs.get_axis_types()[::-1]  # Reverse order for fits
                 axis_names = [i["coordinate_type"] for i in axis_type_dict]
                 spec_idx = axis_names.index("spectral")
                 stokes_idx = axis_names.index("stokes")
                 slicer = [slice(None)] * len(outfh[0].data.shape)
                 slicer[spec_idx] = chan
-                slicer[stokes_idx] = 0 # only do single stokes
+                slicer[stokes_idx] = 0  # only do single stokes
                 slicer = tuple(slicer)
 
                 outfh[0].data[slicer] = newim.astype(
@@ -1150,6 +1152,7 @@ def main(
 
     log.info("Done!")
     return datadict
+
 
 def cli():
     """Command-line interface"""
