@@ -2,24 +2,26 @@
 """ Convolve ASKAP images to common resolution """
 __author__ = "Alec Thomson"
 
-from functools import partial
-from hashlib import new
+import logging as logger
 import os
 import sys
+from functools import partial
+from hashlib import new
 from typing import Dict, List, Tuple
-import numpy as np
-from astropy import units as u
-from astropy.io import fits, ascii
+
 import astropy.wcs
+import numpy as np
+import psutil
+import schwimmbad
+from astropy import units as u
+from astropy.io import ascii, fits
 from astropy.table import Table
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
+from tqdm import tqdm
+
 from racs_tools import au2
 from racs_tools.convolve_uv import smooth
-import schwimmbad
-import psutil
-from tqdm import tqdm
-import logging as logger
 
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
@@ -480,7 +482,7 @@ def main(
         logger.info("Doing a dry run -- no files will be saved")
     # Fix up outdir
     if outdir is not None:
-        outdir  = os.path.abspath(outdir)
+        outdir = os.path.abspath(outdir)
 
     # Get file list
     files = sorted(infile)

@@ -63,7 +63,7 @@ usage: beamcon_2D [-h] [-p PREFIX] [-s SUFFIX] [-o OUTDIR] [--conv_mode {robust,
     - By default, the smallest common beam will be automatically computed.
     - Optionally, you can specify a target beam to use.
 
-    
+
 
 positional arguments:
   infile                Input FITS image(s) to smooth (can be a wildcard) - beam info must be in header.
@@ -82,7 +82,7 @@ optional arguments:
                                 Note this mode cannot handle NaNs in the data.
                                 Can also be 'scipy', 'astropy', or 'astropy_fft'.
                                 Note these other methods cannot cope well with small convolving beams.
-                                
+
   -v, --verbosity       Increase output verbosity
   -d, --dryrun          Compute common beam and stop [False].
   --bmaj BMAJ           Target BMAJ (arcsec) to convolve to [None].
@@ -122,29 +122,29 @@ usage: beamcon_3D [-h] [--uselogs] [--mode MODE] [--conv_mode {robust,scipy,astr
     - It is currently assumed that cubes will be 4D with a dummy Stokes axis.
     - Iterating over Stokes axis is not yet supported.
 
-    
+
 
 positional arguments:
   infile                Input FITS image(s) to smooth (can be a wildcard)
                                 - CASA beamtable will be used if present i.e. if CASAMBM = T
                                 - Otherwise beam info must be in co-located beamlog files.
                                 - beamlog must have the name /path/to/beamlog{infile//.fits/.txt}
-                                
+
 
 optional arguments:
   -h, --help            show this help message and exit
   --uselogs             Get convolving information from previous run [False].
-  --mode MODE           Common resolution mode [natural]. 
+  --mode MODE           Common resolution mode [natural].
                                 natural -- allow frequency variation.
                                 total -- smooth all plans to a common resolution.
-                                
+
   --conv_mode {robust,scipy,astropy,astropy_fft}
                         Which method to use for convolution [robust].
                                 'robust' computes the analytic FT of the convolving Gaussian.
                                 Note this mode cannot handle NaNs in the data.
                                 Can also be 'scipy', 'astropy', or 'astropy_fft'.
                                 Note these other methods cannot cope well with small convolving beams.
-                                
+
   -v, --verbosity       Increase output verbosity
   --logfile LOGFILE     Save logging output to file
   -d, --dryrun          Compute common beam and stop [False].
@@ -161,18 +161,38 @@ optional arguments:
                         Cutoff BMAJ value (arcsec) -- Blank channels with BMAJ larger than this [None -- no limit]
   --circularise         Circularise the final PSF -- Sets the BMIN = BMAJ, and BPA=0.
   --ref_chan {first,last,mid}
-                        Reference psf for header [None]. 
+                        Reference psf for header [None].
                                     first  -- use psf for first frequency channel.
                                     last -- use psf for the last frequency channel.
                                     mid -- use psf for the centre frequency channel.
                                     Will use the CRPIX channel if not set.
-                                    
+
   -t TOLERANCE, --tolerance TOLERANCE
                         tolerance for radio_beam.commonbeam.
   -e EPSILON, --epsilon EPSILON
                         epsilon for radio_beam.commonbeam.
   -n NSAMPS, --nsamps NSAMPS
                         nsamps for radio_beam.commonbeam.
+```
+
+```
+$ getnoise_list -h
+usage: getnoise_list [-h] [-b] [-c CLIPLEV] [-i ITERATE] [-f FILE] qfile ufile
+
+ Find bad channels by checking statistics of each channel image.
+
+positional arguments:
+  qfile                 Stokes Q fits file
+  ufile                 Stokes U fits file
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -b, --blank           Blank bad channels? [default False - just print out bad channels]
+  -c CLIPLEV, --cliplev CLIPLEV
+                        Clip level in sigma, make this number lower to be more aggressive [default 5]
+  -i ITERATE, --iterate ITERATE
+                        Iterate flagging check N times [dafult 1 -- one pass only]
+  -f FILE, --file FILE  Filename to write bad channel indices to file [None --  do not write]
 ```
 
 If finding a common beam fails, try tweaking the `tolerance`, `epsilon`, and `nsamps` parameters. See [radio-beam](https://radio-beam.readthedocs.io/en/latest/) for more details.
