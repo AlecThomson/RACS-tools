@@ -80,14 +80,11 @@ def getbeam(
     logger.info(f"Current beam is {old_beam!r}")
 
     if cutoff is not None and old_beam.major.to(u.arcsec) > cutoff * u.arcsec:
-        return (
-            Beam(
-                major=np.nan * u.deg,
-                minor=np.nan * u.deg,
-                pa=np.nan * u.deg,
-            ),
-            np.nan,
-        )
+        return Beam(
+            major=np.nan * u.deg,
+            minor=np.nan * u.deg,
+            pa=np.nan * u.deg,
+        ), np.nan
 
     if new_beam == old_beam:
         conbm = Beam(
@@ -314,6 +311,17 @@ def getmaxbeam(
     )
     if cutoff is not None:
         flags = beams.major > cutoff * u.arcsec
+        if np.all(flags):
+            logger.critical(
+                "All beams are larger than cutoff. All outputs will be blanked!"
+            )
+            nan_beam = Beam(np.nan * u.deg, np.nan * u.deg, np.nan * u.deg)
+            nan_beams = Beams(
+                [np.nan for beam in beams_list] * u.deg,
+                [np.nan for beam in beams_list] * u.deg,
+                [np.nan for beam in beams_list] * u.deg,
+            )
+            return nan_beam, nan_beams
     else:
         flags = np.array([False for beam in beams])
     try:
