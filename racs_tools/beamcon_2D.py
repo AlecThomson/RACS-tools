@@ -80,7 +80,11 @@ def getbeam(
     logger.info(f"Current beam is {old_beam!r}")
 
     if cutoff is not None and old_beam.major.to(u.arcsec) > cutoff * u.arcsec:
-        return np.nan, np.nan
+        return Beam(
+            major=np.nan * u.deg,
+            minor=np.nan * u.deg,
+            pa=np.nan * u.deg,
+        ), np.nan
 
     if new_beam == old_beam:
         conbm = Beam(
