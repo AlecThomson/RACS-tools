@@ -40,7 +40,9 @@ def convolve(
     if nanflag:
         # Create a mask for the NaNs
         mask = np.isnan(image).astype(int)
-        log.warning(f"Image contains {mask.sum()} ({mask.sum()/ mask.size *100 :0.1f}%) NaNs")
+        log.warning(
+            f"Image contains {mask.sum()} ({mask.sum()/ mask.size *100 :0.1f}%) NaNs"
+        )
         image = np.nan_to_num(image)
 
     nx = image.shape[0]
@@ -66,7 +68,6 @@ def convolve(
     # Perform the x-ing in the FT domain
     im_f = np.fft.fft2(image)
 
-
     # Now convolve with the desired Gaussian:
     M = np.multiply(im_f, g_final)
     im_conv = np.fft.ifft2(M)
@@ -83,7 +84,9 @@ def convolve(
         # Use isclose to find the NaNs
         # Need this to get around numerical issues
         mask_conv = ~np.isclose(mask_conv, 0)
-        log.warning(f"Convolved image contains {mask_conv.sum()} ({mask_conv.sum()/ mask_conv.size *100 }%) NaNs")
+        log.warning(
+            f"Convolved image contains {mask_conv.sum()} ({mask_conv.sum()/ mask_conv.size *100 }%) NaNs"
+        )
         im_conv[mask_conv > 0] = np.nan
 
     return im_conv, g_ratio
