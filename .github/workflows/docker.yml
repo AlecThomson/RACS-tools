@@ -4,9 +4,9 @@ on:
   schedule:
     - cron: '0 10 * * *'
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "master" ]
   
 
 jobs:
