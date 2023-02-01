@@ -85,7 +85,7 @@ def convolve(
         # Need this to get around numerical issues
         mask_conv = ~np.isclose(mask_conv, 0)
         log.warning(
-            f"Convolved image contains {mask_conv.sum()} ({mask_conv.sum()/ mask_conv.size *100 }%) NaNs"
+            f"Convolved image contains {mask_conv.sum()} ({mask_conv.sum()/ mask_conv.size *100 :0.1f}%) NaNs"
         )
         im_conv[mask_conv > 0] = np.nan
 
