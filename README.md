@@ -50,9 +50,7 @@ pip install git+https://github.com/AlecThomson/RACS-tools
 
 ```
 $ beamcon_2D -h
-usage: beamcon_2D [-h] [-p PREFIX] [-s SUFFIX] [-o OUTDIR] [--conv_mode {robust,scipy,astropy,astropy_fft}] [-v] [-d] [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA]
-                  [--log LOG] [--logfile LOGFILE] [-c CUTOFF] [--circularise] [-t TOLERANCE] [-e EPSILON] [-n NSAMPS] [--ncores N_CORES | --mpi]
-                  infile [infile ...]
+usage: beamcon_2D [-h] [-p PREFIX] [-s SUFFIX] [-o OUTDIR] [--conv_mode {robust,scipy,astropy,astropy_fft}] [-v] [-d] [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA] [--log LOG] [--logfile LOGFILE] [-c CUTOFF] [--circularise] [-t TOLERANCE] [-e EPSILON] [-n NSAMPS] [--ncores N_CORES | --mpi] infile [infile ...]
 
     Smooth a field of 2D images to a common resolution.
 
@@ -79,7 +77,7 @@ optional arguments:
   --conv_mode {robust,scipy,astropy,astropy_fft}
                         Which method to use for convolution [robust].
                                 'robust' computes the analytic FT of the convolving Gaussian.
-                                Note this mode cannot handle NaNs in the data.
+                                Note this mode can now handle NaNs in the data.
                                 Can also be 'scipy', 'astropy', or 'astropy_fft'.
                                 Note these other methods cannot cope well with small convolving beams.
 
@@ -105,10 +103,7 @@ optional arguments:
 
 ```
 $ beamcon_3D -h
-usage: beamcon_3D [-h] [--uselogs] [--mode MODE] [--conv_mode {robust,scipy,astropy,astropy_fft}] [-v] [--logfile LOGFILE] [-d] [-p PREFIX] [-s SUFFIX]
-                  [-o OUTDIR] [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA] [-c CUTOFF] [--circularise] [--ref_chan {first,last,mid}] [-t TOLERANCE] [-e EPSILON]
-                  [-n NSAMPS]
-                  infile [infile ...]
+usage: beamcon_3D [-h] [--uselogs] [--mode MODE] [--conv_mode {robust,scipy,astropy,astropy_fft}] [-v] [--logfile LOGFILE] [-d] [-p PREFIX] [-s SUFFIX] [-o OUTDIR] [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA] [-c CUTOFF] [--circularise] [--ref_chan {first,last,mid}] [-t TOLERANCE] [-e EPSILON] [-n NSAMPS] infile [infile ...]
 
     Smooth a field of 3D cubes to a common resolution.
 
@@ -141,7 +136,7 @@ optional arguments:
   --conv_mode {robust,scipy,astropy,astropy_fft}
                         Which method to use for convolution [robust].
                                 'robust' computes the analytic FT of the convolving Gaussian.
-                                Note this mode cannot handle NaNs in the data.
+                                Note this mode can now handle NaNs in the data.
                                 Can also be 'scipy', 'astropy', or 'astropy_fft'.
                                 Note these other methods cannot cope well with small convolving beams.
 
