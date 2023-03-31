@@ -4,13 +4,10 @@ on:
   schedule:
     - cron: '0 10 * * *'
   push:
-#     branches:
-#      - '**'
-    tags:
-      - 'v*.*.*'
+    branches: [ "master" ]
   pull_request:
-    branches:
-      - 'main'
+    branches: [ "master" ]
+  
 
 jobs:
   docker:
