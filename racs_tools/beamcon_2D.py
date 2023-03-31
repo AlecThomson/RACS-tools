@@ -675,7 +675,7 @@ def cli():
         default="robust",
         help="""Which method to use for convolution [robust].
         'robust' computes the analytic FT of the convolving Gaussian.
-        Note this mode cannot handle NaNs in the data.
+        Note this mode can now handle NaNs in the data.
         Can also be 'scipy', 'astropy', or 'astropy_fft'.
         Note these other methods cannot cope well with small convolving beams.
         """,
