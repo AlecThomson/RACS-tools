@@ -196,6 +196,7 @@ def worker(
     prefix: str = "",
     cutoff: float = None,
     dryrun: bool = False,
+    return_datadict: bool = False
 ) -> dict:
     """Parallel worker function
 
@@ -208,6 +209,7 @@ def worker(
         prefix (str, optional): Filename prefix. Defaults to "".
         cutoff (float, optional): PSF cutoff. Defaults to None.
         dryrun (bool, optional): Do a dryrun. Defaults to False.
+        return_datadict (bool, optional): Return structure containing output data and associated header components. Defaults to False. 
 
     Returns:
         dict: Output data.
@@ -271,7 +273,8 @@ def worker(
             outdir=outdir,
         )
 
-    return datadict
+    if return_datadict:
+        return datadict
 
 
 def getmaxbeam(
@@ -598,6 +601,7 @@ def main(
                 prefix=prefix,
                 cutoff=cutoff,
                 dryrun=dryrun,
+                return_datadict=False
             ),
             files,
         )

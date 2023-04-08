@@ -1,4 +1,4 @@
-name: racs-tools
+name: tjg-racs-tools
 channels:
 - astropy
 - conda-forge
