@@ -470,6 +470,7 @@ def main(
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
+    return_datadict: bool=False
 ):
     """Main script.
 
@@ -490,7 +491,7 @@ def main(
         tolerance (float, optional): Common tolerance. Defaults to 0.0001.
         nsamps (int, optional): Common samples. Defaults to 200.
         epsilon (float, optional): Common epsilon. Defaults to 0.0005.
-
+        return_datadict (bool, optional): Return structure containing output data and associated header components. Defaults to False. 
 
     Raises:
         Exception: If no files are found.
@@ -590,6 +591,8 @@ def main(
 
     logger.info(f"Final beam is {new_beam!r}")
 
+    return_datadict = return_datadict if log is None else True
+
     output = list(
         pool.map(
             partial(
@@ -601,7 +604,7 @@ def main(
                 prefix=prefix,
                 cutoff=cutoff,
                 dryrun=dryrun,
-                return_datadict=False
+                return_datadict=return_datadict
             ),
             files,
         )
