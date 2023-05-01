@@ -171,19 +171,11 @@ def main(
             cliplev=cliplev,
         )
         qcube, ucube = blankchans(
-            qcube=qcube,
-            ucube=ucube,
-            totalbad=totalbad,
-            blank=blank
+            qcube=qcube, ucube=ucube, totalbad=totalbad, blank=blank
         )
 
     if blank:
-        writefits(
-            qcube=qcube,
-            ucube=ucube,
-            qfile=qfile,
-            ufile=ufile
-        )
+        writefits(qcube=qcube, ucube=ucube, qfile=qfile, ufile=ufile)
 
     if outfile is not None:
         print(f"Saving bad files to {outfile}")

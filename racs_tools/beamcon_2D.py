@@ -134,7 +134,6 @@ def getimdata(cubenm: str) -> dict:
     """
     logger.info(f"Getting image data from {cubenm}")
     with fits.open(cubenm, memmap=True, mode="denywrite") as hdu:
-
         w = astropy.wcs.WCS(hdu[0])
         pixelscales = astropy.wcs.utils.proj_plane_pixel_scales(w)
 

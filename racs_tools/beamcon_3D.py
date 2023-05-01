@@ -1076,7 +1076,6 @@ def main(
 
         # Now do the convolution in parallel
         if myPE == 0:
-
             # Conver list to dict and save to main dict
             outlist_dict = {}
             for d in outlist:
