@@ -926,7 +926,9 @@ def main(
         elif conv_mode == "scipy":
             logger.info("This fast, but not robust to NaNs or small PSF changes")
         else:
-            logger.info("This is slower, but robust to NaNs, but not to small PSF changes")
+            logger.info(
+                "This is slower, but robust to NaNs, but not to small PSF changes"
+            )
 
         nonetest = [test is None for test in [bmaj, bmin, bpa]]
 

@@ -17,6 +17,7 @@ warnings.filterwarnings(action="ignore", category=SpectralCubeWarning, append=Tr
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+
 #############################################
 ####### ADAPTED FROM SCRIPT BY G. HEALD #####
 #############################################
