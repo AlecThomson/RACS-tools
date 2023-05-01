@@ -7,7 +7,8 @@ import os
 import sys
 from functools import partial
 from hashlib import new
-from typing import Dict, List, Tuple
+from pathlib import Path
+from typing import Dict, List, Tuple, NamedTuple, Union
 
 import astropy.wcs
 import numpy as np
@@ -30,6 +31,29 @@ logging.basicConfig(level=logging.INFO)
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
 #############################################
+
+class ImageData(NamedTuple):
+    """Image data class"""
+
+    filename: str
+    image: np.ndarray
+    ndim: int
+    header: fits.Header
+    old_beam: Beam
+    nx: int
+    ny: int
+    dx: u.Quantity
+    dy: u.Quantity
+
+
+class WorkerResult(NamedTuple):
+    """Worker result class"""
+
+    filename: str
+    old_beam: Beam
+    final_beam: Beam
+    conbeam: Beam
+
 
 
 def round_up(n: float, decimals: int = 0) -> float:
@@ -59,12 +83,12 @@ def my_ceil(a: float, precision: float = 0) -> float:
     return np.round(a + 0.5 * 10 ** (-precision), precision)
 
 
-def getbeam(
+def get_beam(
     old_beam: Beam,
     new_beam: Beam,
     dx: u.Quantity,
     dy: u.Quantity,
-    cutoff: float = None,
+    cutoff: Union[float, None] = None,
 ) -> Tuple[Beam, float]:
     """Get the beam to use for smoothing
 
@@ -83,7 +107,7 @@ def getbeam(
     """
     logger.info(f"Current beam is {old_beam!r}")
 
-    if cutoff is not None and old_beam.major.to(u.arcsec) > cutoff * u.arcsec:
+    if cutoff and old_beam.major.to(u.arcsec) > cutoff * u.arcsec:
         return (
             Beam(
                 major=np.nan * u.deg,
@@ -127,14 +151,14 @@ def getbeam(
     return conbm, fac
 
 
-def getimdata(cubenm: str) -> dict:
+def get_imdata(cubenm: Path) -> ImageData:
     """Get image data from FITS file
 
     Args:
-        cubenm (str): File name of image.
+        cubenm (Path): File name of image.
 
     Returns:
-        dict: Data and metadata.
+        ImageData: Data and metadata.
     """
     logger.info(f"Getting image data from {cubenm}")
     with fits.open(cubenm, memmap=True, mode="denywrite") as hdu:
@@ -153,18 +177,19 @@ def getimdata(cubenm: str) -> dict:
 
         old_beam = Beam.from_fits_header(hdu[0].header)
 
-        datadict = {
-            "filename": os.path.basename(cubenm),
-            "image": data,
-            "4d": (len(hdu[0].data.shape) == 4),
-            "header": hdu[0].header,
-            "old_beam": old_beam,
-            "nx": nx,
-            "ny": ny,
-            "dx": dxas,
-            "dy": dyas,
-        }
-    return datadict
+        image_data = ImageData(
+            filename=cubenm,
+            image=data,
+            ndim=len(hdu[0].data.shape),
+            header=hdu[0].header,
+            old_beam=old_beam,
+            nx=nx,
+            ny=ny,
+            dx=dxas,
+            dy=dyas,
+        )
+
+    return image_data
 
 
 def savefile(
@@ -191,15 +216,15 @@ def savefile(
 
 
 def worker(
-    file: str,
-    outdir: str,
+    file: Path,
+    outdir: Union[Path, None],
     new_beam: Beam,
     conv_mode: str,
     suffix: str = "",
     prefix: str = "",
     cutoff: float = None,
     dryrun: bool = False,
-) -> dict:
+) -> WorkerResult:
     """Parallel worker function
 
     Args:
@@ -217,71 +242,68 @@ def worker(
     """
     logger.info(f"Working on {file}")
 
-    if outdir is None:
-        outdir = os.path.dirname(file)
+    if not outdir:
+        outdir = file.parent
 
-    if outdir == "":
-        outdir = "."
+    outfile = outfile.with_suffix(f".{suffix}.fits")
+    if prefix:
+        outfile = Path(prefix + outfile.as_posix())
 
-    outfile = os.path.basename(file)
-    outfile = outfile.replace(".fits", f".{suffix}.fits")
-    if prefix is not None:
-        outfile = prefix + outfile
-    datadict = getimdata(file)
+    image_data = get_imdata(file)
 
-    conbeam, sfactor = getbeam(
-        old_beam=datadict["old_beam"],
+    conbeam, sfactor = get_beam(
+        old_beam=image_data.old_beam,
         new_beam=new_beam,
-        dx=datadict["dx"],
-        dy=datadict["dy"],
+        dx=image_data.dx,
+        dy=image_data.dy,
         cutoff=cutoff,
     )
 
-    datadict.update({"conbeam": conbeam, "final_beam": new_beam, "sfactor": sfactor})
     if not dryrun:
         if np.isnan(sfactor) or np.isnan(conbeam):
             logger.warning(f"Setting {outfile} to NaN")
-            newim = datadict["image"] * np.nan
+            newim = image_data.image * np.nan
         elif (
             conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
             and sfactor == 1
         ):
-            newim = datadict["image"]
+            newim = image_data.image
         else:
             newim = smooth(
-                image=datadict["image"],
-                old_beam=datadict["old_beam"],
-                final_beam=datadict["final_beam"],
-                dx=datadict["dx"],
-                dy=datadict["dy"],
-                sfactor=datadict["sfactor"],
-                conbeam=datadict["conbeam"],
+                image=image_data.image,
+                old_beam=image_data.old_beam,
+                final_beam=new_beam,
+                dx=image_data.dx,
+                dy=image_data.dy,
+                sfactor=sfactor,
+                conbeam=conbeam,
                 conv_mode=conv_mode,
             )
-        if datadict["4d"]:
+        if image_data.ndim == 4:
             # make it back into a 4D image
             newim = np.expand_dims(np.expand_dims(newim, axis=0), axis=0)
-        datadict.update(
-            {
-                "newimage": newim,
-            }
-        )
+
         savefile(
-            newimage=datadict["newimage"],
+            newimage=newim,
             filename=outfile,
-            header=datadict["header"],
-            final_beam=datadict["final_beam"],
+            header=image_data.header,
+            final_beam=new_beam,
             outdir=outdir,
         )
 
-    return datadict
+    return WorkerResult(
+        filename=image_data.filename,
+        old_beam=image_data.old_beam,
+        final_beam=new_beam,
+        conbeam=conbeam,
+    )
 
 
 def getmaxbeam(
     files: List[str],
     conv_mode: str = "robust",
-    target_beam: Beam = None,
-    cutoff: float = None,
+    target_beam: Union[Beam, None] = None,
+    cutoff: Union[float, None] = None,
     tolerance: float = 0.0001,
     nsamps: float = 200,
     epsilon: float = 0.0005,
@@ -315,7 +337,7 @@ def getmaxbeam(
         [beam.minor.to(u.deg).value for beam in beams_list] * u.deg,
         [beam.pa.to(u.deg).value for beam in beams_list] * u.deg,
     )
-    if cutoff is not None:
+    if cutoff:
         flags = beams.major > cutoff * u.arcsec
         if np.all(flags):
             logger.critical(
@@ -391,7 +413,7 @@ def getmaxbeam(
     return cmn_beam, beams
 
 
-def writelog(output: List[Dict], commonbeam_log: str):
+def writelog(output: List[WorkerResult], commonbeam_log: str):
     """Write beamlog file.
 
     Args:
@@ -399,44 +421,44 @@ def writelog(output: List[Dict], commonbeam_log: str):
         commonbeam_log (str): Name of log file.
     """
     commonbeam_tab = Table()
-    commonbeam_tab.add_column([out["filename"] for out in output], name="FileName")
-    # Origina
+    commonbeam_tab.add_column([out.filename for out in output], name="FileName")
+    # Original
     commonbeam_tab.add_column(
-        [out["old_beam"].major.to(u.deg).value for out in output] * u.deg,
+        [out.old_beam.major.to(u.deg).value for out in output] * u.deg,
         name="Original BMAJ",
     )
     commonbeam_tab.add_column(
-        [out["old_beam"].minor.to(u.deg).value for out in output] * u.deg,
+        [out.old_beam.minor.to(u.deg).value for out in output] * u.deg,
         name="Original BMIN",
     )
     commonbeam_tab.add_column(
-        [out["old_beam"].pa.to(u.deg).value for out in output] * u.deg,
+        [out.old_beam.pa.to(u.deg).value for out in output] * u.deg,
         name="Original BPA",
     )
     # Target
     commonbeam_tab.add_column(
-        [out["final_beam"].major.to(u.deg).value for out in output] * u.deg,
+        [out.final_beam.major.to(u.deg).value for out in output] * u.deg,
         name="Target BMAJ",
     )
     commonbeam_tab.add_column(
-        [out["final_beam"].minor.to(u.deg).value for out in output] * u.deg,
+        [out.final_beam.minor.to(u.deg).value for out in output] * u.deg,
         name="Target BMIN",
     )
     commonbeam_tab.add_column(
-        [out["final_beam"].pa.to(u.deg).value for out in output] * u.deg,
+        [out.final_beam.pa.to(u.deg).value for out in output] * u.deg,
         name="Target BPA",
     )
     # Convolving
     commonbeam_tab.add_column(
-        [out["conbeam"].major.to(u.deg).value for out in output] * u.deg,
+        [out.conbeam.major.to(u.deg).value for out in output] * u.deg,
         name="Convolving BMAJ",
     )
     commonbeam_tab.add_column(
-        [out["conbeam"].minor.to(u.deg).value for out in output] * u.deg,
+        [out.conbeam.minor.to(u.deg).value for out in output] * u.deg,
         name="Convolving BMIN",
     )
     commonbeam_tab.add_column(
-        [out["conbeam"].pa.to(u.deg).value for out in output] * u.deg,
+        [out.conbeam.pa.to(u.deg).value for out in output] * u.deg,
         name="Convolving BPA",
     )
 
@@ -456,17 +478,17 @@ def writelog(output: List[Dict], commonbeam_log: str):
 def main(
     pool,
     infile: list = [],
-    prefix: str = None,
-    suffix: str = None,
-    outdir: str = None,
+    prefix: Union[str, None] = None,
+    suffix: Union[str, None] = None,
+    outdir: Union[str, None] = None,
     conv_mode: str = "robust",
     dryrun: bool = False,
-    bmaj: float = None,
-    bmin: float = None,
-    bpa: float = None,
-    log: str = None,
+    bmaj: Union[float, None] = None,
+    bmin: Union[float, None] = None,
+    bpa: Union[float, None] = None,
+    log: Union[str, None] = None,
     circularise: bool = False,
-    cutoff: float = None,
+    cutoff: Union[float, None] = None,
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
@@ -502,8 +524,8 @@ def main(
     if dryrun:
         logger.info("Doing a dry run -- no files will be saved")
     # Fix up outdir
-    if outdir is not None:
-        outdir = os.path.abspath(outdir)
+    if outdir:
+        outdir = Path(outdir)
 
     # Get file list
     files = sorted(infile)
@@ -546,7 +568,7 @@ def main(
         epsilon=epsilon,
     )
 
-    if target_beam is not None:
+    if target_beam:
         logger.info("Checking that target beam will deconvolve...")
 
         mask_count = 0
@@ -606,7 +628,7 @@ def main(
         )
     )
 
-    if log is not None:
+    if log:
         writelog(output, log)
 
     logger.info("Done!")
