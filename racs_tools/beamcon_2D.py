@@ -2,7 +2,7 @@
 """ Convolve ASKAP images to common resolution """
 __author__ = "Alec Thomson"
 
-import logging as logger
+import logging
 import os
 import sys
 from functools import partial
@@ -22,6 +22,10 @@ from tqdm import tqdm
 
 from racs_tools import au2
 from racs_tools.convolve_uv import smooth
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
 
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
@@ -134,7 +138,6 @@ def getimdata(cubenm: str) -> dict:
     """
     logger.info(f"Getting image data from {cubenm}")
     with fits.open(cubenm, memmap=True, mode="denywrite") as hdu:
-
         w = astropy.wcs.WCS(hdu[0])
         pixelscales = astropy.wcs.utils.proj_plane_pixel_scales(w)
 
