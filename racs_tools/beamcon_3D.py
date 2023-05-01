@@ -2,7 +2,7 @@
 """ Convolve ASKAP cubes to common resolution """
 __author__ = "Alec Thomson"
 
-import logging as log
+import logging
 import os
 import stat
 import sys
@@ -26,6 +26,9 @@ from tqdm import tqdm, trange
 from racs_tools import au2
 from racs_tools.beamcon_2D import my_ceil, round_up
 from racs_tools.convolve_uv import smooth
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 mpiSwitch = False
 if (
@@ -128,7 +131,7 @@ def copyfileobj(fsrc, fdst, length=16 * 1024):
     total = os.fstat(fsrc.fileno()).st_size
     with tqdm(
         total=total,
-        disable=(log.root.level > log.INFO),
+        disable=(logger.root.level > logging.INFO),
         unit_scale=True,
         desc="Copying file",
     ) as pbar:
@@ -142,7 +145,7 @@ def copyfileobj(fsrc, fdst, length=16 * 1024):
 
 
 def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
-    """Get beam information from a fits file or beamlog.
+    """Get beam information from a fits file or beamlogger.
 
     Args:
         file (str): FITS filename.
@@ -156,7 +159,7 @@ def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
     basename = os.path.basename(file)
     if dirname == "":
         dirname = "."
-    beamlog = f"{dirname}/beamlog.{basename}".replace(".fits", ".txt")
+    beamlog = f"{dirname}/beamlogger.{basename}".replace(".fits", ".txt")
 
     # First check for CASA beams
     try:
@@ -164,7 +167,7 @@ def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
     except KeyError:
         headcheck = False
     if headcheck:
-        log.info(
+        logger.info(
             "CASA beamtable found in header - will use this table for beam calculations"
         )
         with fits.open(file) as hdul:
@@ -173,8 +176,8 @@ def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
 
     # Otherwise use beamlog file
     else:
-        log.info("No CASA beamtable found in header - looking for beamlogs")
-        log.info(f"Getting beams from {beamlog}")
+        logger.info("No CASA beamtable found in header - looking for beamlogs")
+        logger.info(f"Getting beams from {beamlog}")
 
         beams = Table.read(beamlog, format="ascii.commented_header")
         # Header looks like:
@@ -282,7 +285,7 @@ def worker(
     slicer = tuple(slicer)
 
     plane = cube.unmasked_data[slicer].value.astype(np.float32)
-    log.debug(f"Size of plane is {(plane.nbytes*u.byte).to(u.MB)}")
+    logger.debug(f"Size of plane is {(plane.nbytes*u.byte).to(u.MB)}")
     newim = smooth(image=plane, **kwargs)
     return newim
 
@@ -339,7 +342,7 @@ def commonbeamer(
     epsilon: float = 0.0005,
 ) -> Dict[str, dict]:
     """Find common beam for all channels.
-    Computed beams will be written to convolving beam log.
+    Computed beams will be written to convolving beam logger.
 
     Args:
         datadict (Dict[str, dict]): Main data dictionary.
@@ -364,7 +367,7 @@ def commonbeamer(
     if mode == "natural":
         big_beams = []
         for n in trange(
-            nchans, desc="Constructing beams", disable=(log.root.level > log.INFO)
+            nchans, desc="Constructing beams", disable=(logger.root.level > logger.INFO)
         ):
             majors_list = []
             minors_list = []
@@ -397,7 +400,7 @@ def commonbeamer(
         for beams in tqdm(
             big_beams,
             desc="Finding common beam per channel",
-            disable=(log.root.level > log.INFO),
+            disable=(logger.root.level > logger.INFO),
             total=nchans,
         ):
             if all(np.isnan(beams)):
@@ -412,8 +415,8 @@ def commonbeamer(
                         epsilon=epsilon,
                     )
                 except BeamError:
-                    log.warn("Couldn't find common beam with defaults")
-                    log.warn("Trying again with smaller tolerance")
+                    logger.warn("Couldn't find common beam with defaults")
+                    logger.warn("Trying again with smaller tolerance")
 
                     commonbeam = beams[~np.isnan(beams)].common_beam(
                         tolerance=tolerance * 0.1,
@@ -459,12 +462,12 @@ def commonbeamer(
                             * u.arcsec,
                             pa=round_up(nyq_beam.pa.to(u.deg), decimals=2),
                         )
-                        log.info(
+                        logger.info(
                             f"Smallest common Nyquist sampled beam is: {nyq_beam!r}"
                         )
 
-                        log.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
-                        log.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
+                        logger.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
+                        logger.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
                         commonbeam = nyq_beam
 
             bmaj_common.append(commonbeam.major.to(u.arcsec).value)
@@ -502,16 +505,16 @@ def commonbeamer(
         pas *= u.deg
         big_beams = Beams(major=majors, minor=minors, pa=pas)
 
-        log.info("Finding common beam across all channels")
-        log.info("This may take some time...")
+        logger.info("Finding common beam across all channels")
+        logger.info("This may take some time...")
 
         try:
             commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
                 tolerance=tolerance, nsamps=nsamps, epsilon=epsilon
             )
         except BeamError:
-            log.warn("Couldn't find common beam with defaults")
-            log.warn("Trying again with smaller tolerance")
+            logger.warn("Couldn't find common beam with defaults")
+            logger.warn("Trying again with smaller tolerance")
 
             commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
                 tolerance=tolerance * 0.1, nsamps=nsamps, epsilon=epsilon
@@ -549,15 +552,15 @@ def commonbeamer(
                     * u.arcsec,
                     pa=round_up(nyq_beam.pa.to(u.deg), decimals=2),
                 )
-                log.info(f"Smallest common Nyquist sampled beam is: {nyq_beam!r}")
+                logger.info(f"Smallest common Nyquist sampled beam is: {nyq_beam!r}")
                 if target_beam is not None:
                     commonbeam = target_beam
                     if target_beam < nyq_beam:
-                        log.warn("TARGET BEAM WILL BE UNDERSAMPLED!")
+                        logger.warn("TARGET BEAM WILL BE UNDERSAMPLED!")
                         raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
                 else:
-                    log.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
-                    log.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
+                    logger.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
+                    logger.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
                     commonbeam = nyq_beam
 
         # Make Beams object
@@ -568,21 +571,21 @@ def commonbeamer(
         )
 
     if circularise:
-        log.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
+        logger.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
         commonbeams = Beams(
             major=commonbeams.major,
             minor=commonbeams.major,
             pa=commonbeams.pa * 0,
         )
 
-    log.info("Final beams are:")
+    logger.info("Final beams are:")
     for i, commonbeam in enumerate(commonbeams):
-        log.info(f"Channel {i}: {commonbeam!r}")
+        logger.info(f"Channel {i}: {commonbeam!r}")
 
     for key in tqdm(
         datadict.keys(),
         desc="Getting convolution data",
-        disable=(log.root.level > log.INFO),
+        disable=(logger.root.level > logger.INFO),
     ):
         # Get convolving beams
         conv_bmaj = []
@@ -609,7 +612,7 @@ def commonbeamer(
                         minor=0 * u.deg,
                         pa=0 * u.deg,
                     )
-                    log.warn(
+                    logger.warn(
                         f"New beam {commonbeam!r} and old beam {old_beam_check!r} are the same. Won't attempt convolution."
                     )
 
@@ -668,7 +671,7 @@ def commonbeamer(
             format="commented_header",
             overwrite=True,
         )
-        log.info(f"Convolving log written to {commonbeam_log}")
+        logger.info(f"Convolving log written to {commonbeam_log}")
 
     return datadict
 
@@ -724,7 +727,7 @@ def initfiles(
     Returns:
         datadict: Updated datadict
     """
-    log.debug(f"Reading {filename}")
+    logger.debug(f"Reading {filename}")
     with fits.open(filename, memmap=True, mode="denywrite") as hdulist:
         primary_hdu = hdulist[0]
         data = primary_hdu.data
@@ -759,7 +762,7 @@ def initfiles(
         raise ValueError("No Stokes axis found")
     nstokes = stokes_axis.array_shape[0]
     if nstokes > 1:
-        log.critical(
+        logger.critical(
             f"More than one Stokes parameter in header. Only the first one will be used."
         )
     pols = np.zeros_like(chans)  # Zeros because we take the first one
@@ -770,7 +773,7 @@ def initfiles(
             np.isnan(ref_psf.pa.value),
         )
     ):
-        log.warning("Reference PSF is NaN - replacing with 0 in the header")
+        logger.warning("Reference PSF is NaN - replacing with 0 in the header")
         ref_psf = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
         header["COMMENT"] = "Reference PSF is NaN"
         header["COMMENT"] = "- This is likely because the reference channel is masked."
@@ -820,7 +823,7 @@ def initfiles(
         outname = prefix + outname
 
     outfile = os.path.join(outdir, outname)
-    log.info(f"Initialising to {outfile}")
+    logger.info(f"Initialising to {outfile}")
     new_hdulist.writeto(outfile, overwrite=True)
 
     return outfile
@@ -838,7 +841,7 @@ def readlogs(commonbeam_log: str) -> Tuple[Beams, Beams, np.ndarray]:
     Returns:
         Tuple[Beams, Beams, np.ndarray]: Common beams, convolving beams, and scaling factors
     """
-    log.info(f"Reading from {commonbeam_log}")
+    logger.info(f"Reading from {commonbeam_log}")
     try:
         commonbeam_tab = Table.read(commonbeam_log, format="ascii.commented_header")
     except FileNotFoundError:
@@ -855,9 +858,9 @@ def readlogs(commonbeam_log: str) -> Tuple[Beams, Beams, np.ndarray]:
         pa=commonbeam_tab["Convolving BPA"] * u.deg,
     )
     facs = np.array(commonbeam_tab["Convolving factor"])
-    log.info("Final beams are:")
+    logger.info("Final beams are:")
     for i, commonbeam in enumerate(commonbeams):
-        log.info(f"Channel {i}: {commonbeam!r}")
+        logger.info(f"Channel {i}: {commonbeam!r}")
     return commonbeams, convbeams, facs
 
 
@@ -888,27 +891,27 @@ def main(
     """
 
     if myPE == 0:
-        log.info(f"Total number of MPI ranks = {nPE}")
+        logger.info(f"Total number of MPI ranks = {nPE}")
         # Parse args
         if dryrun:
-            log.info("Doing a dry run -- no files will be saved")
+            logger.info("Doing a dry run -- no files will be saved")
 
         # Check mode
-        log.info(f"Mode is {mode}")
+        logger.info(f"Mode is {mode}")
         if mode == "natural" and mode == "total":
             raise Exception("'mode' must be 'natural' or 'total'")
         if mode == "natural":
-            log.info("Smoothing each channel to a common resolution")
+            logger.info("Smoothing each channel to a common resolution")
         if mode == "total":
-            log.info("Smoothing all channels to a common resolution")
+            logger.info("Smoothing all channels to a common resolution")
 
         # Check cutoff
         if cutoff is not None:
             cutoff *= u.arcsec
-            log.info(f"Cutoff is: {cutoff}")
+            logger.info(f"Cutoff is: {cutoff}")
 
         # Check target
-        log.debug(conv_mode)
+        logger.debug(conv_mode)
         if (
             not conv_mode == "robust"
             and not conv_mode == "scipy"
@@ -917,13 +920,13 @@ def main(
         ):
             raise Exception("Please select valid convolution method!")
 
-        log.info(f"Using convolution method {conv_mode}")
+        logger.info(f"Using convolution method {conv_mode}")
         if conv_mode == "robust":
-            log.info("This is the most robust method. And fast!")
+            logger.info("This is the most robust method. And fast!")
         elif conv_mode == "scipy":
-            log.info("This fast, but not robust to NaNs or small PSF changes")
+            logger.info("This fast, but not robust to NaNs or small PSF changes")
         else:
-            log.info("This is slower, but robust to NaNs, but not to small PSF changes")
+            logger.info("This is slower, but robust to NaNs, but not to small PSF changes")
 
         nonetest = [test is None for test in [bmaj, bmin, bpa]]
 
@@ -938,7 +941,7 @@ def main(
 
         elif not all(nonetest) and not any(nonetest):
             target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
-            log.info(f"Target beam is {target_beam!r}")
+            logger.info(f"Target beam is {target_beam!r}")
 
         files = sorted(infile)
         if files == []:
@@ -998,7 +1001,7 @@ def main(
                 epsilon=epsilon,
             )
         else:
-            log.info("Reading from convolve beamlog files")
+            logger.info("Reading from convolve beamlog files")
             for key in datadict.keys():
                 commonbeam_log = datadict[key]["beamlog"].replace(
                     ".txt", f".{suffix}.txt"
@@ -1021,7 +1024,7 @@ def main(
     # Init the files in parallel
     if not dryrun:
         if myPE == 0:
-            log.info("Initialising output files")
+            logger.info("Initialising output files")
         if mpiSwitch:
             files = comm.bcast(files, root=0)
             datadict = comm.bcast(datadict, root=0)
@@ -1048,8 +1051,8 @@ def main(
                 my_end = my_start + (count - 1)
 
         if myPE == 0:
-            log.info(f"There are {dims} files to init")
-        log.debug(f"My start is {my_start}, my end is {my_end}")
+            logger.info(f"There are {dims} files to init")
+        logger.debug(f"My start is {my_start}, my end is {my_end}")
 
         # Init output files and retrieve file names
         outfile_dict = {}
@@ -1110,13 +1113,13 @@ def main(
             my_start = myPE * count + rem
             my_end = my_start + (count - 1)
         if myPE == 0:
-            log.info(f"There are {nchans} channels, across {len(files)} files")
-        log.debug(f"My start is {my_start}, my end is {my_end}")
+            logger.info(f"There are {nchans} channels, across {len(files)} files")
+        logger.debug(f"My start is {my_start}, my end is {my_end}")
 
         for inp in inputs[my_start : my_end + 1]:
             key, chan = inp
             outfile = datadict[key]["outfile"]
-            log.debug(f"{outfile}  - channel {chan} - Started")
+            logger.debug(f"{outfile}  - channel {chan} - Started")
 
             cubedict = datadict[key]
             newim = worker(
@@ -1147,9 +1150,9 @@ def main(
                     np.float32
                 )  # make sure data is 32-bit
                 outfh.flush()
-            log.info(f"{outfile}  - channel {chan} - Done")
+            logger.info(f"{outfile}  - channel {chan} - Done")
 
-    log.info("Done!")
+    logger.info("Done!")
     return datadict
 
 
@@ -1347,16 +1350,16 @@ def cli():
     args = parser.parse_args()
 
     if args.verbosity == 1:
-        log.basicConfig(
+        logger.basicConfig(
             filename=args.logfile,
-            level=log.INFO,
+            level=logger.INFO,
             format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     elif args.verbosity >= 2:
-        log.basicConfig(
+        logger.basicConfig(
             filename=args.logfile,
-            level=log.DEBUG,
+            level=logger.DEBUG,
             format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )

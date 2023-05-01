@@ -2,6 +2,7 @@
 """ Find bad channels by checking statistics of each channel image. """
 
 import argparse
+import logging
 import warnings
 from typing import List, Tuple, Union
 
@@ -13,6 +14,8 @@ from spectral_cube.utils import SpectralCubeWarning
 
 warnings.filterwarnings(action="ignore", category=SpectralCubeWarning, append=True)
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 #############################################
 ####### ADAPTED FROM SCRIPT BY G. HEALD #####
@@ -70,12 +73,12 @@ def getbadchans(
     )
     qmeannoise = np.nanmedian(qnoisevals)
     qstdnoise = mad_std(qnoisevals, ignore_nan=True)
-    print(
+    logger.info(
         f"Median Q noise=({qmeannoise.value:0.3f}±{qstdnoise.value:0.3f}) / ({qmeannoise.unit})"
     )
     umeannoise = np.nanmedian(unoisevals)
     ustdnoise = mad_std(unoisevals, ignore_nan=True)
-    print(
+    logger.info(
         f"Median U noise=({umeannoise.value:0.3f}±{ustdnoise.value:0.3f}) / ({umeannoise.unit})"
     )
     qbadones = np.logical_or(
@@ -84,10 +87,10 @@ def getbadchans(
     ubadones = np.logical_or(
         unoisevals > (umeannoise + cliplev * ustdnoise), ~np.isfinite(unoisevals)
     )
-    print(f"{qbadones.sum()} of {len(qcube.spectral_axis)} are bad in Q")
-    print(f"{ubadones.sum()} of {len(ucube.spectral_axis)} are bad in U")
+    logger.info(f"{qbadones.sum()} of {len(qcube.spectral_axis)} are bad in Q")
+    logger.info(f"{ubadones.sum()} of {len(ucube.spectral_axis)} are bad in U")
     total_bad = np.logical_or(qbadones, ubadones)
-    print(f"{total_bad.sum()} of {len(qcube.spectral_axis)} are bad in Q -or- U")
+    logger.info(f"{total_bad.sum()} of {len(qcube.spectral_axis)} are bad in Q -or- U")
     return total_bad
 
 
@@ -109,11 +112,11 @@ def blankchans(
     badchans = chans[totalbad]
     badfreqs = qcube.spectral_axis[totalbad]
     if not blank:
-        print(
+        logger.info(
             "Nothing will be blanked, but these are the channels/frequencies that would be with the -b option activated:"
         )
-    print(f"Bad channels are {badchans}")
-    print(f"Bad frequencies are {badfreqs}")
+    logger.info(f"Bad channels are {badchans}")
+    logger.info(f"Bad frequencies are {badfreqs}")
     totalgood = ~totalbad
     q_msk = qcube.mask_channels(totalgood)
     u_msk = ucube.mask_channels(totalgood)
@@ -130,10 +133,10 @@ def writefits(qcube: SpectralCube, ucube: SpectralCube, qfile: str, ufile: str) 
         ufile (str): Original U file
     """
     outfile = qfile.replace(".fits", ".blanked.fits")
-    print(f"Writing to {outfile}")
+    logger.info(f"Writing to {outfile}")
     qcube.write(outfile, format="fits", overwrite=True)
     outfile = ufile.replace(".fits", ".blanked.fits")
-    print(f"Writing to {outfile}")
+    logger.info(f"Writing to {outfile}")
     ucube.write(outfile, format="fits", overwrite=True)
 
 
@@ -143,7 +146,7 @@ def main(
     blank: bool = False,
     cliplev: float = 5,
     iterate: int = 1,
-    outfile: str = None,
+    outfile: Union[str, None] = None,
 ) -> None:
     """Flag bad channels in Stokes Q and U cubes
 
@@ -164,7 +167,7 @@ def main(
 
     # Iterate
     for i in range(iterate):
-        print(f"Flagging iteration {i+1} of {iterate}")
+        logger.info(f"Flagging iteration {i+1} of {iterate}")
         totalbad = getbadchans(
             qcube,
             ucube,
@@ -175,10 +178,11 @@ def main(
         )
 
     if blank:
+        logger.warning("Overwriting original files")
         writefits(qcube=qcube, ucube=ucube, qfile=qfile, ufile=ufile)
 
-    if outfile is not None:
-        print(f"Saving bad files to {outfile}")
+    if outfile:
+        logger.info(f"Saving bad files to {outfile}")
         np.savetxt(outfile, totalbad)
 
 
