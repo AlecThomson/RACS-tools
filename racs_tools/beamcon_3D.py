@@ -145,7 +145,7 @@ def copyfileobj(fsrc, fdst, length=16 * 1024):
 
 
 def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
-    """Get beam information from a fits file or beamlogger.
+    """Get beam information from a fits file or beamlog.
 
     Args:
         file (str): FITS filename.
@@ -159,7 +159,7 @@ def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
     basename = os.path.basename(file)
     if dirname == "":
         dirname = "."
-    beamlog = f"{dirname}/beamlogger.{basename}".replace(".fits", ".txt")
+    beamlog = f"{dirname}/beamlog.{basename}".replace(".fits", ".txt")
 
     # First check for CASA beams
     try:
