@@ -367,7 +367,9 @@ def commonbeamer(
     if mode == "natural":
         big_beams = []
         for n in trange(
-            nchans, desc="Constructing beams", disable=(logger.root.level > logging.INFO)
+            nchans,
+            desc="Constructing beams",
+            disable=(logger.root.level > logging.INFO),
         ):
             majors_list = []
             minors_list = []
