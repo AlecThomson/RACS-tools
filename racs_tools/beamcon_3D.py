@@ -367,7 +367,7 @@ def commonbeamer(
     if mode == "natural":
         big_beams = []
         for n in trange(
-            nchans, desc="Constructing beams", disable=(logger.root.level > logger.INFO)
+            nchans, desc="Constructing beams", disable=(logger.root.level > logging.INFO)
         ):
             majors_list = []
             minors_list = []
@@ -400,7 +400,7 @@ def commonbeamer(
         for beams in tqdm(
             big_beams,
             desc="Finding common beam per channel",
-            disable=(logger.root.level > logger.INFO),
+            disable=(logger.root.level > logging.INFO),
             total=nchans,
         ):
             if all(np.isnan(beams)):
@@ -585,7 +585,7 @@ def commonbeamer(
     for key in tqdm(
         datadict.keys(),
         desc="Getting convolution data",
-        disable=(logger.root.level > logger.INFO),
+        disable=(logger.root.level > logging.INFO),
     ):
         # Get convolving beams
         conv_bmaj = []
@@ -1354,7 +1354,7 @@ def cli():
     if args.verbosity == 1:
         logger.basicConfig(
             filename=args.logfile,
-            level=logger.INFO,
+            level=logging.INFO,
             format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
