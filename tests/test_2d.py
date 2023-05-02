@@ -12,9 +12,7 @@ import numpy as np
 import schwimmbad
 
 
-def make_2d_image():
-
-    beam = Beam(20*u.arcsec, 10*u.arcsec, 10*u.deg)
+def make_2d_image(beam):
     pix_scale = 2.5*u.arcsec
 
     data = beam.as_kernel(pixscale=pix_scale, x_size=100, y_size=100).array
@@ -75,7 +73,9 @@ def cleanup(files):
 
 class test_Beamcon2D(unittest.TestCase):
     def setUp(self) -> None:
-        test_image = make_2d_image()
+
+        self.orginal_beam = Beam(20*u.arcsec, 10*u.arcsec, 10*u.deg)
+        test_image = make_2d_image(self.orginal_beam)
 
         self.test_image = test_image
         self.target_beam = Beam(40*u.arcsec, 40*u.arcsec, 0*u.deg)
