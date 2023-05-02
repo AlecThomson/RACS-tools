@@ -319,7 +319,7 @@ def makedata(files: List[str], outdir: str) -> Dict[str, dict]:
 
         datadict[f"cube_{i}"]["dx"] = dxas
         datadict[f"cube_{i}"]["dy"] = dyas
-        if not dxas == dyas:
+        if not np.isclose(dxas, dyas):
             raise Exception("GRID MUST BE SAME IN X AND Y")
         # Get beam info
         beam, nchan, beamlog = getbeams(file=file, header=header)
