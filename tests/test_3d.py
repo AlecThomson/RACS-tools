@@ -149,7 +149,7 @@ class test_Beamcon2D(unittest.TestCase):
 
         fname_beamcon = self.test_image.replace(".fits", ".robust.fits")
         self.files.append(fname_beamcon)
-        self.assertTrue(check_images(self.test_cube, fname_beamcon))
+        check_images(self.test_cube, fname_beamcon), "Beamcon does not match Miriad"
 
     def test_astropy(self):
         beamcon_3D.main(
@@ -164,7 +164,7 @@ class test_Beamcon2D(unittest.TestCase):
 
         fname_beamcon = self.test_image.replace(".fits", ".astropy.fits")
         self.files.append(fname_beamcon)
-        self.assertTrue(check_images(self.test_cube, fname_beamcon))
+        check_images(self.test_cube, fname_beamcon), "Beamcon does not match Miriad"
 
     def test_scipy(self):
         beamcon_3D.main(
@@ -178,7 +178,7 @@ class test_Beamcon2D(unittest.TestCase):
         )
         fname_beamcon = self.test_image.replace(".fits", ".scipy.fits")
         self.files.append(fname_beamcon)
-        self.assertTrue(check_images(self.test_cube, fname_beamcon))
+        check_images(self.test_cube, fname_beamcon), "Beamcon does not match Miriad"
 
     def tearDown(self) -> None:
         cleanup(self.files)
