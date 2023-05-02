@@ -3,17 +3,18 @@
 
 import subprocess as sp
 import unittest
-from racs_tools import beamcon_2D
 
-from radio_beam import Beam
-from astropy.io import fits
 import astropy.units as u
 import numpy as np
 import schwimmbad
+from astropy.io import fits
+from radio_beam import Beam
+
+from racs_tools import beamcon_2D
 
 
 def make_2d_image(beam):
-    pix_scale = 2.5*u.arcsec
+    pix_scale = 2.5 * u.arcsec
 
     data = beam.as_kernel(pixscale=pix_scale, x_size=100, y_size=100).array
     data /= data.max()
@@ -42,8 +43,8 @@ def make_2d_image(beam):
 
     return outf
 
-def mirsmooth(outf, target_beam):
 
+def mirsmooth(outf, target_beam):
     outim = outf.replace(".fits", ".im")
     cmd = f"fits op=xyin in={outf} out={outim}"
     sp.run(cmd.split())
@@ -60,11 +61,11 @@ def mirsmooth(outf, target_beam):
 
 
 def check_images(fname_1, fname_2):
-
     data_1 = fits.getdata(fname_1)
     data_2 = fits.getdata(fname_2)
 
     return np.allclose(data_1, data_2, atol=1e-5)
+
 
 def cleanup(files):
     for f in files:
@@ -73,12 +74,11 @@ def cleanup(files):
 
 class test_Beamcon2D(unittest.TestCase):
     def setUp(self) -> None:
-
-        self.orginal_beam = Beam(20*u.arcsec, 10*u.arcsec, 10*u.deg)
+        self.orginal_beam = Beam(20 * u.arcsec, 10 * u.arcsec, 10 * u.deg)
         test_image = make_2d_image(self.orginal_beam)
 
         self.test_image = test_image
-        self.target_beam = Beam(40*u.arcsec, 40*u.arcsec, 0*u.deg)
+        self.target_beam = Beam(40 * u.arcsec, 40 * u.arcsec, 0 * u.deg)
         mirfile, mirfile_smooth, fname_mir = mirsmooth(test_image, self.target_beam)
         self.test_mir = fname_mir
 
@@ -142,8 +142,7 @@ class test_Beamcon2D(unittest.TestCase):
         cleanup(self.files)
 
 
-
 if __name__ == "__main__":
-    unittest.TestLoader.sortTestMethodsUsing=None
+    unittest.TestLoader.sortTestMethodsUsing = None
     suite = unittest.TestLoader().loadTestsFromTestCase(test_Beamcon2D)
     unittest.TextTestRunner(verbosity=1).run(suite)
