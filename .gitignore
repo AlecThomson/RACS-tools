@@ -138,3 +138,6 @@ dmypy.json
 *.ipynb
 mk_convolve
 .devcontainer/devcontainer.json
+beamlog.3d.astropy.txt
+beamlog.3d.robust.txt
+beamlog.3d.scipy.txt
