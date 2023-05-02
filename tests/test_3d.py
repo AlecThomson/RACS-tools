@@ -32,7 +32,7 @@ def smoothcube(outf: str, target_beam: Beam):
         outim, smoothim, smoothfits = mirsmooth("tmp.fits", target_beam)
         smoothcube.append(fits.getdata(smoothfits))
         os.remove("tmp.fits")
-        os.remove(outim)
+        os.remove(smoothfits)
         shutil.rmtree(outim)
         shutil.rmtree(smoothim)
 
