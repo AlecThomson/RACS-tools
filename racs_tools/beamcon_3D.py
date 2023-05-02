@@ -755,14 +755,14 @@ def masking(datalist_mask: List[MaskCubeData], cutoff: Union[u.Quantity, None] =
 
 
 def initfiles(
-    filename: str,
+    filename: Path,
     commonbeams: Beams,
-    outdir: str,
+    outdir: Path,
     mode: str,
     suffix=None,
     prefix=None,
     ref_chan=None,
-):
+) -> Path:
     """Initialise output files
 
     Args:
@@ -860,14 +860,13 @@ def initfiles(
         new_hdulist = fits.HDUList([primary_hdu])
 
     # Set up output file
-    if suffix is None:
+    if not suffix:
         suffix = mode
-    outname = os.path.basename(filename)
-    outname = outname.replace(".fits", f".{suffix}.fits")
-    if prefix is not None:
-        outname = prefix + outname
+    outname = filename.with_suffix(f".{suffix}.fits")
+    if prefix:
+        outname = Path(prefix + outname.as_posix())
 
-    outfile = os.path.join(outdir, outname)
+    outfile = outdir / outname
     logger.info(f"Initialising to {outfile}")
     new_hdulist.writeto(outfile, overwrite=True)
 
@@ -1090,7 +1089,9 @@ def main(
     else:
         if not dryrun:
             files = None
-            datadict = None
+            datalist = None
+            datalist_masked = None
+            beamlog_data_list = None
             nchans = None
 
     if mpiSwitch:
@@ -1102,11 +1103,13 @@ def main(
             logger.info("Initialising output files")
         if mpiSwitch:
             files = comm.bcast(files, root=0)
-            datadict = comm.bcast(datadict, root=0)
+            datalist = comm.bcast(datalist, root=0)
+            datalist_masked = comm.bcast(datalist_masked, root=0)
+            beamlog_data_list = comm.bcast(beamlog_data_list, root=0)
             nchans = comm.bcast(nchans, root=0)
 
-        inputs = list(datadict.keys())
-        dims = len(inputs)
+        indices = list(datadict.keys())
+        dims = len(indices)
 
         if nPE > dims:
             my_start = myPE
@@ -1130,18 +1133,18 @@ def main(
         logger.debug(f"My start is {my_start}, my end is {my_end}")
 
         # Init output files and retrieve file names
-        outfile_dict = {}
-        for inp in inputs[my_start : my_end + 1]:
+        outfile_dict = {} # Use a dict to preserve order
+        for idx in indices[my_start : my_end + 1]:
             outfile = initfiles(
-                filename=datadict[inp]["filename"],
-                commonbeams=datadict[inp]["commonbeams"],
-                outdir=datadict[inp]["outdir"],
+                filename=datalist[idx].filename,
+                commonbeams=beamlog_data_list[idx].commonbeams,
+                outdir=datalist[idx].outdir,
                 mode=mode,
                 suffix=suffix,
                 prefix=prefix,
                 ref_chan=ref_chan,
             )
-            outfile_dict.update({inp: outfile})
+            outfile_dict.update({idx: outfile})
 
         if mpiSwitch:
             # Send to master proc
