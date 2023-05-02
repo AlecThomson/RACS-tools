@@ -103,7 +103,7 @@ class test_Beamcon2D(unittest.TestCase):
 
         fname_beamcon = self.test_image.replace(".fits", ".robust.fits")
         self.files.append(fname_beamcon)
-        self.assertTrue(check_images(self.test_mir, fname_beamcon))
+        assert check_images(self.test_mir, fname_beamcon), "Beamcon does not match miriad"
 
     def test_astropy(self):
         print(f"{self.test_image=}")
@@ -120,7 +120,7 @@ class test_Beamcon2D(unittest.TestCase):
 
         fname_beamcon = self.test_image.replace(".fits", ".astropy.fits")
         self.files.append(fname_beamcon)
-        self.assertTrue(check_images(self.test_mir, fname_beamcon))
+        assert check_images(self.test_mir, fname_beamcon), "Beamcon does not match miriad"
 
     def test_scipy(self):
         with schwimmbad.SerialPool() as pool:
@@ -136,7 +136,7 @@ class test_Beamcon2D(unittest.TestCase):
 
         fname_beamcon = self.test_image.replace(".fits", ".scipy.fits")
         self.files.append(fname_beamcon)
-        self.assertTrue(check_images(self.test_mir, fname_beamcon))
+        assert check_images(self.test_mir, fname_beamcon), "Beamcon does not match miriad"
 
     def tearDown(self) -> None:
         cleanup(self.files)
