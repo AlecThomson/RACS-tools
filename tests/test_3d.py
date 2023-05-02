@@ -3,9 +3,10 @@
 
 import subprocess as sp
 import unittest
+import os
+import shutil
 
 import astropy.units as u
-from casatasks import imsmooth, importfits, exportfits
 import numpy as np
 import schwimmbad
 from astropy.io import fits
@@ -15,24 +16,35 @@ from radio_beam import Beam, Beams
 from racs_tools import beamcon_3D
 from test_2d import mirsmooth, check_images, cleanup
 
-def casasmooth(outf: str, target_beam: Beam):
+def smoothcube(outf: str, target_beam: Beam):
 
-    casaim = outf.replace(".fits", ".im")
-    importfits(fitsimage=outf, imagename=casaim, overwrite=True)
-    casaim_smooth = casaim.replace(".im", ".smooth.im")
-    imsmooth(
-        images=casaim,
-        outfile=casaim_smooth,
-        targetres=True,
-        major=target_beam.major.to(u.arcsec).value,
-        minor=target_beam.minor.to(u.arcsec).value,
-        pa=target_beam.pa.to(u.deg).value,
-        overwrite=True
-    )
-    smoothfits = outf.replace(".fits", ".casasmooth.fits")
-    exportfits(imagename=casaim_smooth, fitsimage=smoothfits, overwrite=True)
+    cube = np.squeeze(fits.getdata(outf))
+    header = fits.getheader(outf)
+    with fits.open(outf) as hdulist:
+        beams = Beams.from_fits_bintable(hdulist[1])
 
-    return casaim, casaim_smooth, smoothfits
+    smoothcube = []
+
+    for image, beam in zip(cube, beams):
+        hdu = fits.PrimaryHDU(data=image, header=header)
+        hdu.header = beam.attach_to_header(hdu.header)
+        hdu.writeto("tmp.fits", overwrite=True)
+        outim, smoothim, smoothfits = mirsmooth("tmp.fits", target_beam)
+        smoothcube.append(fits.getdata(smoothfits))
+        os.remove("tmp.fits")
+        os.remove(outim)
+        shutil.rmtree(outim)
+        shutil.rmtree(smoothim)
+
+
+    smoothcube = np.array(smoothcube)
+    cube_hdu = fits.PrimaryHDU(data=smoothcube, header=header)
+    cube_hdu.header = target_beam.attach_to_header(cube_hdu.header)
+
+    smooth_outf = "smoothcube.fits"
+    cube_hdu.writeto(smooth_outf, overwrite=True)
+
+    return smooth_outf
 
 
 def make_3d_image(beams: Beams):
@@ -116,13 +128,11 @@ class test_Beamcon2D(unittest.TestCase):
 
         self.test_image = test_image
         self.target_beam = Beam(60 * u.arcsec, 60 * u.arcsec, 0 * u.deg)
-        casaim, casaim_smooth, smoothfits = mirsmooth(test_image, self.target_beam)
-        self.test_casa = smoothfits
+        smoothfits = smoothcube(test_image, self.target_beam)
+        self.test_cube = smoothfits
 
         self.files = [
             test_image,
-            casaim,
-            casaim_smooth,
             smoothfits,
         ]
 
@@ -139,7 +149,7 @@ class test_Beamcon2D(unittest.TestCase):
 
         fname_beamcon = self.test_image.replace(".fits", ".robust.fits")
         self.files.append(fname_beamcon)
-        self.assertTrue(check_images(self.test_casa, fname_beamcon))
+        self.assertTrue(check_images(self.test_cube, fname_beamcon))
 
     def test_astropy(self):
         beamcon_3D.main(
@@ -154,7 +164,7 @@ class test_Beamcon2D(unittest.TestCase):
 
         fname_beamcon = self.test_image.replace(".fits", ".astropy.fits")
         self.files.append(fname_beamcon)
-        self.assertTrue(check_images(self.test_casa, fname_beamcon))
+        self.assertTrue(check_images(self.test_cube, fname_beamcon))
 
     def test_scipy(self):
         beamcon_3D.main(
@@ -168,7 +178,7 @@ class test_Beamcon2D(unittest.TestCase):
         )
         fname_beamcon = self.test_image.replace(".fits", ".scipy.fits")
         self.files.append(fname_beamcon)
-        self.assertTrue(check_images(self.test_casa, fname_beamcon))
+        self.assertTrue(check_images(self.test_cube, fname_beamcon))
 
     def tearDown(self) -> None:
         cleanup(self.files)
