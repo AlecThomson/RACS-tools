@@ -51,4 +51,5 @@ jobs:
         echo "/opt/miriad/linux64/bin" >> $GITHUB_PATH
     - name: Test with pytest
       run: |
+        apt-get update && apt-get install -y gfortran
         pytest
