@@ -725,12 +725,11 @@ def masking(datalist: List[CubeData], cutoff: Union[u.Quantity, None] = None) ->
     """Apply masking to data.
 
     Args:
-        nchans (int): Number of channels in cubes.
-        datadict (dict): Data dictionary.
+        datalist (list): List of CubeData objects.
         cutoff (None, optional): Cutoff BMAJ size for masking. Defaults to None.
 
     Returns:
-        dict: Updated data dictionary.
+        list: List of CubeData objects with masking applied.
     """
     if cutoff:
         for data_mask in datalist:
@@ -756,18 +755,23 @@ def initfiles(
     commonbeams: Beams,
     outdir: Path,
     mode: str,
-    suffix=None,
-    prefix=None,
-    ref_chan=None,
+    suffix:Union[str,None]=None,
+    prefix: Union[str,None]=None,
+    ref_chan: Union[int,None]=None,
 ) -> Path:
     """Initialise output files
 
     Args:
-        datadict (dict): Main data dict - indexed
+        filename (Path): Path to input file
+        commonbeams (Beams): Common beams
+        outdir (Path): Output directory
         mode (str): 'total' or 'natural'
+        suffix (Union[str,None], optional): Suffix for output file. Defaults to None.
+        prefix (Union[str,None], optional): Prefix for output file. Defaults to None.
+        ref_chan (Union[int,None], optional): Reference channel. Defaults to None.
 
     Returns:
-        datadict: Updated datadict
+        Path: Path to output file
     """
     logger.debug(f"Reading {filename}")
     with fits.open(filename, memmap=True, mode="denywrite") as hdulist:
