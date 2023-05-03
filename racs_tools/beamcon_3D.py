@@ -9,6 +9,7 @@ import stat
 import sys
 import warnings
 from typing import Dict, List, Tuple, NamedTuple, Union
+from dataclasses import dataclass
 
 import numpy as np
 import scipy.signal
@@ -61,7 +62,8 @@ warnings.filterwarnings("ignore", message="invalid value encountered in true_div
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
 #############################################
 
-class CubeData(NamedTuple):
+@dataclass
+class CubeData:
     """Cube data structure"""
 
     filename: Path
@@ -71,14 +73,13 @@ class CubeData(NamedTuple):
     beamlog: Path
     beam: Beam
     nchan: int
-
-
-class MaskCubeData(NamedTuple):
-    """Masked cube data"""
-
-    mask: np.ndarray
-    beams: Beams
-
+    mask: np.ndarray = None
+    beams: Beams = None
+    outfile: Path = None
+    facs: np.ndarray = None
+    convbeams: Beams = None
+    commonbeams: Beams = None
+    commonbeam_log: Path = None
 
 class BeamLogData(NamedTuple):
     """Beam log data"""
@@ -359,7 +360,7 @@ def makedata(files: List[Path], outdirs: List[Path]) -> List[CubeData]:
 
 
 def natural_commonbeamer(
-    datalist_masked: List[MaskCubeData],
+    datalist: List[CubeData],
     grids: List[u.Quantity],
     nchans: int,
     conv_mode: str = "robust",
@@ -391,7 +392,7 @@ def natural_commonbeamer(
         majors_list = []
         minors_list = []
         pas_list = []
-        for d in datalist_masked:
+        for d in datalist:
             major = d.beams[n].major
             minor = d.beams[n].minor
             pa = d.beams[n].pa
@@ -503,7 +504,7 @@ def natural_commonbeamer(
     return commonbeams
 
 def total_commonbeamer(
-    datalist_masked: List[MaskCubeData],
+    datalist: List[CubeData],
     grids: List[u.Quantity],
     nchans: int,
     target_beam: Union[Beam, None] = None,
@@ -515,7 +516,7 @@ def total_commonbeamer(
     majors_list = []
     minors_list = []
     pas_list = []
-    for d in datalist_masked:
+    for d in datalist:
         major = d.beams.major
         minor = d.beams.minor
         pa = d.beams.pa
@@ -605,7 +606,6 @@ def total_commonbeamer(
 def make_beamlogs(
     commonbeams: Beams,
     datalist: List[CubeData],
-    datalist_masked: List[MaskCubeData],
     suffix: str,
     nchans: int,
     circularise: bool = False,
@@ -623,11 +623,8 @@ def make_beamlogs(
         logger.info(f"Channel {i}: {commonbeam!r}")
 
     beamlog_data_list = [] # type: List[BeamLogData]
-    for dm, d in tqdm(
-        zip(
-            datalist_masked,
-            datalist,
-        ),
+    for d in tqdm(
+        datalist,
         desc="Getting convolution data",
         disable=(logger.level > logging.INFO),
     ):
@@ -635,8 +632,8 @@ def make_beamlogs(
         conv_bmaj = []
         conv_bmin = []
         conv_bpa = []
-        old_beams = dm.beams
-        masks = dm.mask
+        old_beams = d.beams
+        masks = d.mask
         for commonbeam, old_beam, mask in zip(commonbeams, old_beams, masks):
             if mask:
                 convbeam = Beam(
@@ -676,7 +673,7 @@ def make_beamlogs(
 
         # Get gaussian beam factors
         facs = getfacs(
-            beams=dm.beams,
+            beams=d.beams,
             convbeams=convbeams,
             dx=d.dx,
             dy=d.dy,
@@ -724,7 +721,7 @@ def make_beamlogs(
     return beamlog_data_list
 
 
-def masking(datalist_mask: List[MaskCubeData], cutoff: Union[u.Quantity, None] = None) -> List[MaskCubeData]:
+def masking(datalist: List[CubeData], cutoff: Union[u.Quantity, None] = None) -> List[CubeData]:
     """Apply masking to data.
 
     Args:
@@ -736,7 +733,7 @@ def masking(datalist_mask: List[MaskCubeData], cutoff: Union[u.Quantity, None] =
         dict: Updated data dictionary.
     """
     if cutoff:
-        for data_mask in datalist_mask:
+        for data_mask in datalist:
             cutmask = data_mask.beams.major > cutoff
             data_mask.mask += cutmask
 
@@ -745,13 +742,13 @@ def masking(datalist_mask: List[MaskCubeData], cutoff: Union[u.Quantity, None] =
     tiny = np.finfo(np.float32).tiny  # Smallest positive number - used to mask
     smallbeam = Beam(major=tiny * u.deg, minor=tiny * u.deg, pa=tiny * u.deg)
 
-    for data_mask in datalist_mask:
+    for data_mask in datalist:
         nullmask = np.logical_or(
             data_mask.beams == nullbeam,
             data_mask.beams == smallbeam,
         )
         data_mask.mask += nullmask
-    return datalist_mask
+    return datalist
 
 
 def initfiles(
@@ -995,7 +992,7 @@ def main(
             target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
             logger.info(f"Target beam is {target_beam!r}")
 
-        files = sorted(infile)
+        files = sorted([Path(f) for f in infile])
         if files == []:
             raise Exception("No files found!")
 
@@ -1005,7 +1002,7 @@ def main(
         else:
             outdirs = []
             for f in files:
-                out = Path(f)
+                out = Path(f).parent
                 outdirs += [out]
 
         datalist = makedata(files, outdirs)
@@ -1025,31 +1022,26 @@ def main(
             suffix = mode
 
         # Construct Beams objects
-        datalist_mask = [] # Type: List[MaskCubeData]
-        for d in datalist:
+        for i, d in enumerate(datalist):
             beam = d.beam
             bmaj = np.array(beam["BMAJ"]) * beam["BMAJ"].unit
             bmin = np.array(beam["BMIN"]) * beam["BMIN"].unit
             bpa = np.array(beam["BPA"]) * beam["BPA"].unit
             beams = Beams(major=bmaj, minor=bmin, pa=bpa)
-            datalist_mask.append(
-                MaskCubeData(
-                    mask = np.array([False] * nchans),
-                    beams = beams,
-                )
-            )
+            datalist[i].mask = np.array([False] * nchans)
+            datalist[i].beams = beams
 
         # Apply some masking
-        datalist_masked = masking(datalist_mask=datalist_mask, cutoff=cutoff)
+        datalist_masked = masking(datalist=datalist, cutoff=cutoff)
         # Get the grid size
-        grids = [d.dy for d in datalist_masked]
+        grids = [d.dy for d in datalist]
 
         if not uselogs:
             if not suffix:
                 suffix = mode
             if mode == "natural":
                 commonbeams = natural_commonbeamer(
-                    datalist_masked=datalist_masked,
+                    datalist=datalist_masked,
                     grids=grids,
                     nchans=nchans,
                     conv_mode=conv_mode,
@@ -1059,7 +1051,7 @@ def main(
                 )
             elif mode == "total":
                 commonbeams = total_commonbeamer(
-                    datalist_masked=datalist_masked,
+                    datalist=datalist_masked,
                     grids=grids,
                     nchans=nchans,
                     target_beam=target_beam,
@@ -1071,8 +1063,7 @@ def main(
 
             beamlog_data_list = make_beamlogs(
                 commonbeams=commonbeams,
-                datalist=datalist,
-                datalist_masked=datalist_masked,
+                datalist=datalist_masked,
                 suffix=suffix,
                 nchans=nchans,
                 circularise=circularise,
@@ -1086,10 +1077,17 @@ def main(
                 )
                 bemlog_data = readlogs(commonbeam_log)
                 beamlog_data_list.append(bemlog_data)
+
+        # Add beamlog data to datalist
+        for i, beamlog_data in enumerate(beamlog_data_list):
+            datalist[i].facs = beamlog_data.facs
+            datalist[i].convbeams = beamlog_data.convbeams
+            datalist[i].commonbeams = beamlog_data.commonbeams
+            datalist[i].commonbeam_log = beamlog_data.commonbeam_log
+
     else:
         if not dryrun:
             files = None
-            datalist = None
             datalist_masked = None
             beamlog_data_list = None
             nchans = None
@@ -1103,12 +1101,11 @@ def main(
             logger.info("Initialising output files")
         if mpiSwitch:
             files = comm.bcast(files, root=0)
-            datalist = comm.bcast(datalist, root=0)
             datalist_masked = comm.bcast(datalist_masked, root=0)
             beamlog_data_list = comm.bcast(beamlog_data_list, root=0)
             nchans = comm.bcast(nchans, root=0)
 
-        indices = list(datadict.keys())
+        indices = list(range(len(datalist)))
         dims = len(indices)
 
         if nPE > dims:
@@ -1136,9 +1133,9 @@ def main(
         outfile_dict = {} # Use a dict to preserve order
         for idx in indices[my_start : my_end + 1]:
             outfile = initfiles(
-                filename=datalist[idx].filename,
+                filename=datalist_masked[idx].filename,
                 commonbeams=beamlog_data_list[idx].commonbeams,
-                outdir=datalist[idx].outdir,
+                outdir=datalist_masked[idx].outdir,
                 mode=mode,
                 suffix=suffix,
                 prefix=prefix,
@@ -1157,25 +1154,25 @@ def main(
 
         # Now do the convolution in parallel
         if myPE == 0:
-            # Conver list to dict and save to main dict
+            # Convert list to dict and save to main dict
             outlist_dict = {}
             for d in outlist:
                 outlist_dict.update(d)
             # Also make inputs list
             inputs = []
-            for key in datadict.keys():
-                datadict[key]["outfile"] = outlist_dict[key]
+            for i, d in enumerate(datalist_masked):
+                datalist_masked[i].outfile = outlist_dict[i]
                 for chan in range(nchans):
-                    inputs.append((key, chan))
+                    inputs.append((i, chan))
 
         else:
-            datadict = None
+            datalist_masked = None
             inputs = None
         if mpiSwitch:
             comm.Barrier()
         if mpiSwitch:
             inputs = comm.bcast(inputs, root=0)
-            datadict = comm.bcast(datadict, root=0)
+            datalist_masked = comm.bcast(datalist_masked, root=0)
 
         dims = len(files) * nchans
         assert len(inputs) == dims
@@ -1195,20 +1192,20 @@ def main(
         logger.debug(f"My start is {my_start}, my end is {my_end}")
 
         for inp in inputs[my_start : my_end + 1]:
-            key, chan = inp
-            outfile = datadict[key]["outfile"]
+            idx, chan = inp
+            outfile = datalist_masked[idx].outfile
             logger.debug(f"{outfile}  - channel {chan} - Started")
 
-            cubedict = datadict[key]
+            cubedict = datalist_masked[idx]
             newim = worker(
-                filename=cubedict["filename"],
+                filename=cubedict.filename,
                 idx=chan,
-                dx=cubedict["dx"],
-                dy=cubedict["dy"],
-                old_beam=cubedict["beams"][chan],
-                final_beam=cubedict["commonbeams"][chan],
-                conbeam=cubedict["convbeams"][chan],
-                sfactor=cubedict["facs"][chan],
+                dx=cubedict.dx,
+                dy=cubedict.dy,
+                old_beam=cubedict.beams[chan],
+                final_beam=cubedict.commonbeams[chan],
+                conbeam=cubedict.convbeams[chan],
+                sfactor=cubedict.facs[chan],
                 conv_mode=conv_mode,
             )
 
@@ -1231,7 +1228,7 @@ def main(
             logger.info(f"{outfile}  - channel {chan} - Done")
 
     logger.info("Done!")
-    return datadict
+    return datalist_masked
 
 
 def cli():
