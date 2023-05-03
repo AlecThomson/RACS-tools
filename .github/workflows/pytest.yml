@@ -45,7 +45,7 @@ jobs:
     - name: Install dependencies
       run: |
         python3 -m pip install --upgrade pip
-        python3 -m pip install pytest numpy
+        python3 -m pip install pytest numpy git+https://github.com/radio-astro-tools/spectral-cube.git
         python3 -m pip install -U .
     - name: Install miriad
       run: |
