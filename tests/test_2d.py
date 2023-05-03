@@ -3,6 +3,7 @@
 
 import subprocess as sp
 import unittest
+from typing import List, Tuple, Union
 
 import astropy.units as u
 import numpy as np
@@ -13,7 +14,15 @@ from radio_beam import Beam
 from racs_tools import beamcon_2D
 
 
-def make_2d_image(beam):
+def make_2d_image(beam: Beam) -> str:
+    """Make a fake 2D image from with a Gaussian beam.
+
+    Args:
+        beam (Beam): Gaussian beam.
+
+    Returns:
+        str: Name of the output FITS file.
+    """
     pix_scale = 2.5 * u.arcsec
 
     data = beam.as_kernel(pixscale=pix_scale, x_size=100, y_size=100).array
@@ -44,7 +53,16 @@ def make_2d_image(beam):
     return outf
 
 
-def mirsmooth(outf, target_beam):
+def mirsmooth(outf: str, target_beam: Beam) -> Tuple[str, str, str]:
+    """Smooth a FITS image to a target beam using MIRIAD.
+
+    Args:
+        outf (str): FITS image to smooth.
+        target_beam (Beam): Target beam.
+
+    Returns:
+        Tuple[str, str, str]: Names of the output images.
+    """
     outim = outf.replace(".fits", ".im")
     cmd = f"fits op=xyin in={outf} out={outim}"
     sp.run(cmd.split())
@@ -60,20 +78,37 @@ def mirsmooth(outf, target_beam):
     return outim, smoothim, smoothfits
 
 
-def check_images(fname_1, fname_2):
+def check_images(fname_1: str, fname_2: str) -> bool:
+    """Compare two FITS images.
+
+    Args:
+        fname_1 (str): Image 1.
+        fname_2 (str): Image 2.
+
+    Returns:
+        bool: True if the images are the same.
+    """
     data_1 = fits.getdata(fname_1)
     data_2 = fits.getdata(fname_2)
 
     return np.allclose(data_1, data_2, atol=1e-5)
 
 
-def cleanup(files):
+def cleanup(files: List[str]):
+    """Remove files.
+
+    Args:
+        files (List[str]): List of files to remove.
+    """
     for f in files:
         sp.run(f"rm -rfv {f}".split())
 
 
 class test_Beamcon2D(unittest.TestCase):
+    """Test the 2D beam convolution."""
+
     def setUp(self) -> None:
+        """Set up the test."""
         self.orginal_beam = Beam(20 * u.arcsec, 10 * u.arcsec, 10 * u.deg)
         test_image = make_2d_image(self.orginal_beam)
 
@@ -90,6 +125,7 @@ class test_Beamcon2D(unittest.TestCase):
         ]
 
     def test_robust(self):
+        """Test the robust convolution."""
         with schwimmbad.SerialPool() as pool:
             beamcon_2D.main(
                 pool=pool,
@@ -108,6 +144,7 @@ class test_Beamcon2D(unittest.TestCase):
         ), "Beamcon does not match miriad"
 
     def test_astropy(self):
+        """Test the astropy convolution."""
         print(f"{self.test_image=}")
         with schwimmbad.SerialPool() as pool:
             beamcon_2D.main(
@@ -127,6 +164,7 @@ class test_Beamcon2D(unittest.TestCase):
         ), "Beamcon does not match miriad"
 
     def test_scipy(self):
+        """Test the scipy convolution."""
         with schwimmbad.SerialPool() as pool:
             beamcon_2D.main(
                 pool=pool,
@@ -145,6 +183,7 @@ class test_Beamcon2D(unittest.TestCase):
         ), "Beamcon does not match miriad"
 
     def tearDown(self) -> None:
+        """Clean up."""
         cleanup(self.files)
 
 
