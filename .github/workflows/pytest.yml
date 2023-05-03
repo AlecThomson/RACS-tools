@@ -46,7 +46,7 @@ jobs:
       run: |
         python3 -m pip install --upgrade pip
         python3 -m pip install pytest numpy
-        python3 -m pip install .
+        python3 -m pip install -U .
     - name: Install miriad
       run: |
         cd /opt
