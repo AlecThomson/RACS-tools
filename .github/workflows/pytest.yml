@@ -30,8 +30,18 @@ jobs:
         cache: 'pip' # caching pip dependencies
     - uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages: gfortran wget bzip2 libgfortran5 libx11-6 csh
+        packages: gfortran wget bzip2 libx11-6 csh
         version: 1.0
+    - name: A Hack for fortran
+      run: |
+        echo "Downloading gcc-6-base" && \
+        cd /tmp/ && wget http://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-6/gcc-6-base_6.4.0-17ubuntu1_amd64.deb && \
+        echo "Downloading libgfortran3" && \ 
+        cd /tmp/ && wget http://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-6/libgfortran3_6.4.0-17ubuntu1_amd64.deb && \
+        echo "Installing gcc-6-base" && \
+        cd /tmp/ && sudo dpkg -i gcc-6-base_6.4.0-17ubuntu1_amd64.deb && \ 
+        echo "Installing libgfortran3" && \
+        cd /tmp/ && sudo dpkg -i libgfortran3_6.4.0-17ubuntu1_amd64.deb
     - name: Install dependencies
       run: |
         python3 -m pip install --upgrade pip
