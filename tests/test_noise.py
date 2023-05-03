@@ -8,7 +8,9 @@ import astropy.units as u
 import numpy as np
 from astropy.io import fits
 from test_2d import cleanup
+
 from racs_tools import getnoise_list
+
 
 def make_noise_cube(noise_per_chan: np.ndarray) -> np.ndarray:
     """Make a noise cube."""
@@ -17,6 +19,7 @@ def make_noise_cube(noise_per_chan: np.ndarray) -> np.ndarray:
         noise_cube[i] = np.random.normal(loc=0, scale=noise, size=(100, 100))
 
     return noise_cube
+
 
 def write_cube(cube_data: np.ndarray, outfile: str) -> None:
     """Write a cube to a FITS file."""
@@ -79,8 +82,6 @@ class test_Noise(unittest.TestCase):
 
         self.files = [qfile, ufile]
 
-
-
     def test_main(self):
         getnoise_list.main(
             qfile=self.qfile,
@@ -92,8 +93,12 @@ class test_Noise(unittest.TestCase):
         unoise_file = self.ufile.replace(".fits", ".noise.txt")
         qnoise = np.loadtxt(qnoise_file)
         unoise = np.loadtxt(unoise_file)
-        assert np.allclose(qnoise, self.qnoise, rtol=1e-1), "Measured Stokes Q noise values does not match input values."
-        assert np.allclose(unoise, self.unoise, rtol=1e-1), "Measured Stokes U noise values does not match input values."
+        assert np.allclose(
+            qnoise, self.qnoise, rtol=1e-1
+        ), "Measured Stokes Q noise values does not match input values."
+        assert np.allclose(
+            unoise, self.unoise, rtol=1e-1
+        ), "Measured Stokes U noise values does not match input values."
 
         self.files.append(qnoise_file)
         self.files.append(unoise_file)
@@ -121,10 +126,9 @@ class test_Noise(unittest.TestCase):
         assert np.all(np.isnan(qcube[self.bad_idx])), "NaNs not found in Stokes Q cube."
         assert np.all(np.isnan(ucube[self.bad_idx])), "NaNs not found in Stokes U cube."
 
-
-
     def tearDown(self) -> None:
         cleanup(self.files)
+
 
 if __name__ == "__main__":
     unittest.TestLoader.sortTestMethodsUsing = None
