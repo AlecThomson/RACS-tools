@@ -47,7 +47,8 @@ jobs:
           chmod 644 MIRRC.sh && \
           echo source /opt/miriad/MIRRC.sh >> $HOME/.bashrc &&
           echo export PATH=\${MIRBIN}:\${PATH} >> $HOME/.bashrc
-        export PATH="/opt/miriad/linux64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+        source $HOME/.bashrc
+        export PATH="/opt/miriad/linux64/bin:$PATH"
     - name: Test with pytest
       run: |
         pytest
