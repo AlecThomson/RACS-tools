@@ -36,11 +36,17 @@ jobs:
         python3 -m pip install .
     - name: Install miriad
       run: |
-        apt-get update && apt-get install -y     wget     bzip2     libgfortran3     libx11-6     csh
+        apt-get update && apt-get install -y wget bzip2 libgfortran3 libx11-6 csh
         cd /opt
-        wget     ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-common.tar.bz2     ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-linux64.tar.bz2 &&     tar xf miriad-common.tar.bz2 &&     tar xf miriad-linux64.tar.bz2 &&     rm -rf *tar.bz2
+        wget ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-common.tar.bz2 ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-linux64.tar.bz2 && \
+          tar xf miriad-common.tar.bz2 && \
+          tar xf miriad-linux64.tar.bz2 && \
+          rm -rf *tar.bz2
         cd /opt/miriad
-        sed -e "s,@MIRROOT@,/opt/miriad," scripts/MIRRC.sh.in > MIRRC.sh &&     chmod 644 MIRRC.sh &&     echo source /opt/miriad/MIRRC.sh >> /root/.bashrc &&     echo export PATH=\${MIRBIN}:\${PATH} >> /root/.bashrc
+        sed -e "s,@MIRROOT@,/opt/miriad," scripts/MIRRC.sh.in > MIRRC.sh && \
+          chmod 644 MIRRC.sh && \
+          sudo echo source /opt/miriad/MIRRC.sh >> /root/.bashrc && \ 
+          sudo echo export PATH=\${MIRBIN}:\${PATH} >> /root/.bashrc
         export PATH=/opt/miriad/linux64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     - name: Test with pytest
       run: |
