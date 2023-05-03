@@ -196,10 +196,10 @@ def get_imdata(cubenm: Path) -> ImageData:
 
 def savefile(
     newimage: np.ndarray,
-    filename: str,
+    filename: Path,
     header: fits.Header,
     final_beam: Beam,
-    outdir: str = ".",
+    outdir: Path = Path("."),
 ) -> None:
     """Save smoothed image to FITS file
 
@@ -210,7 +210,7 @@ def savefile(
         final_beam (Beam): New beam.
         outdir (str, optional): Output directory. Defaults to ".".
     """
-    outfile = f"{outdir}/{filename}"
+    outfile = outdir / filename
     logger.info(f"Saving to {outfile}")
     beam = final_beam
     header = beam.attach_to_header(header)
@@ -247,7 +247,7 @@ def worker(
     if not outdir:
         outdir = file.parent
 
-    outfile = outfile.with_suffix(f".{suffix}.fits")
+    outfile = file.with_suffix(f".{suffix}.fits")
     if prefix:
         outfile = Path(prefix + outfile.as_posix())
 
@@ -302,7 +302,7 @@ def worker(
 
 
 def getmaxbeam(
-    files: List[str],
+    files: List[Path],
     conv_mode: str = "robust",
     target_beam: Union[Beam, None] = None,
     cutoff: Union[float, None] = None,
@@ -486,7 +486,7 @@ def writelog(output: List[WorkerResult], commonbeam_log: str):
 
 def main(
     pool,
-    infile: list = [],
+    infile: List[str] = [],
     prefix: Union[str, None] = None,
     suffix: Union[str, None] = None,
     outdir: Union[str, None] = None,
@@ -537,7 +537,9 @@ def main(
         outdir = Path(outdir)
 
     # Get file list
-    files = sorted(infile)
+    files = sorted([Path(f) for f in infile]) # Type: List[Path]
+    print(f"{files=}")
+    print(f"{infile=}")
     if files == []:
         raise Exception("No files found!")
 
