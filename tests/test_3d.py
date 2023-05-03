@@ -135,6 +135,7 @@ def make_3d_image(beams: Beams) -> str:
 
 class test_Beamcon3D(unittest.TestCase):
     """Test the beamcon_3D script."""
+
     def setUp(self) -> None:
         """Set up the test."""
         self.orginal_beams = Beams(
@@ -204,6 +205,7 @@ class test_Beamcon3D(unittest.TestCase):
     def tearDown(self) -> None:
         """Tear down the test."""
         cleanup(self.files)
+
 
 if __name__ == "__main__":
     unittest.TestLoader.sortTestMethodsUsing = None

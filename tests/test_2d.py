@@ -106,6 +106,7 @@ def cleanup(files: List[str]):
 
 class test_Beamcon2D(unittest.TestCase):
     """Test the 2D beam convolution."""
+
     def setUp(self) -> None:
         """Set up the test."""
         self.orginal_beam = Beam(20 * u.arcsec, 10 * u.arcsec, 10 * u.deg)
