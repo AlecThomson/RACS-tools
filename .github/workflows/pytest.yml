@@ -48,7 +48,7 @@ jobs:
           echo source /opt/miriad/MIRRC.sh >> $HOME/.bashrc &&
           echo export PATH=\${MIRBIN}:\${PATH} >> $HOME/.bashrc
         source $HOME/.bashrc
-        export PATH="/opt/miriad/linux64/bin:$PATH"
+        export PATH="/opt/miriad/linux64/bin:$GITHUB_PATH"
     - name: Test with pytest
       run: |
         pytest
