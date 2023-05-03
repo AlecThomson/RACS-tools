@@ -172,7 +172,7 @@ optional arguments:
 
 ```
 $ getnoise_list -h
-usage: getnoise_list [-h] [-b] [-c CLIPLEV] [-i ITERATE] [-f FILE] qfile ufile
+usage: getnoise_list.py [-h] [-s] [-b] [-c CLIPLEV] [-i ITERATE] [-f FILE] qfile ufile
 
  Find bad channels by checking statistics of each channel image.
 
@@ -180,8 +180,9 @@ positional arguments:
   qfile                 Stokes Q fits file
   ufile                 Stokes U fits file
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
+  -s, --save_noise      Save noise values to disk [default False]
   -b, --blank           Blank bad channels? [default False - just print out bad channels]
   -c CLIPLEV, --cliplev CLIPLEV
                         Clip level in sigma, make this number lower to be more aggressive [default 5]
