@@ -24,14 +24,12 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
-        python3 -m pip install --upgrade pip
-        python3 -m pip install pytest numpy
-        python3 -m pip install -e .
+        python3 -m pip install --upgrade pip && python3 -m pip install pytest numpy && python3 -m pip install -e .
     - name: Install miriad
       run: |
         apt-get update && apt-get install -y     wget     bzip2     libgfortran3     libx11-6     csh
