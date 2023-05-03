@@ -43,8 +43,10 @@ jobs:
           tar xf miriad-linux64.tar.bz2 && \
           rm -rf *tar.bz2
         cd /opt/miriad
-        sudo sed -e "s,@MIRROOT@,/opt/miriad," scripts/MIRRC.sh.in > MIRRC.sh && \
-          sudo chmod 644 MIRRC.sh
+        sed -e "s,@MIRROOT@,/opt/miriad," scripts/MIRRC.sh.in > MIRRC.sh && \
+          chmod 644 MIRRC.sh && \
+          echo source /opt/miriad/MIRRC.sh >> $HOME/.bashrc &&
+          echo export PATH=\${MIRBIN}:\${PATH} >> $HOME/.bashrc
         export PATH="/opt/miriad/linux64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
     - name: Test with pytest
       run: |
