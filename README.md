@@ -172,7 +172,7 @@ optional arguments:
 
 ```
 $ getnoise_list -h
-usage: getnoise_list.py [-h] [-s] [-b] [-c CLIPLEV] [-i ITERATE] [-f FILE] qfile ufile
+usage: getnoise_list [-h] [-s] [-b] [-c CLIPLEV] [-i ITERATE] [-f FILE] qfile ufile
 
  Find bad channels by checking statistics of each channel image.
 
