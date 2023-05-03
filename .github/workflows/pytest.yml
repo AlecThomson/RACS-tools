@@ -30,7 +30,10 @@ jobs:
         cache: 'pip' # caching pip dependencies
     - name: Install dependencies
       run: |
-        python3 -m pip install --upgrade pip && python3 -m pip install pytest numpy && python3 -m pip install -e .
+        apt-get update && apt-get install -y gfortran
+        python3 -m pip install --upgrade pip
+        python3 -m pip install pytest numpy
+        python3 -m pip install .
     - name: Install miriad
       run: |
         apt-get update && apt-get install -y     wget     bzip2     libgfortran3     libx11-6     csh
