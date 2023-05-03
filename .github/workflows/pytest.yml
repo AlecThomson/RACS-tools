@@ -29,9 +29,9 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        python -m pip install pytest numpy
-        python -m pip install -e .
+        python3 -m pip install --upgrade pip
+        python3 -m pip install pytest numpy
+        python3 -m pip install -e .
     - name: Install miriad
       run: |
         apt-get update && apt-get install -y     wget     bzip2     libgfortran3     libx11-6     csh
