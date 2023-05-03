@@ -30,7 +30,7 @@ jobs:
         cache: 'pip' # caching pip dependencies
     - uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages: gfortran wget bzip2 libgfortran3 libx11-6 csh
+        packages: gfortran wget bzip2 libgfortran5 libx11-6 csh
         version: 1.0
     - name: Install dependencies
       run: |
