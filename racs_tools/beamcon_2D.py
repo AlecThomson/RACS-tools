@@ -17,6 +17,8 @@ import schwimmbad
 from astropy import units as u
 from astropy.io import ascii, fits
 from astropy.table import Table
+from astropy.wcs import WCS
+from astropy.wcs.utils import proj_plane_pixel_scales
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 from tqdm import tqdm
@@ -163,7 +165,7 @@ def get_imdata(cubenm: Path) -> ImageData:
     logger.info(f"Getting image data from {cubenm}")
     with fits.open(cubenm, memmap=True, mode="denywrite") as hdu:
         w = astropy.wcs.WCS(hdu[0])
-        pixelscales = astropy.wcs.utils.proj_plane_pixel_scales(w)
+        pixelscales = proj_plane_pixel_scales(w)
 
         dxas = pixelscales[0] * u.deg
         dyas = pixelscales[1] * u.deg
@@ -352,31 +354,38 @@ def getmaxbeam(
             return nan_beam, nan_beams
     else:
         flags = np.array([False for beam in beams])
-    try:
-        cmn_beam = beams[~flags].common_beam(
-            tolerance=tolerance, epsilon=epsilon, nsamps=nsamps
-        )
-    except BeamError:
-        logger.warning(
-            "Couldn't find common beam with defaults\nTrying again with smaller tolerance"
-        )
-        cmn_beam = beams[~flags].common_beam(
-            tolerance=tolerance * 0.1, epsilon=epsilon, nsamps=nsamps
+
+    if not target_beam:
+        # Find the common beam
+        try:
+            cmn_beam = beams[~flags].common_beam(
+                tolerance=tolerance, epsilon=epsilon, nsamps=nsamps
+            )
+        except BeamError:
+            logger.warning(
+                "Couldn't find common beam with defaults\nTrying again with smaller tolerance"
+            )
+            cmn_beam = beams[~flags].common_beam(
+                tolerance=tolerance * 0.1, epsilon=epsilon, nsamps=nsamps
+            )
+
+        # Round up values
+        cmn_beam = Beam(
+            major=my_ceil(cmn_beam.major.to(u.arcsec).value, precision=1) * u.arcsec,
+            minor=my_ceil(cmn_beam.minor.to(u.arcsec).value, precision=1) * u.arcsec,
+            pa=round_up(cmn_beam.pa.to(u.deg), decimals=2),
         )
 
-    # Round up values
-    cmn_beam = Beam(
-        major=my_ceil(cmn_beam.major.to(u.arcsec).value, precision=1) * u.arcsec,
-        minor=my_ceil(cmn_beam.minor.to(u.arcsec).value, precision=1) * u.arcsec,
-        pa=round_up(cmn_beam.pa.to(u.deg), decimals=2),
-    )
+    else:
+        cmn_beam = target_beam
+
     target_header = header
-    w = astropy.wcs.WCS(target_header)
-    pixelscales = astropy.wcs.utils.proj_plane_pixel_scales(w)
+    w = WCS(target_header)
+    pixelscales = proj_plane_pixel_scales(w)
 
     dx = pixelscales[0] * u.deg
     dy = pixelscales[1] * u.deg
-    if not dx == dy:
+    if not np.isclose(dx, dy):
         raise Exception("GRID MUST BE SAME IN X AND Y")
     grid = dy
     if conv_mode != "robust":
@@ -578,7 +587,7 @@ def main(
                 zip(allbeams, files),
                 total=len(allbeams),
                 desc="Deconvolving",
-                disable=(logger.root.level > logger.INFO),
+                disable=(logger.level > logging.INFO),
             )
         ):
             try:
@@ -826,14 +835,14 @@ def cli():
     if args.verbosity == 1:
         logger.basicConfig(
             filename=args.logfile,
-            level=logger.INFO,
+            level=logging.INFO,
             format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     elif args.verbosity >= 2:
         logger.basicConfig(
             filename=args.logfile,
-            level=logger.DEBUG,
+            level=logging.DEBUG,
             format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )

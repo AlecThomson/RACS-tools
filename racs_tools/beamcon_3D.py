@@ -159,7 +159,7 @@ def copyfileobj(fsrc, fdst, length=16 * 1024):
     total = os.fstat(fsrc.fileno()).st_size
     with tqdm(
         total=total,
-        disable=(logger.root.level > logging.INFO),
+        disable=(logger.level > logging.INFO),
         unit_scale=True,
         desc="Copying file",
     ) as pbar:
@@ -339,7 +339,7 @@ def makedata(files: List[Path], outdirs: List[Path]) -> List[CubeData]:
         dxas = pixelscales[0] * u.deg
         dyas = pixelscales[1] * u.deg
 
-        if not dxas == dyas:
+        if not np.isclose(dxas, dyas):
             raise Exception("GRID MUST BE SAME IN X AND Y")
         # Get beam info
         beam, nchan, beamlog = getbeams(file=file, header=header)
@@ -629,7 +629,7 @@ def make_beamlogs(
             datalist,
         ),
         desc="Getting convolution data",
-        disable=(logger.root.level > logging.INFO),
+        disable=(logger.level > logging.INFO),
     ):
         # Get convolving beams
         conv_bmaj = []
