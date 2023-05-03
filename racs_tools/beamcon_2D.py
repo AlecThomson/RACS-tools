@@ -8,7 +8,7 @@ import sys
 from functools import partial
 from hashlib import new
 from pathlib import Path
-from typing import Dict, List, Tuple, NamedTuple, Union
+from typing import Dict, List, NamedTuple, Tuple, Union
 
 import astropy.wcs
 import numpy as np
@@ -34,6 +34,7 @@ logging.basicConfig(level=logging.INFO)
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
 #############################################
 
+
 class ImageData(NamedTuple):
     """Image data class"""
 
@@ -55,7 +56,6 @@ class WorkerResult(NamedTuple):
     old_beam: Beam
     final_beam: Beam
     conbeam: Beam
-
 
 
 def round_up(n: float, decimals: int = 0) -> float:
@@ -537,7 +537,7 @@ def main(
         outdir = Path(outdir)
 
     # Get file list
-    files = sorted([Path(f) for f in infile]) # Type: List[Path]
+    files = sorted([Path(f) for f in infile])  # Type: List[Path]
     print(f"{files=}")
     print(f"{infile=}")
     if files == []:

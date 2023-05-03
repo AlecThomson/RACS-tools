@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import subprocess as sp
-import unittest
 import os
 import shutil
+import subprocess as sp
+import unittest
 
 import astropy.units as u
 import numpy as np
@@ -12,12 +12,12 @@ import schwimmbad
 from astropy.io import fits
 from astropy.table import Table
 from radio_beam import Beam, Beams
+from test_2d import check_images, cleanup, mirsmooth
 
 from racs_tools import beamcon_3D
-from test_2d import mirsmooth, check_images, cleanup
+
 
 def smoothcube(outf: str, target_beam: Beam):
-
     cube = np.squeeze(fits.getdata(outf))
     header = fits.getheader(outf)
     with fits.open(outf) as hdulist:
@@ -35,7 +35,6 @@ def smoothcube(outf: str, target_beam: Beam):
         os.remove(smoothfits)
         shutil.rmtree(outim)
         shutil.rmtree(smoothim)
-
 
     smoothcube = np.array(smoothcube)
     cube_hdu = fits.PrimaryHDU(data=smoothcube, header=header)
@@ -59,7 +58,6 @@ def make_3d_image(beams: Beams):
         cube.append(data)
 
     cube = np.array(cube)[np.newaxis]
-
 
     hdu = fits.PrimaryHDU(data=cube)
     hdu.header["BUNIT"] = "Jy/beam"
@@ -116,6 +114,7 @@ def make_3d_image(beams: Beams):
     new_hdulist.writeto(outf, overwrite=True)
 
     return outf
+
 
 class test_Beamcon2D(unittest.TestCase):
     def setUp(self) -> None:

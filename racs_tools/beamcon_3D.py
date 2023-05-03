@@ -4,12 +4,12 @@ __author__ = "Alec Thomson"
 
 import logging
 import os
-from pathlib import Path
 import stat
 import sys
 import warnings
-from typing import Dict, List, Tuple, NamedTuple, Union
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, NamedTuple, Tuple, Union
 
 import numpy as np
 import scipy.signal
@@ -62,6 +62,7 @@ warnings.filterwarnings("ignore", message="invalid value encountered in true_div
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
 #############################################
 
+
 @dataclass
 class CubeData:
     """Cube data structure"""
@@ -80,6 +81,7 @@ class CubeData:
     convbeams: Beams = None
     commonbeams: Beams = None
     commonbeam_log: Path = None
+
 
 class BeamLogData(NamedTuple):
     """Beam log data"""
@@ -457,28 +459,20 @@ def natural_commonbeamer(
                 # Get the minor axis of the convolving beams
                 minorcons = []
                 for beam in beams[~np.isnan(beams)]:
-                    minorcons += [
-                        commonbeam.deconvolve(beam).minor.to(u.arcsec).value
-                    ]
+                    minorcons += [commonbeam.deconvolve(beam).minor.to(u.arcsec).value]
                 minorcons = np.array(minorcons) * u.arcsec
                 samps = minorcons / grid.to(u.arcsec)
                 # Check that convolving beam will be Nyquist sampled
                 if any(samps.value < 2):
                     # Set the convolving beam to be Nyquist sampled
-                    nyq_con_beam = Beam(
-                        major=grid * 2, minor=grid * 2, pa=0 * u.deg
-                    )
+                    nyq_con_beam = Beam(major=grid * 2, minor=grid * 2, pa=0 * u.deg)
                     # Find new target based on common beam * Nyquist beam
                     # Not sure if this is best - but it works
                     nyq_beam = commonbeam.convolve(nyq_con_beam)
                     nyq_beam = Beam(
-                        major=my_ceil(
-                            nyq_beam.major.to(u.arcsec).value, precision=1
-                        )
+                        major=my_ceil(nyq_beam.major.to(u.arcsec).value, precision=1)
                         * u.arcsec,
-                        minor=my_ceil(
-                            nyq_beam.minor.to(u.arcsec).value, precision=1
-                        )
+                        minor=my_ceil(nyq_beam.minor.to(u.arcsec).value, precision=1)
                         * u.arcsec,
                         pa=round_up(nyq_beam.pa.to(u.deg), decimals=2),
                     )
@@ -502,6 +496,7 @@ def natural_commonbeamer(
     commonbeams = Beams(major=bmaj_common, minor=bmin_common, pa=bpa_common)
 
     return commonbeams
+
 
 def total_commonbeamer(
     datalist: List[CubeData],
@@ -555,10 +550,8 @@ def total_commonbeamer(
     else:
         # Round up values
         commonbeam = Beam(
-            major=my_ceil(commonbeam.major.to(u.arcsec).value, precision=1)
-            * u.arcsec,
-            minor=my_ceil(commonbeam.minor.to(u.arcsec).value, precision=1)
-            * u.arcsec,
+            major=my_ceil(commonbeam.major.to(u.arcsec).value, precision=1) * u.arcsec,
+            minor=my_ceil(commonbeam.minor.to(u.arcsec).value, precision=1) * u.arcsec,
             pa=round_up(commonbeam.pa.to(u.deg), decimals=2),
         )
     if conv_mode != "robust":
@@ -622,7 +615,7 @@ def make_beamlogs(
     for i, commonbeam in enumerate(commonbeams):
         logger.info(f"Channel {i}: {commonbeam!r}")
 
-    beamlog_data_list = [] # type: List[BeamLogData]
+    beamlog_data_list = []  # type: List[BeamLogData]
     for d in tqdm(
         datalist,
         desc="Getting convolution data",
@@ -721,7 +714,9 @@ def make_beamlogs(
     return beamlog_data_list
 
 
-def masking(datalist: List[CubeData], cutoff: Union[u.Quantity, None] = None) -> List[CubeData]:
+def masking(
+    datalist: List[CubeData], cutoff: Union[u.Quantity, None] = None
+) -> List[CubeData]:
     """Apply masking to data.
 
     Args:
@@ -755,9 +750,9 @@ def initfiles(
     commonbeams: Beams,
     outdir: Path,
     mode: str,
-    suffix:Union[str,None]=None,
-    prefix: Union[str,None]=None,
-    ref_chan: Union[int,None]=None,
+    suffix: Union[str, None] = None,
+    prefix: Union[str, None] = None,
+    ref_chan: Union[int, None] = None,
 ) -> Path:
     """Initialise output files
 
@@ -1076,9 +1071,7 @@ def main(
             logger.info("Reading from convolve beamlog files")
             beamlog_data_list = []
             for d in datalist:
-                commonbeam_log = d.beamlog.with_suffix(
-                    f".{suffix}.txt"
-                )
+                commonbeam_log = d.beamlog.with_suffix(f".{suffix}.txt")
                 bemlog_data = readlogs(commonbeam_log)
                 beamlog_data_list.append(bemlog_data)
 
@@ -1134,7 +1127,7 @@ def main(
         logger.debug(f"My start is {my_start}, my end is {my_end}")
 
         # Init output files and retrieve file names
-        outfile_dict = {} # Use a dict to preserve order
+        outfile_dict = {}  # Use a dict to preserve order
         for idx in indices[my_start : my_end + 1]:
             outfile = initfiles(
                 filename=datalist_masked[idx].filename,
