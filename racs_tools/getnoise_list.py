@@ -15,7 +15,7 @@ from spectral_cube.utils import SpectralCubeWarning
 warnings.filterwarnings(action="ignore", category=SpectralCubeWarning, append=True)
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+logger.setLevel(logging.INFO)
 
 
 #############################################
@@ -41,7 +41,7 @@ def getbadchans(
     qcube: SpectralCube,
     ucube: SpectralCube,
     cliplev: float = 5,
-) -> np.ndarray:
+) -> Tuple[np.ndarray, u.Quantity, u.Quantity]:
     """Find bad channels in Stokes Q and U cubes
 
     Args:
@@ -50,7 +50,7 @@ def getbadchans(
         cliplev (float, optional): Number stddev above median to clip. Defaults to 5.
 
     Returns:
-        np.ndarray: Bad channel boolean array
+        Tuple[np.ndarray, u.Quantity, u.Quantity]: Bad channels in Q, U, and noise spectra
     """
     assert len(ucube.spectral_axis) == len(qcube.spectral_axis)
 
@@ -92,7 +92,8 @@ def getbadchans(
     logger.info(f"{ubadones.sum()} of {len(ucube.spectral_axis)} are bad in U")
     total_bad = np.logical_or(qbadones, ubadones)
     logger.info(f"{total_bad.sum()} of {len(qcube.spectral_axis)} are bad in Q -or- U")
-    return total_bad
+
+    return total_bad, qnoisevals, unoisevals
 
 
 def blankchans(
@@ -148,6 +149,7 @@ def main(
     cliplev: float = 5,
     iterate: int = 1,
     outfile: Union[str, None] = None,
+    save_noise: bool = False,
 ) -> None:
     """Flag bad channels in Stokes Q and U cubes
 
@@ -169,7 +171,7 @@ def main(
     # Iterate
     for i in range(iterate):
         logger.info(f"Flagging iteration {i+1} of {iterate}")
-        totalbad = getbadchans(
+        totalbad, qnoisevals, unoisevals = getbadchans(
             qcube,
             ucube,
             cliplev=cliplev,
@@ -177,6 +179,11 @@ def main(
         qcube, ucube = blankchans(
             qcube=qcube, ucube=ucube, totalbad=totalbad, blank=blank
         )
+
+    if save_noise:
+        logger.info("Saving noise values to disk")
+        np.savetxt(qfile.replace(".fits", ".noise.txt"), qnoisevals.value)
+        np.savetxt(ufile.replace(".fits", ".noise.txt"), unoisevals.value)
 
     if blank:
         logger.warning("Overwriting original files")
@@ -203,6 +210,12 @@ def cli() -> None:
     )
     parser.add_argument("qfile", type=str, help="Stokes Q fits file")
     parser.add_argument("ufile", type=str, help="Stokes U fits file")
+    parser.add_argument(
+        "-s",
+        "--save_noise",
+        help="Save noise values to disk [default False]",
+        action="store_true",
+    )
     parser.add_argument(
         "-b",
         "--blank",
@@ -242,6 +255,7 @@ def cli() -> None:
         cliplev=args.cliplev,
         iterate=args.iterate,
         outfile=args.file,
+        save_noise=args.save_noise,
     )
 
 
