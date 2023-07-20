@@ -333,7 +333,7 @@ def getmaxbeam(
     else:
         flags = np.array([False for beam in beams])
 
-    if not target_beam:
+    if target_beam is None:
         # Find the common beam
         try:
             cmn_beam = beams[~flags].common_beam(
