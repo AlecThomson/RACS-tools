@@ -28,7 +28,7 @@ from racs_tools.beamcon_2D import my_ceil, round_up
 from racs_tools.convolve_uv import smooth
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+logger.setLevel(logging.INFO)
 
 mpiSwitch = False
 if (

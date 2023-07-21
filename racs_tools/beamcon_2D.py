@@ -26,7 +26,7 @@ from racs_tools import au2
 from racs_tools.convolve_uv import smooth
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+logger.setLevel(logging.INFO)
 
 
 #############################################
