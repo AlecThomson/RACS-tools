@@ -12,10 +12,9 @@ from astropy.stats import mad_std
 from spectral_cube import SpectralCube
 from spectral_cube.utils import SpectralCubeWarning
 
-warnings.filterwarnings(action="ignore", category=SpectralCubeWarning, append=True)
+from racs_tools.logging import logger, setup_logger
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+warnings.filterwarnings(action="ignore", category=SpectralCubeWarning, append=True)
 
 
 #############################################
@@ -245,8 +244,23 @@ def cli() -> None:
         default=None,
         type=str,
     )
+    parser.add_argument(
+        "-v", "--verbosity", default=0, action="count", help="Increase output verbosity"
+    )
+    parser.add_argument(
+        "--logfile",
+        default=None,
+        type=str,
+        help="Save logging output to file",
+    )
 
     args = parser.parse_args()
+
+    # Set up logging
+    logger = setup_logger(
+        verbosity=args.verbosity,
+        filename=args.logfile,
+    )
 
     main(
         qfile=args.qfile,

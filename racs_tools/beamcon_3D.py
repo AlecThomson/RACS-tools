@@ -26,9 +26,7 @@ from tqdm import tqdm, trange
 from racs_tools import au2
 from racs_tools.beamcon_2D import my_ceil, round_up
 from racs_tools.convolve_uv import smooth
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+from racs_tools.logging import logger, setup_logger
 
 mpiSwitch = False
 if (
@@ -1353,11 +1351,11 @@ def cli():
 
     args = parser.parse_args()
 
-    if args.verbosity == 1:
-        logger.setLevel(
-            level=logging.INFO)
-    elif args.verbosity >= 2:
-        logger.basicConfig(level=logger.DEBUG)
+    # Set up logging
+    logger = setup_logger(
+        verbosity=args.verbosity,
+        filename=args.logfile,
+    )
 
     arg_dict = vars(args)
     # Pop the verbosity argument
