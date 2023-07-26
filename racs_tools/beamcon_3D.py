@@ -28,7 +28,7 @@ from racs_tools.beamcon_2D import my_ceil, round_up
 from racs_tools.convolve_uv import smooth
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.WARNING)
 
 mpiSwitch = False
 if (
@@ -1354,19 +1354,10 @@ def cli():
     args = parser.parse_args()
 
     if args.verbosity == 1:
-        logger.basicConfig(
-            filename=args.logfile,
-            level=logging.INFO,
-            format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
+        logger.setLevel(
+            level=logging.INFO)
     elif args.verbosity >= 2:
-        logger.basicConfig(
-            filename=args.logfile,
-            level=logger.DEBUG,
-            format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
+        logger.basicConfig(level=logger.DEBUG)
 
     arg_dict = vars(args)
     # Pop the verbosity argument

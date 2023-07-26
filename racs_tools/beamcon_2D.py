@@ -26,7 +26,7 @@ from racs_tools import au2
 from racs_tools.convolve_uv import smooth
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.WARNING)
 
 
 #############################################
@@ -811,19 +811,10 @@ def cli():
         except AttributeError:
             myPE = 0
     if args.verbosity == 1:
-        logger.basicConfig(
-            filename=args.logfile,
-            level=logging.INFO,
-            format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
+        logger.setLevel(
+            level=logging.INFO)
     elif args.verbosity >= 2:
-        logger.basicConfig(
-            filename=args.logfile,
-            level=logging.DEBUG,
-            format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
+        logger.basicConfig(level=logger.DEBUG)
     pool = schwimmbad.choose_pool(mpi=args.mpi, processes=args.n_cores)
     if args.mpi:
         if not pool.is_master():
