@@ -26,7 +26,6 @@ from racs_tools import au2
 from racs_tools.convolve_uv import smooth
 from racs_tools.logging import logger, setup_logger
 
-
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
 #############################################
@@ -803,7 +802,7 @@ def cli():
         verbosity=args.verbosity,
         filename=args.logfile,
     )
-    
+
     pool = schwimmbad.choose_pool(mpi=args.mpi, processes=args.n_cores)
     if args.mpi:
         if not pool.is_master():

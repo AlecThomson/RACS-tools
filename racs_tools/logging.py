@@ -6,6 +6,7 @@ from typing import Optional
 
 try:
     from mpi4py import MPI
+
     myPE = MPI.COMM_WORLD.Get_rank()
 except ImportError:
     myPE = 0
@@ -21,8 +22,8 @@ formatter = logging.Formatter(
 
 
 def setup_logger(
-        verbosity: int = 0,
-        filename: Optional[str] = None,
+    verbosity: int = 0,
+    filename: Optional[str] = None,
 ):
     if verbosity == 0:
         level = logging.WARNING
@@ -30,7 +31,7 @@ def setup_logger(
         level = logging.INFO
     elif verbosity >= 2:
         level = logging.DEBUG
-    
+
     ch = logging.StreamHandler()
     ch.setLevel(level)
     ch.setFormatter(formatter)

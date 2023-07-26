@@ -25,8 +25,8 @@ from tqdm import tqdm, trange
 
 from racs_tools import au2
 from racs_tools.beamcon_2D import my_ceil, round_up
-from racs_tools.logging import logger, setup_logger
 from racs_tools.convolve_uv import smooth
+from racs_tools.logging import logger, setup_logger
 
 mpiSwitch = False
 if (
