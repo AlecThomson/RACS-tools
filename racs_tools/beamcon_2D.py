@@ -24,9 +24,7 @@ from tqdm import tqdm
 
 from racs_tools import au2
 from racs_tools.convolve_uv import smooth
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+from racs_tools.logging import logger, setup_logger
 
 
 #############################################
@@ -800,21 +798,12 @@ def cli():
     )
 
     args = parser.parse_args()
-    if args.mpi:
-        from mpi4py import MPI
-
-        comm = MPI.COMM_WORLD
-        myPE = comm.Get_rank()
-    else:
-        try:
-            myPE = psutil.Process().cpu_num()
-        except AttributeError:
-            myPE = 0
-    if args.verbosity == 1:
-        logger.setLevel(
-            level=logging.INFO)
-    elif args.verbosity >= 2:
-        logger.basicConfig(level=logger.DEBUG)
+    # Set up logging
+    logger = setup_logger(
+        verbosity=args.verbosity,
+        filename=args.logfile,
+    )
+    
     pool = schwimmbad.choose_pool(mpi=args.mpi, processes=args.n_cores)
     if args.mpi:
         if not pool.is_master():
