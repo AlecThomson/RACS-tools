@@ -29,7 +29,7 @@ REQUIRED = [
     "schwimmbad",
     "psutil",
     "scipy",
-    "spectral_cube",
+    "git+https://github.com/AlecThomson/spectral-cube@fix_beams", # Need this until PR is merged upstream :'( 
     "tqdm",
 ]
 
