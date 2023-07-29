@@ -197,18 +197,17 @@ def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
             logger.warning("Using header beam - assuming a constant beam")
             try:
                 beam: Beam = Beam.from_fits_header(header)
+                wcs = WCS(header)
+                spec_axis = wcs.spectral
+                _nchan = spec_axis.array_shape[0]
                 beams = Table()
-                beams.add_column(np.arange(header["NAXIS3"]), name="Channel")
+                beams.add_column(np.arange(_nchan), name="Channel")
+                beams.add_column([beam.major.to(u.arcsec)] * _nchan, name="BMAJ")
                 beams.add_column(
-                    [beam.major.to(u.arcsec)] * header["NAXIS3"], name="BMAJ"
-                )
-                beams.add_column(
-                    [beam.minor.to(u.arcsec)] * header["NAXIS3"] * beam.minor.unit,
+                    [beam.minor.to(u.arcsec)] * _nchan,
                     name="BMIN",
                 )
-                beams.add_column(
-                    [beam.pa.to(u.deg)] * header["NAXIS3"] * beam.pa.unit, name="BPA"
-                )
+                beams.add_column([beam.pa.to(u.deg)] * _nchan, name="BPA")
 
             except Exception as e:
                 logger.error("Couldn't get beam from header")
