@@ -200,14 +200,14 @@ def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
                 beams = Table()
                 beams.add_column(np.arange(header["NAXIS3"]), name="Channel")
                 beams.add_column(
-                    [beam.major.to(u.arcsec)] * header["NAXIS3"], name="BMAJarcsec"
+                    [beam.major.to(u.arcsec)] * header["NAXIS3"], name="BMAJ"
                 )
                 beams.add_column(
                     [beam.minor.to(u.arcsec)] * header["NAXIS3"] * beam.minor.unit,
-                    name="BMINarcsec",
+                    name="BMIN",
                 )
                 beams.add_column(
-                    [beam.pa.to(u.deg)] * header["NAXIS3"] * beam.pa.unit, name="BPAdeg"
+                    [beam.pa.to(u.deg)] * header["NAXIS3"] * beam.pa.unit, name="BPA"
                 )
 
             except Exception as e:
