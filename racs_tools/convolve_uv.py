@@ -170,6 +170,6 @@ def smooth(
         log.warning(f"{np.isnan(newim).sum()} NaNs present in smoothed output")
 
     newim *= fac
-    
+
     # Ensure the output data-type is the same as the input
     return newim.astype(image.dtype)
