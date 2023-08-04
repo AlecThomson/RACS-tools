@@ -174,23 +174,45 @@ def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
 
     # Otherwise use beamlog file
     else:
-        logger.info("No CASA beamtable found in header - looking for beamlogs")
-        logger.info(f"Getting beams from {beamlog}")
+        try:
+            logger.info("No CASA beamtable found in header - looking for beamlogs")
+            logger.info(f"Getting beams from {beamlog}")
 
-        beams = Table.read(beamlog, format="ascii.commented_header")
-        # Header looks like:
-        # colnames=['Channel', 'BMAJarcsec', 'BMINarcsec', 'BPAdeg']
-        # But needs some fix up - astropy can't read the header properly
-        for col in beams.colnames:
-            idx = col.find("[")
-            if idx == -1:
-                new_col = col
-                unit = u.Unit("")
-            else:
-                new_col = col[:idx]
-                unit = u.Unit(col[idx + 1 : -1])
-            beams[col].unit = unit
-            beams[col].name = new_col
+            beams = Table.read(beamlog, format="ascii.commented_header")
+            # Header looks like:
+            # colnames=['Channel', 'BMAJarcsec', 'BMINarcsec', 'BPAdeg']
+            # But needs some fix up - astropy can't read the header properly
+            for col in beams.colnames:
+                idx = col.find("[")
+                if idx == -1:
+                    new_col = col
+                    unit = u.Unit("")
+                else:
+                    new_col = col[:idx]
+                    unit = u.Unit(col[idx + 1 : -1])
+                beams[col].unit = unit
+                beams[col].name = new_col
+        except FileNotFoundError:
+            logger.warning("No beamlog found")
+            logger.warning("Using header beam - assuming a constant beam")
+            try:
+                beam: Beam = Beam.from_fits_header(header)
+                wcs = WCS(header)
+                spec_axis = wcs.spectral
+                _nchan = spec_axis.array_shape[0]
+                beams = Table()
+                beams.add_column(np.arange(_nchan), name="Channel")
+                beams.add_column([beam.major.to(u.arcsec)] * _nchan, name="BMAJ")
+                beams.add_column(
+                    [beam.minor.to(u.arcsec)] * _nchan,
+                    name="BMIN",
+                )
+                beams.add_column([beam.pa.to(u.deg)] * _nchan, name="BPA")
+
+            except Exception as e:
+                logger.error("Couldn't get beam from header")
+                raise e
+
     nchan = len(beams)
     return beams, nchan, beamlog
 
