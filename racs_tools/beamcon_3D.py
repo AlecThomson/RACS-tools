@@ -7,7 +7,9 @@ import os
 import stat
 import sys
 import warnings
-from typing import Dict, List, Tuple
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, NamedTuple, Tuple, Union
 
 import numpy as np
 import scipy.signal
@@ -57,6 +59,35 @@ warnings.filterwarnings("ignore", message="invalid value encountered in true_div
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
 #############################################
+
+
+@dataclass
+class CubeData:
+    """Cube data structure"""
+
+    filename: Path
+    outdir: Path
+    dx: u.Quantity
+    dy: u.Quantity
+    beamlog: Path
+    beam: Beam
+    nchan: int
+    mask: np.ndarray = None
+    beams: Beams = None
+    outfile: Path = None
+    facs: np.ndarray = None
+    convbeams: Beams = None
+    commonbeams: Beams = None
+    commonbeam_log: Path = None
+
+
+class BeamLogData(NamedTuple):
+    """Beam log data"""
+
+    facs: np.ndarray
+    convbeams: Beams
+    commonbeams: Beams
+    commonbeam_log: Path
 
 
 class Error(OSError):
@@ -142,7 +173,7 @@ def copyfileobj(fsrc, fdst, length=16 * 1024):
             pbar.update(copied)
 
 
-def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
+def getbeams(file: Path, header: fits.Header) -> Tuple[Table, int, Path]:
     """Get beam information from a fits file or beamlog.
 
     Args:
@@ -153,11 +184,9 @@ def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
         Tuple[Table, int, str]: Table of beams, number of beams, and beamlog filename.
     """
     # Add beamlog info to dict just in case
-    dirname = os.path.dirname(file)
-    basename = os.path.basename(file)
-    if dirname == "":
-        dirname = "."
-    beamlog = f"{dirname}/beamlog.{basename}".replace(".fits", ".txt")
+    dirname = file.parent
+    basename = file.name
+    beamlog = (dirname / f"beamlog.{basename}").with_suffix(".txt")
 
     # First check for CASA beams
     try:
@@ -310,7 +339,7 @@ def worker(
     return newim
 
 
-def makedata(files: List[str], outdir: str) -> Dict[str, dict]:
+def makedata(files: List[Path], outdirs: List[Path]) -> List[CubeData]:
     """Create data dictionary.
 
     Args:
@@ -323,12 +352,8 @@ def makedata(files: List[str], outdir: str) -> Dict[str, dict]:
     Returns:
         Dict[Dict]: Data and metadata for each channel and image.
     """
-    datadict = {}  # type: Dict[str,dict]
-    for i, (file, out) in enumerate(zip(files, outdir)):
-        # Set up files
-        datadict[f"cube_{i}"] = {}
-        datadict[f"cube_{i}"]["filename"] = file
-        datadict[f"cube_{i}"]["outdir"] = out
+    datalist = []  # type: List[CubeData]
+    for i, (file, out) in enumerate(zip(files, outdirs)):
         # Get metadata
         header = fits.getheader(file)
         w = WCS(header)
@@ -337,213 +362,109 @@ def makedata(files: List[str], outdir: str) -> Dict[str, dict]:
         dxas = pixelscales[0] * u.deg
         dyas = pixelscales[1] * u.deg
 
-        datadict[f"cube_{i}"]["dx"] = dxas
-        datadict[f"cube_{i}"]["dy"] = dyas
         if not np.isclose(dxas, dyas):
             raise Exception("GRID MUST BE SAME IN X AND Y")
         # Get beam info
         beam, nchan, beamlog = getbeams(file=file, header=header)
-        datadict[f"cube_{i}"]["beamlog"] = beamlog
-        datadict[f"cube_{i}"]["beam"] = beam
-        datadict[f"cube_{i}"]["nchan"] = nchan
-    return datadict
+
+        cube_data = CubeData(
+            filename=file,
+            outdir=out,
+            dx=dxas,
+            dy=dyas,
+            beamlog=beamlog,
+            beam=beam,
+            nchan=nchan,
+        )
+        datalist.append(cube_data)
+
+    return datalist
 
 
-def commonbeamer(
-    datadict: Dict[str, dict],
+def natural_commonbeamer(
+    datalist: List[CubeData],
+    grids: List[u.Quantity],
     nchans: int,
     conv_mode: str = "robust",
-    mode: str = "natural",
-    suffix: str = None,
-    target_beam: Beam = None,
-    circularise: bool = False,
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
-) -> Dict[str, dict]:
-    """Find common beam for all channels.
-    Computed beams will be written to convolving beam logger.
+) -> Beams:
+    """Find common beam for per channel.
 
     Args:
-        datadict (Dict[str, dict]): Main data dictionary.
+        datalist_masked (List[MaskCubeData]): List of masked data.
+        grids (List[u.Quantity]): List of pixel grids.
         nchans (int): Number of channels.
         conv_mode (str, optional): Convolution mode. Defaults to "robust".
-        mode (str, optional): Frequency mode. Defaults to "natural".
-        target_beam (Beam, optional): Target PSF. Defaults to None.
-        circularise (bool, optional): Circularise PSF. Defaults to False.
-        tolerance (float, optional): Common beam tolerance. Defaults to 0.0001.
-        nsamps (int, optional): Common beam samples. Defaults to 200.
-        epsilon (float, optional): Common beam epsilon. Defaults to 0.0005.
-
-    Raises:
-        Exception: If convolving beam will be undersampled on pixel grid.
+        tolerance (float, optional): Tolerance for convergence. Defaults to 0.0001.
+        nsamps (int, optional): Number of samples. Defaults to 200.
+        epsilon (float, optional): Epsilon. Defaults to 0.0005.
 
     Returns:
-        Dict[str, dict]: Updated data dictionary.
+        Beams: Common beams.
     """
-    if suffix is None:
-        suffix = mode
     ### Natural mode ###
-    if mode == "natural":
-        big_beams = []
-        for n in trange(
-            nchans,
-            desc="Constructing beams",
-            disable=(logger.level > logging.INFO),
-        ):
-            majors_list = []
-            minors_list = []
-            pas_list = []
-            for key in datadict.keys():
-                major = datadict[key]["beams"][n].major
-                minor = datadict[key]["beams"][n].minor
-                pa = datadict[key]["beams"][n].pa
-                if datadict[key]["mask"][n]:
-                    major *= np.nan
-                    minor *= np.nan
-                    pa *= np.nan
-                majors_list.append(major.to(u.arcsec).value)
-                minors_list.append(minor.to(u.arcsec).value)
-                pas_list.append(pa.to(u.deg).value)
-
-            majors = np.array(majors_list)
-            minors = np.array(minors_list)
-            pas = np.array(pas_list)
-
-            majors *= u.arcsec
-            minors *= u.arcsec
-            pas *= u.deg
-            big_beams.append(Beams(major=majors, minor=minors, pa=pas))
-
-        # Find common beams
-        bmaj_common = []
-        bmin_common = []
-        bpa_common = []
-        for beams in tqdm(
-            big_beams,
-            desc="Finding common beam per channel",
-            disable=(logger.level > logging.INFO),
-            total=nchans,
-        ):
-            if all(np.isnan(beams)):
-                commonbeam = Beam(
-                    major=np.nan * u.deg, minor=np.nan * u.deg, pa=np.nan * u.deg
-                )
-            else:
-                try:
-                    commonbeam = beams[~np.isnan(beams)].common_beam(
-                        tolerance=tolerance,
-                        nsamps=nsamps,
-                        epsilon=epsilon,
-                    )
-                except BeamError:
-                    logger.warn("Couldn't find common beam with defaults")
-                    logger.warn("Trying again with smaller tolerance")
-
-                    commonbeam = beams[~np.isnan(beams)].common_beam(
-                        tolerance=tolerance * 0.1,
-                        nsamps=nsamps,
-                        epsilon=epsilon,
-                    )
-                # Round up values
-                commonbeam = Beam(
-                    major=my_ceil(commonbeam.major.to(u.arcsec).value, precision=1)
-                    * u.arcsec,
-                    minor=my_ceil(commonbeam.minor.to(u.arcsec).value, precision=1)
-                    * u.arcsec,
-                    pa=round_up(commonbeam.pa.to(u.deg), decimals=2),
-                )
-
-                grid = datadict[key]["dy"]
-                if conv_mode != "robust":
-                    # Get the minor axis of the convolving beams
-                    minorcons = []
-                    for beam in beams[~np.isnan(beams)]:
-                        minorcons += [
-                            commonbeam.deconvolve(beam).minor.to(u.arcsec).value
-                        ]
-                    minorcons = np.array(minorcons) * u.arcsec
-                    samps = minorcons / grid.to(u.arcsec)
-                    # Check that convolving beam will be Nyquist sampled
-                    if any(samps.value < 2):
-                        # Set the convolving beam to be Nyquist sampled
-                        nyq_con_beam = Beam(
-                            major=grid * 2, minor=grid * 2, pa=0 * u.deg
-                        )
-                        # Find new target based on common beam * Nyquist beam
-                        # Not sure if this is best - but it works
-                        nyq_beam = commonbeam.convolve(nyq_con_beam)
-                        nyq_beam = Beam(
-                            major=my_ceil(
-                                nyq_beam.major.to(u.arcsec).value, precision=1
-                            )
-                            * u.arcsec,
-                            minor=my_ceil(
-                                nyq_beam.minor.to(u.arcsec).value, precision=1
-                            )
-                            * u.arcsec,
-                            pa=round_up(nyq_beam.pa.to(u.deg), decimals=2),
-                        )
-                        logger.info(
-                            f"Smallest common Nyquist sampled beam is: {nyq_beam!r}"
-                        )
-
-                        logger.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
-                        logger.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
-                        commonbeam = nyq_beam
-
-            bmaj_common.append(commonbeam.major.to(u.arcsec).value)
-            bmin_common.append(commonbeam.minor.to(u.arcsec).value)
-            bpa_common.append(commonbeam.pa.to(u.deg).value)
-
-        bmaj_common *= u.arcsec
-        bmin_common *= u.arcsec
-        bpa_common *= u.deg
-
-        # Make Beams object
-        commonbeams = Beams(major=bmaj_common, minor=bmin_common, pa=bpa_common)
-
-    elif mode == "total":
+    big_beams = []
+    for n in trange(
+        nchans,
+        desc="Constructing beams",
+        disable=(logger.root.level > logging.INFO),
+    ):
         majors_list = []
         minors_list = []
         pas_list = []
-        for key in datadict.keys():
-            major = datadict[key]["beams"].major
-            minor = datadict[key]["beams"].minor
-            pa = datadict[key]["beams"].pa
-            major[datadict[key]["mask"]] *= np.nan
-            minor[datadict[key]["mask"]] *= np.nan
-            pa[datadict[key]["mask"]] *= np.nan
+        for d in datalist:
+            major = d.beams[n].major
+            minor = d.beams[n].minor
+            pa = d.beams[n].pa
+            if d.mask[n]:
+                major *= np.nan
+                minor *= np.nan
+                pa *= np.nan
             majors_list.append(major.to(u.arcsec).value)
             minors_list.append(minor.to(u.arcsec).value)
             pas_list.append(pa.to(u.deg).value)
 
-        majors = np.array(majors_list).ravel()
-        minors = np.array(minors_list).ravel()
-        pas = np.array(pas_list).ravel()
+        majors = np.array(majors_list)
+        minors = np.array(minors_list)
+        pas = np.array(pas_list)
 
         majors *= u.arcsec
         minors *= u.arcsec
         pas *= u.deg
-        big_beams = Beams(major=majors, minor=minors, pa=pas)
+        big_beams.append(Beams(major=majors, minor=minors, pa=pas))
 
-        logger.info("Finding common beam across all channels")
-        logger.info("This may take some time...")
-
-        try:
-            commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
-                tolerance=tolerance, nsamps=nsamps, epsilon=epsilon
+    # Find common beams
+    bmaj_common = []
+    bmin_common = []
+    bpa_common = []
+    for i, beams in tqdm(
+        enumerate(big_beams),
+        desc="Finding common beam per channel",
+        disable=(logger.root.level > logging.INFO),
+        total=nchans,
+    ):
+        if all(np.isnan(beams)):
+            commonbeam = Beam(
+                major=np.nan * u.deg, minor=np.nan * u.deg, pa=np.nan * u.deg
             )
-        except BeamError:
-            logger.warn("Couldn't find common beam with defaults")
-            logger.warn("Trying again with smaller tolerance")
-
-            commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
-                tolerance=tolerance * 0.1, nsamps=nsamps, epsilon=epsilon
-            )
-        if target_beam is not None:
-            commonbeam = target_beam
         else:
+            try:
+                commonbeam = beams[~np.isnan(beams)].common_beam(
+                    tolerance=tolerance,
+                    nsamps=nsamps,
+                    epsilon=epsilon,
+                )
+            except BeamError:
+                logger.warn("Couldn't find common beam with defaults")
+                logger.warn("Trying again with smaller tolerance")
+
+                commonbeam = beams[~np.isnan(beams)].common_beam(
+                    tolerance=tolerance * 0.1,
+                    nsamps=nsamps,
+                    epsilon=epsilon,
+                )
             # Round up values
             commonbeam = Beam(
                 major=my_ceil(commonbeam.major.to(u.arcsec).value, precision=1)
@@ -552,46 +473,156 @@ def commonbeamer(
                 * u.arcsec,
                 pa=round_up(commonbeam.pa.to(u.deg), decimals=2),
             )
-        if conv_mode != "robust":
-            # Get the minor axis of the convolving beams
-            grid = datadict[key]["dy"]
-            minorcons = []
-            for beam in big_beams[~np.isnan(big_beams)]:
-                minorcons += [commonbeam.deconvolve(beam).minor.to(u.arcsec).value]
-            minorcons = np.array(minorcons) * u.arcsec
-            samps = minorcons / grid.to(u.arcsec)
-            # Check that convolving beam will be Nyquist sampled
-            if any(samps.value < 2):
-                # Set the convolving beam to be Nyquist sampled
-                nyq_con_beam = Beam(major=grid * 2, minor=grid * 2, pa=0 * u.deg)
-                # Find new target based on common beam * Nyquist beam
-                # Not sure if this is best - but it works
-                nyq_beam = commonbeam.convolve(nyq_con_beam)
-                nyq_beam = Beam(
-                    major=my_ceil(nyq_beam.major.to(u.arcsec).value, precision=1)
-                    * u.arcsec,
-                    minor=my_ceil(nyq_beam.minor.to(u.arcsec).value, precision=1)
-                    * u.arcsec,
-                    pa=round_up(nyq_beam.pa.to(u.deg), decimals=2),
-                )
-                logger.info(f"Smallest common Nyquist sampled beam is: {nyq_beam!r}")
-                if target_beam is not None:
-                    commonbeam = target_beam
-                    if target_beam < nyq_beam:
-                        logger.warn("TARGET BEAM WILL BE UNDERSAMPLED!")
-                        raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
-                else:
+
+            grid = grids[i]
+            if conv_mode != "robust":
+                # Get the minor axis of the convolving beams
+                minorcons = []
+                for beam in beams[~np.isnan(beams)]:
+                    minorcons += [commonbeam.deconvolve(beam).minor.to(u.arcsec).value]
+                minorcons = np.array(minorcons) * u.arcsec
+                samps = minorcons / grid.to(u.arcsec)
+                # Check that convolving beam will be Nyquist sampled
+                if any(samps.value < 2):
+                    # Set the convolving beam to be Nyquist sampled
+                    nyq_con_beam = Beam(major=grid * 2, minor=grid * 2, pa=0 * u.deg)
+                    # Find new target based on common beam * Nyquist beam
+                    # Not sure if this is best - but it works
+                    nyq_beam = commonbeam.convolve(nyq_con_beam)
+                    nyq_beam = Beam(
+                        major=my_ceil(nyq_beam.major.to(u.arcsec).value, precision=1)
+                        * u.arcsec,
+                        minor=my_ceil(nyq_beam.minor.to(u.arcsec).value, precision=1)
+                        * u.arcsec,
+                        pa=round_up(nyq_beam.pa.to(u.deg), decimals=2),
+                    )
+                    logger.info(
+                        f"Smallest common Nyquist sampled beam is: {nyq_beam!r}"
+                    )
+
                     logger.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
                     logger.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
                     commonbeam = nyq_beam
 
-        # Make Beams object
-        commonbeams = Beams(
-            major=[commonbeam.major] * nchans * commonbeam.major.unit,
-            minor=[commonbeam.minor] * nchans * commonbeam.minor.unit,
-            pa=[commonbeam.pa] * nchans * commonbeam.pa.unit,
-        )
+        bmaj_common.append(commonbeam.major.to(u.arcsec).value)
+        bmin_common.append(commonbeam.minor.to(u.arcsec).value)
+        bpa_common.append(commonbeam.pa.to(u.deg).value)
 
+    bmaj_common *= u.arcsec
+    bmin_common *= u.arcsec
+    bpa_common *= u.deg
+
+    # Make Beams object
+    commonbeams = Beams(major=bmaj_common, minor=bmin_common, pa=bpa_common)
+
+    return commonbeams
+
+
+def total_commonbeamer(
+    datalist: List[CubeData],
+    grids: List[u.Quantity],
+    nchans: int,
+    target_beam: Union[Beam, None] = None,
+    conv_mode: str = "robust",
+    tolerance: float = 0.0001,
+    nsamps: int = 200,
+    epsilon: float = 0.0005,
+):
+    majors_list = []
+    minors_list = []
+    pas_list = []
+    for d in datalist:
+        major = d.beams.major
+        minor = d.beams.minor
+        pa = d.beams.pa
+        major[d.mask] *= np.nan
+        minor[d.mask] *= np.nan
+        pa[d.mask] *= np.nan
+        majors_list.append(major.to(u.arcsec).value)
+        minors_list.append(minor.to(u.arcsec).value)
+        pas_list.append(pa.to(u.deg).value)
+
+    majors = np.array(majors_list).ravel()
+    minors = np.array(minors_list).ravel()
+    pas = np.array(pas_list).ravel()
+
+    majors *= u.arcsec
+    minors *= u.arcsec
+    pas *= u.deg
+    big_beams = Beams(major=majors, minor=minors, pa=pas)
+
+    logger.info("Finding common beam across all channels")
+    logger.info("This may take some time...")
+
+    try:
+        commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
+            tolerance=tolerance, nsamps=nsamps, epsilon=epsilon
+        )
+    except BeamError:
+        logger.warn("Couldn't find common beam with defaults")
+        logger.warn("Trying again with smaller tolerance")
+
+        commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
+            tolerance=tolerance * 0.1, nsamps=nsamps, epsilon=epsilon
+        )
+    if target_beam:
+        commonbeam = target_beam
+    else:
+        # Round up values
+        commonbeam = Beam(
+            major=my_ceil(commonbeam.major.to(u.arcsec).value, precision=1) * u.arcsec,
+            minor=my_ceil(commonbeam.minor.to(u.arcsec).value, precision=1) * u.arcsec,
+            pa=round_up(commonbeam.pa.to(u.deg), decimals=2),
+        )
+    if conv_mode != "robust":
+        # Get the minor axis of the convolving beams
+        grid = grids[0]
+        minorcons = []
+        for beam in big_beams[~np.isnan(big_beams)]:
+            minorcons += [commonbeam.deconvolve(beam).minor.to(u.arcsec).value]
+        minorcons = np.array(minorcons) * u.arcsec
+        samps = minorcons / grid.to(u.arcsec)
+        # Check that convolving beam will be Nyquist sampled
+        if any(samps.value < 2):
+            # Set the convolving beam to be Nyquist sampled
+            nyq_con_beam = Beam(major=grid * 2, minor=grid * 2, pa=0 * u.deg)
+            # Find new target based on common beam * Nyquist beam
+            # Not sure if this is best - but it works
+            nyq_beam = commonbeam.convolve(nyq_con_beam)
+            nyq_beam = Beam(
+                major=my_ceil(nyq_beam.major.to(u.arcsec).value, precision=1)
+                * u.arcsec,
+                minor=my_ceil(nyq_beam.minor.to(u.arcsec).value, precision=1)
+                * u.arcsec,
+                pa=round_up(nyq_beam.pa.to(u.deg), decimals=2),
+            )
+            logger.info(f"Smallest common Nyquist sampled beam is: {nyq_beam!r}")
+            if target_beam is not None:
+                commonbeam = target_beam
+                if target_beam < nyq_beam:
+                    logger.warn("TARGET BEAM WILL BE UNDERSAMPLED!")
+                    raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
+            else:
+                logger.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
+                logger.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
+                commonbeam = nyq_beam
+
+    # Make Beams object
+    commonbeams = Beams(
+        major=[commonbeam.major] * nchans * commonbeam.major.unit,
+        minor=[commonbeam.minor] * nchans * commonbeam.minor.unit,
+        pa=[commonbeam.pa] * nchans * commonbeam.pa.unit,
+    )
+    return commonbeams
+
+
+def make_beamlogs(
+    commonbeams: Beams,
+    datalist: List[CubeData],
+    suffix: str,
+    nchans: int,
+    circularise: bool = False,
+) -> List[BeamLogData]:
     if circularise:
         logger.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
         commonbeams = Beams(
@@ -604,8 +635,9 @@ def commonbeamer(
     for i, commonbeam in enumerate(commonbeams):
         logger.info(f"Channel {i}: {commonbeam!r}")
 
-    for key in tqdm(
-        datadict.keys(),
+    beamlog_data_list = []  # type: List[BeamLogData]
+    for d in tqdm(
+        datalist,
         desc="Getting convolution data",
         disable=(logger.level > logging.INFO),
     ):
@@ -613,8 +645,8 @@ def commonbeamer(
         conv_bmaj = []
         conv_bmin = []
         conv_bpa = []
-        old_beams = datadict[key]["beams"]
-        masks = datadict[key]["mask"]
+        old_beams = d.beams
+        masks = d.mask
         for commonbeam, old_beam, mask in zip(commonbeams, old_beams, masks):
             if mask:
                 convbeam = Beam(
@@ -654,18 +686,14 @@ def commonbeamer(
 
         # Get gaussian beam factors
         facs = getfacs(
-            beams=datadict[key]["beams"],
+            beams=d.beams,
             convbeams=convbeams,
-            dx=datadict[key]["dx"],
-            dy=datadict[key]["dy"],
+            dx=d.dx,
+            dy=d.dy,
         )
-        datadict[key]["facs"] = facs
 
         # Setup conv beamlog
-        datadict[key]["convbeams"] = convbeams
-        commonbeam_log = datadict[key]["beamlog"].replace(".txt", f".{suffix}.txt")
-        datadict[key]["commonbeams"] = commonbeams
-        datadict[key]["commonbeamlog"] = commonbeam_log
+        commonbeam_log = d.beamlog.with_suffix(f".{suffix}.txt")
 
         commonbeam_tab = Table()
         # Save target
@@ -695,59 +723,70 @@ def commonbeamer(
         )
         logger.info(f"Convolving log written to {commonbeam_log}")
 
-    return datadict
+        beamlog_data = BeamLogData(
+            facs=facs,
+            convbeams=convbeams,
+            commonbeams=commonbeams,
+            commonbeam_log=commonbeam_log,
+        )
+        beamlog_data_list.append(beamlog_data)
+
+    return beamlog_data_list
 
 
-def masking(nchans: int, datadict: dict, cutoff: u.Quantity = None) -> dict:
+def masking(
+    datalist: List[CubeData], cutoff: Union[u.Quantity, None] = None
+) -> List[CubeData]:
     """Apply masking to data.
 
     Args:
-        nchans (int): Number of channels in cubes.
-        datadict (dict): Data dictionary.
+        datalist (list): List of CubeData objects.
         cutoff (None, optional): Cutoff BMAJ size for masking. Defaults to None.
 
     Returns:
-        dict: Updated data dictionary.
+        list: List of CubeData objects with masking applied.
     """
-    for key in datadict.keys():
-        mask = np.array([False] * nchans)
-        datadict[key]["mask"] = mask
-    if cutoff is not None:
-        for key in datadict.keys():
-            majors = datadict[key]["beams"].major
-            cutmask = majors > cutoff
-            datadict[key]["mask"] += cutmask
+    if cutoff:
+        for data_mask in datalist:
+            cutmask = data_mask.beams.major > cutoff
+            data_mask.mask += cutmask
 
     # Check for pipeline masking
     nullbeam = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
     tiny = np.finfo(np.float32).tiny  # Smallest positive number - used to mask
     smallbeam = Beam(major=tiny * u.deg, minor=tiny * u.deg, pa=tiny * u.deg)
-    for key in datadict.keys():
+
+    for data_mask in datalist:
         nullmask = np.logical_or(
-            datadict[key]["beams"] == nullbeam,
-            datadict[key]["beams"] == smallbeam,
+            data_mask.beams == nullbeam,
+            data_mask.beams == smallbeam,
         )
-        datadict[key]["mask"] += nullmask
-    return datadict
+        data_mask.mask += nullmask
+    return datalist
 
 
 def initfiles(
-    filename: str,
+    filename: Path,
     commonbeams: Beams,
-    outdir: str,
+    outdir: Path,
     mode: str,
-    suffix=None,
-    prefix=None,
-    ref_chan=None,
-):
+    suffix: Union[str, None] = None,
+    prefix: Union[str, None] = None,
+    ref_chan: Union[int, None] = None,
+) -> Path:
     """Initialise output files
 
     Args:
-        datadict (dict): Main data dict - indexed
+        filename (Path): Path to input file
+        commonbeams (Beams): Common beams
+        outdir (Path): Output directory
         mode (str): 'total' or 'natural'
+        suffix (Union[str,None], optional): Suffix for output file. Defaults to None.
+        prefix (Union[str,None], optional): Prefix for output file. Defaults to None.
+        ref_chan (Union[int,None], optional): Reference channel. Defaults to None.
 
     Returns:
-        datadict: Updated datadict
+        Path: Path to output file
     """
     logger.debug(f"Reading {filename}")
     with fits.open(filename, memmap=True, mode="denywrite") as hdulist:
@@ -837,21 +876,20 @@ def initfiles(
         new_hdulist = fits.HDUList([primary_hdu])
 
     # Set up output file
-    if suffix is None:
+    if not suffix:
         suffix = mode
-    outname = os.path.basename(filename)
-    outname = outname.replace(".fits", f".{suffix}.fits")
-    if prefix is not None:
-        outname = prefix + outname
+    outname = filename.with_suffix(f".{suffix}.fits")
+    if prefix:
+        outname = Path(prefix + outname.as_posix())
 
-    outfile = os.path.join(outdir, outname)
+    outfile = outdir / outname
     logger.info(f"Initialising to {outfile}")
     new_hdulist.writeto(outfile, overwrite=True)
 
     return outfile
 
 
-def readlogs(commonbeam_log: str) -> Tuple[Beams, Beams, np.ndarray]:
+def readlogs(commonbeam_log: Path) -> BeamLogData:
     """Read convolving log files
 
     Args:
@@ -861,7 +899,7 @@ def readlogs(commonbeam_log: str) -> Tuple[Beams, Beams, np.ndarray]:
         Exception: If the log file is not found
 
     Returns:
-        Tuple[Beams, Beams, np.ndarray]: Common beams, convolving beams, and scaling factors
+        BeamLogData: Common beams, convolving beams, and scaling factors
     """
     logger.info(f"Reading from {commonbeam_log}")
     try:
@@ -883,7 +921,13 @@ def readlogs(commonbeam_log: str) -> Tuple[Beams, Beams, np.ndarray]:
     logger.info("Final beams are:")
     for i, commonbeam in enumerate(commonbeams):
         logger.info(f"Channel {i}: {commonbeam!r}")
-    return commonbeams, convbeams, facs
+
+    return BeamLogData(
+        facs=facs,
+        convbeams=convbeams,
+        commonbeams=commonbeams,
+        commonbeam_log=commonbeam_log,
+    )
 
 
 def main(
@@ -928,7 +972,7 @@ def main(
             logger.info("Smoothing all channels to a common resolution")
 
         # Check cutoff
-        if cutoff is not None:
+        if cutoff:
             cutoff *= u.arcsec
             logger.info(f"Cutoff is: {cutoff}")
 
@@ -967,26 +1011,23 @@ def main(
             target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
             logger.info(f"Target beam is {target_beam!r}")
 
-        files = sorted(infile)
+        files = sorted([Path(f) for f in infile])
         if files == []:
             raise Exception("No files found!")
 
-        if outdir is not None:
-            if outdir[-1] == "/":
-                outdir = outdir[:-1]
-            outdir = [outdir] * len(files)
+        if outdir:
+            outdir = Path(outdir)
+            outdirs = [outdir] * len(files)
         else:
-            outdir = []
+            outdirs = []
             for f in files:
-                out = os.path.dirname(f)
-                if out == "":
-                    out = "."
-                outdir += [out]
+                out = Path(f).parent
+                outdirs += [out]
 
-        datadict = makedata(files, outdir)
+        datalist = makedata(files, outdirs)
 
         # Sanity check channel counts
-        nchans = np.array([datadict[key]["nchan"] for key in datadict.keys()])
+        nchans = np.array([d.nchan for d in datalist])
         check = all(nchans == nchans[0])
 
         if not check:
@@ -996,50 +1037,76 @@ def main(
             nchans = nchans[0]
 
         # Check suffix
-        if suffix is None:
+        if not suffix:
             suffix = mode
 
         # Construct Beams objects
-        for key in datadict.keys():
-            beam = datadict[key]["beam"]
+        for i, d in enumerate(datalist):
+            beam = d.beam
             bmaj = np.array(beam["BMAJ"]) * beam["BMAJ"].unit
             bmin = np.array(beam["BMIN"]) * beam["BMIN"].unit
             bpa = np.array(beam["BPA"]) * beam["BPA"].unit
             beams = Beams(major=bmaj, minor=bmin, pa=bpa)
-            datadict[key]["beams"] = beams
+            datalist[i].mask = np.array([False] * nchans)
+            datalist[i].beams = beams
 
         # Apply some masking
-        datadict = masking(nchans=nchans, datadict=datadict, cutoff=cutoff)
+        datalist_masked = masking(datalist=datalist, cutoff=cutoff)
+        # Get the grid size
+        grids = [d.dy for d in datalist]
 
         if not uselogs:
-            datadict = commonbeamer(
-                datadict=datadict,
-                nchans=nchans,
-                conv_mode=conv_mode,
-                target_beam=target_beam,
-                mode=mode,
+            if not suffix:
+                suffix = mode
+            if mode == "natural":
+                commonbeams = natural_commonbeamer(
+                    datalist=datalist_masked,
+                    grids=grids,
+                    nchans=nchans,
+                    conv_mode=conv_mode,
+                    tolerance=tolerance,
+                    nsamps=nsamps,
+                    epsilon=epsilon,
+                )
+            elif mode == "total":
+                commonbeams = total_commonbeamer(
+                    datalist=datalist_masked,
+                    grids=grids,
+                    nchans=nchans,
+                    target_beam=target_beam,
+                    conv_mode=conv_mode,
+                    tolerance=tolerance,
+                    nsamps=nsamps,
+                    epsilon=epsilon,
+                )
+
+            beamlog_data_list = make_beamlogs(
+                commonbeams=commonbeams,
+                datalist=datalist_masked,
                 suffix=suffix,
+                nchans=nchans,
                 circularise=circularise,
-                tolerance=tolerance,
-                nsamps=nsamps,
-                epsilon=epsilon,
             )
         else:
             logger.info("Reading from convolve beamlog files")
-            for key in datadict.keys():
-                commonbeam_log = datadict[key]["beamlog"].replace(
-                    ".txt", f".{suffix}.txt"
-                )
-                commonbeams, convbeams, facs = readlogs(commonbeam_log)
-                # Save to datadict
-                datadict[key]["facs"] = facs
-                datadict[key]["convbeams"] = convbeams
-                datadict[key]["commonbeams"] = commonbeams
-                datadict[key]["commonbeamlog"] = commonbeam_log
+            beamlog_data_list = []
+            for d in datalist:
+                commonbeam_log = d.beamlog.with_suffix(f".{suffix}.txt")
+                bemlog_data = readlogs(commonbeam_log)
+                beamlog_data_list.append(bemlog_data)
+
+        # Add beamlog data to datalist
+        for i, beamlog_data in enumerate(beamlog_data_list):
+            datalist[i].facs = beamlog_data.facs
+            datalist[i].convbeams = beamlog_data.convbeams
+            datalist[i].commonbeams = beamlog_data.commonbeams
+            datalist[i].commonbeam_log = beamlog_data.commonbeam_log
+
     else:
         if not dryrun:
             files = None
-            datadict = None
+            datalist_masked = None
+            beamlog_data_list = None
             nchans = None
 
     if mpiSwitch:
@@ -1051,11 +1118,12 @@ def main(
             logger.info("Initialising output files")
         if mpiSwitch:
             files = comm.bcast(files, root=0)
-            datadict = comm.bcast(datadict, root=0)
+            datalist_masked = comm.bcast(datalist_masked, root=0)
+            beamlog_data_list = comm.bcast(beamlog_data_list, root=0)
             nchans = comm.bcast(nchans, root=0)
 
-        inputs = list(datadict.keys())
-        dims = len(inputs)
+        indices = list(range(len(datalist)))
+        dims = len(indices)
 
         if nPE > dims:
             my_start = myPE
@@ -1079,18 +1147,18 @@ def main(
         logger.debug(f"My start is {my_start}, my end is {my_end}")
 
         # Init output files and retrieve file names
-        outfile_dict = {}
-        for inp in inputs[my_start : my_end + 1]:
+        outfile_dict = {}  # Use a dict to preserve order
+        for idx in indices[my_start : my_end + 1]:
             outfile = initfiles(
-                filename=datadict[inp]["filename"],
-                commonbeams=datadict[inp]["commonbeams"],
-                outdir=datadict[inp]["outdir"],
+                filename=datalist_masked[idx].filename,
+                commonbeams=beamlog_data_list[idx].commonbeams,
+                outdir=datalist_masked[idx].outdir,
                 mode=mode,
                 suffix=suffix,
                 prefix=prefix,
                 ref_chan=ref_chan,
             )
-            outfile_dict.update({inp: outfile})
+            outfile_dict.update({idx: outfile})
 
         if mpiSwitch:
             # Send to master proc
@@ -1103,25 +1171,25 @@ def main(
 
         # Now do the convolution in parallel
         if myPE == 0:
-            # Conver list to dict and save to main dict
+            # Convert list to dict and save to main dict
             outlist_dict = {}
             for d in outlist:
                 outlist_dict.update(d)
             # Also make inputs list
             inputs = []
-            for key in datadict.keys():
-                datadict[key]["outfile"] = outlist_dict[key]
+            for i, d in enumerate(datalist_masked):
+                datalist_masked[i].outfile = outlist_dict[i]
                 for chan in range(nchans):
-                    inputs.append((key, chan))
+                    inputs.append((i, chan))
 
         else:
-            datadict = None
+            datalist_masked = None
             inputs = None
         if mpiSwitch:
             comm.Barrier()
         if mpiSwitch:
             inputs = comm.bcast(inputs, root=0)
-            datadict = comm.bcast(datadict, root=0)
+            datalist_masked = comm.bcast(datalist_masked, root=0)
 
         dims = len(files) * nchans
         assert len(inputs) == dims
@@ -1141,20 +1209,20 @@ def main(
         logger.debug(f"My start is {my_start}, my end is {my_end}")
 
         for inp in inputs[my_start : my_end + 1]:
-            key, chan = inp
-            outfile = datadict[key]["outfile"]
+            idx, chan = inp
+            outfile = datalist_masked[idx].outfile
             logger.debug(f"{outfile}  - channel {chan} - Started")
 
-            cubedict = datadict[key]
+            cubedict = datalist_masked[idx]
             newim = worker(
-                filename=cubedict["filename"],
+                filename=cubedict.filename,
                 idx=chan,
-                dx=cubedict["dx"],
-                dy=cubedict["dy"],
-                old_beam=cubedict["beams"][chan],
-                final_beam=cubedict["commonbeams"][chan],
-                conbeam=cubedict["convbeams"][chan],
-                sfactor=cubedict["facs"][chan],
+                dx=cubedict.dx,
+                dy=cubedict.dy,
+                old_beam=cubedict.beams[chan],
+                final_beam=cubedict.commonbeams[chan],
+                conbeam=cubedict.convbeams[chan],
+                sfactor=cubedict.facs[chan],
                 conv_mode=conv_mode,
             )
 
@@ -1177,7 +1245,7 @@ def main(
             logger.info(f"{outfile}  - channel {chan} - Done")
 
     logger.info("Done!")
-    return datadict
+    return datalist_masked
 
 
 def cli():
