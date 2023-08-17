@@ -2,7 +2,7 @@
 """ Fast convolution in the UV domain """
 __author__ = "Wasim Raja"
 
-import logging as log
+
 from typing import Tuple
 
 import astropy.units as units
@@ -13,6 +13,7 @@ from astropy import units as u
 from radio_beam import Beam
 
 import racs_tools.gaussft as gaussft
+from racs_tools.logging import logger
 
 
 def convolve(
@@ -40,7 +41,7 @@ def convolve(
     if nanflag:
         # Create a mask for the NaNs
         mask = np.isnan(image).astype(int)
-        log.warning(
+        logger.warning(
             f"Image contains {mask.sum()} ({mask.sum()/ mask.size *100 :0.1f}%) NaNs"
         )
         image = np.nan_to_num(image)
@@ -81,10 +82,10 @@ def convolve(
         # Invert the FT of the mask
         mask_conv = np.fft.ifft2(M)
         mask_conv = np.real(mask_conv)
-        # Use isclose to find the NaNs
+        # Use approx values to find the NaNs
         # Need this to get around numerical issues
-        mask_conv = ~np.isclose(mask_conv, 0)
-        log.warning(
+        mask_conv = ~(mask_conv + 1 < 2)
+        logger.warning(
             f"Convolved image contains {mask_conv.sum()} ({mask_conv.sum()/ mask_conv.size *100 :0.1f}%) NaNs"
         )
         im_conv[mask_conv > 0] = np.nan
@@ -118,7 +119,7 @@ def smooth(
         np.ndarray: Smoothed image.
     """
     if np.isnan(sfactor):
-        log.warning("Beam larger than cutoff -- blanking")
+        logger.warning("Beam larger than cutoff -- blanking")
 
         newim = np.ones_like(image) * np.nan
         return newim
@@ -131,10 +132,10 @@ def smooth(
     if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
         return image
     # using Beams package
-    log.debug(f"Old beam is {old_beam!r}")
-    log.debug(f"Using convolving beam {conbeam!r}")
-    log.debug(f"Target beam is {final_beam!r}")
-    log.debug(f"Using scaling factor {sfactor}")
+    logger.debug(f"Old beam is {old_beam!r}")
+    logger.debug(f"Using convolving beam {conbeam!r}")
+    logger.debug(f"Target beam is {final_beam!r}")
+    logger.debug(f"Using scaling factor {sfactor}")
     pix_scale = dy
 
     gauss_kern = conbeam.as_kernel(pix_scale)
@@ -165,9 +166,9 @@ def smooth(
             normalize_kernel=False,
             allow_huge=True,
         )
-    log.debug(f"Using scaling factor {fac}")
+    logger.debug(f"Using scaling factor {fac}")
     if np.any(np.isnan(newim)):
-        log.warning(f"{np.isnan(newim).sum()} NaNs present in smoothed output")
+        logger.warning(f"{np.isnan(newim).sum()} NaNs present in smoothed output")
 
     newim *= fac
 
