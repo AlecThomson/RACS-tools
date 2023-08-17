@@ -19,7 +19,7 @@ URL = "https://github.com/AlecThomson/RACS-tools"
 EMAIL = "alec.thomson@csiro.au"
 AUTHOR = "Alec Thomson"
 REQUIRES_PYTHON = ">=3.8.0"
-VERSION = "2.4.0"
+VERSION = "2.4.1"
 
 # What packages are required for this module to be executed?
 REQUIRED = [
@@ -29,7 +29,7 @@ REQUIRED = [
     "schwimmbad",
     "psutil",
     "scipy",
-    "spectral_cube @ git+https://github.com/AlecThomson/spectral-cube@fix_beams",  # Need this until PR is merged upstream :'(
+    "spectral_cube @ git+https://github.com/radio-astro-tools/spectral-cube",  # Will be released in 0.6.3
     "tqdm",
 ]
 
