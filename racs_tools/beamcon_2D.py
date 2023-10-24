@@ -223,7 +223,7 @@ def worker(
         outdir = "."
 
     outfile = os.path.basename(file)
-    outfile = outfile.replace(".fits", f".{suffix}.fits")
+    outfile = outfile.replace(".fits", "") + f".{suffix}.fits"
     if prefix is not None:
         outfile = prefix + outfile
     datadict = getimdata(file)
