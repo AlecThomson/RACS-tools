@@ -840,7 +840,7 @@ def initfiles(
     if suffix is None:
         suffix = mode
     outname = os.path.basename(filename)
-    outname = outname.replace(".fits", f".{suffix}.fits")
+    outname = outname.replace(".fits", "") + f".{suffix}.fits"
     if prefix is not None:
         outname = prefix + outname
 
