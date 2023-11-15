@@ -572,7 +572,7 @@ def main(
                 failed.append(file)
             except BeamError as be:
                 # BeamError should not be raised if beams are equal
-                if target_beam != beam:
+                if cutoff is not None and target_beam != beam:
                     raise BeamError(be)
         if mask_count > 0:
             logger.warning("The following images could not reach target resolution:")
