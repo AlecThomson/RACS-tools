@@ -26,7 +26,7 @@ singularity pull docker://alecthomson/racstools
 NOTE: These builds are still experimental, and have not been widely tested. In particular, parallelisation may not work as expected.
 
 ### Pip
-You can also pip install this package into an existing Python environment. You will need both `numpy` and a fortran compiler before running `pip install`.
+You can also pip install this package into an existing Python environment.
 
 ```bash
 conda install numpy
