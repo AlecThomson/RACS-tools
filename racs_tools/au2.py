@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """ For getting fluxes right in Jy/beam """
 __author__ = "Tessa Vernstrom"
 
@@ -6,7 +6,6 @@ import math
 from typing import List, Tuple
 
 import numpy as np
-from scipy import *
 
 
 def gaussianDeconvolve(smaj, smin, spa, bmaj, bmin, bpa):
@@ -26,9 +25,6 @@ def gaussianDeconvolve(smaj, smin, spa, bmaj, bmin, bpa):
     0.5. Feel a little wary about that first change.
     """
 
-    import numpy as np
-    from numpy import abs, arctan2, cos, min, sin, sqrt
-
     spa = np.radians(spa)
     bpa = np.radians(bpa)
     if smaj < bmaj:
@@ -37,29 +33,29 @@ def gaussianDeconvolve(smaj, smin, spa, bmaj, bmin, bpa):
         smin = bmin
 
     alpha = (
-        (smaj * cos(spa)) ** 2
-        + (smin * sin(spa)) ** 2
-        - (bmaj * cos(bpa)) ** 2
-        - (bmin * sin(bpa)) ** 2
+        (smaj * np.cos(spa)) ** 2
+        + (smin * np.sin(spa)) ** 2
+        - (bmaj * np.cos(bpa)) ** 2
+        - (bmin * np.sin(bpa)) ** 2
     )
     beta = (
-        (smaj * sin(spa)) ** 2
-        + (smin * cos(spa)) ** 2
-        - (bmaj * sin(bpa)) ** 2
-        - (bmin * cos(bpa)) ** 2
+        (smaj * np.sin(spa)) ** 2
+        + (smin * np.cos(spa)) ** 2
+        - (bmaj * np.sin(bpa)) ** 2
+        - (bmin * np.cos(bpa)) ** 2
     )
     gamma = 2 * (
-        (smin**2 - smaj**2) * sin(spa) * cos(spa)
-        - (bmin**2 - bmaj**2) * sin(bpa) * cos(bpa)
+        (smin**2 - smaj**2) * np.sin(spa) * np.cos(spa)
+        - (bmin**2 - bmaj**2) * np.sin(bpa) * np.cos(bpa)
     )
     #    print smaj,smin
     #    print alpha,beta,gamma
     s = alpha + beta
-    t = sqrt((alpha - beta) ** 2 + gamma**2)
+    t = np.sqrt((alpha - beta) ** 2 + gamma**2)
     #    print s,t
-    dmaj = sqrt(0.5 * (s + t))
+    dmaj = np.sqrt(0.5 * (s + t))
     if s > t:
-        dmin = sqrt(0.5 * (s - t))
+        dmin = np.sqrt(0.5 * (s - t))
     else:
         dmin = 0
     #    print dmaj,dmin
@@ -71,7 +67,7 @@ def gaussianDeconvolve(smaj, smin, spa, bmaj, bmin, bpa):
     if abs(gamma) + abs(alpha - beta) == 0:
         dpa = 0
     else:
-        dpa = 0.5 * arctan2(-gamma, alpha - beta)
+        dpa = 0.5 * np.arctan2(-gamma, alpha - beta)
     #    if((s>=t)&(bmin!=smin)):
     #        dmin=sqrt (0.5 * (s - t))
 
