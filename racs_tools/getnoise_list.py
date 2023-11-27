@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """ Find bad channels by checking statistics of each channel image. """
 
 import argparse

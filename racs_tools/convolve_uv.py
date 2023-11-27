@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """ Fast convolution in the UV domain """
 __author__ = "Wasim Raja"
 
@@ -63,8 +63,6 @@ def convolve(
         bpa=new_beam.pa.to(units.deg).value,
         u=u_image,
         v=v_image,
-        nx=nx,
-        ny=ny,
     )
     # Perform the x-ing in the FT domain
     im_f = np.fft.fft2(image)
