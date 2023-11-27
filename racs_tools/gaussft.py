@@ -37,7 +37,8 @@ def gaussft(
         v (np.ndarray): Fourier coordinates corresponding to image coord y
 
     Returns:
-        g_final (np.ndarray): Final array to be multiplied to FT(image) for convolution in the FT domain.
+        g_final (np.ndarray): Final array to be multiplied to FT(image) for convolution
+            in the FT domain.
         g_ratio (float): Factor for flux scaling
     """
     deg2rad = np.pi / 180.0
