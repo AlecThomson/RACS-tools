@@ -1037,94 +1037,30 @@ def main(
                 datadict[key]["commonbeams"] = commonbeams
                 datadict[key]["commonbeamlog"] = commonbeam_log
     else:
-        if not dryrun:
-            files = None
-            datadict = None
-            nchans = None
+        files = None
+        datadict = None
+        nchans = None
 
-    if mpiSwitch:
-        comm.Barrier()
+    if dryrun:
+        logger.info("Doing a dryrun so all done!")
+        return datadict
 
     # Init the files in parallel
-    if not dryrun:
-        if myPE == 0:
-            logger.info("Initialising output files")
-        if mpiSwitch:
-            files = comm.bcast(files, root=0)
-            datadict = comm.bcast(datadict, root=0)
-            nchans = comm.bcast(nchans, root=0)
+    if myPE == 0:
+        logger.info("Initialising output files")
+    if mpiSwitch:
+        files = comm.bcast(files, root=0)
+        datadict = comm.bcast(datadict, root=0)
+        nchans = comm.bcast(nchans, root=0)
 
-        inputs = list(datadict.keys())
-        dims = len(inputs)
+    inputs = list(datadict.keys())
+    dims = len(inputs)
 
-        if nPE > dims:
-            my_start = myPE
-            my_end = myPE
+    if nPE > dims:
+        my_start = myPE
+        my_end = myPE
 
-        else:
-            count = dims // nPE
-            rem = dims % nPE
-            if myPE < rem:
-                # The first 'remainder' ranks get 'count + 1' tasks each
-                my_start = myPE * (count + 1)
-                my_end = my_start + count
-
-            else:
-                # The remaining 'size - remainder' ranks get 'count' task each
-                my_start = myPE * count + rem
-                my_end = my_start + (count - 1)
-
-        if myPE == 0:
-            logger.info(f"There are {dims} files to init")
-        logger.debug(f"My start is {my_start}, my end is {my_end}")
-
-        # Init output files and retrieve file names
-        outfile_dict = {}
-        for inp in inputs[my_start : my_end + 1]:
-            outfile = initfiles(
-                filename=datadict[inp]["filename"],
-                commonbeams=datadict[inp]["commonbeams"],
-                outdir=datadict[inp]["outdir"],
-                mode=mode,
-                suffix=suffix,
-                prefix=prefix,
-                ref_chan=ref_chan,
-            )
-            outfile_dict.update({inp: outfile})
-
-        if mpiSwitch:
-            # Send to master proc
-            outlist = comm.gather(outfile_dict, root=0)
-        else:
-            outlist = [outfile_dict]
-
-        if mpiSwitch:
-            comm.Barrier()
-
-        # Now do the convolution in parallel
-        if myPE == 0:
-            # Conver list to dict and save to main dict
-            outlist_dict = {}
-            for d in outlist:
-                outlist_dict.update(d)
-            # Also make inputs list
-            inputs = []
-            for key in datadict.keys():
-                datadict[key]["outfile"] = outlist_dict[key]
-                for chan in range(nchans):
-                    inputs.append((key, chan))
-
-        else:
-            datadict = None
-            inputs = None
-        if mpiSwitch:
-            comm.Barrier()
-        if mpiSwitch:
-            inputs = comm.bcast(inputs, root=0)
-            datadict = comm.bcast(datadict, root=0)
-
-        dims = len(files) * nchans
-        assert len(inputs) == dims
+    else:
         count = dims // nPE
         rem = dims % nPE
         if myPE < rem:
@@ -1136,45 +1072,106 @@ def main(
             # The remaining 'size - remainder' ranks get 'count' task each
             my_start = myPE * count + rem
             my_end = my_start + (count - 1)
-        if myPE == 0:
-            logger.info(f"There are {nchans} channels, across {len(files)} files")
-        logger.debug(f"My start is {my_start}, my end is {my_end}")
 
-        for inp in inputs[my_start : my_end + 1]:
-            key, chan = inp
-            outfile = datadict[key]["outfile"]
-            logger.debug(f"{outfile}  - channel {chan} - Started")
+    if myPE == 0:
+        logger.info(f"There are {dims} files to init")
+    logger.debug(f"My start is {my_start}, my end is {my_end}")
 
-            cubedict = datadict[key]
-            newim = worker(
-                filename=cubedict["filename"],
-                idx=chan,
-                dx=cubedict["dx"],
-                dy=cubedict["dy"],
-                old_beam=cubedict["beams"][chan],
-                final_beam=cubedict["commonbeams"][chan],
-                conbeam=cubedict["convbeams"][chan],
-                sfactor=cubedict["facs"][chan],
-                conv_mode=conv_mode,
-            )
+    # Init output files and retrieve file names
+    outfile_dict = {}
+    for inp in inputs[my_start : my_end + 1]:
+        outfile = initfiles(
+            filename=datadict[inp]["filename"],
+            commonbeams=datadict[inp]["commonbeams"],
+            outdir=datadict[inp]["outdir"],
+            mode=mode,
+            suffix=suffix,
+            prefix=prefix,
+            ref_chan=ref_chan,
+        )
+        outfile_dict.update({inp: outfile})
 
-            with fits.open(outfile, mode="update", memmap=True) as outfh:
-                # Find which axis is the spectral and stokes
-                wcs = WCS(outfh[0])
-                axis_type_dict = wcs.get_axis_types()[::-1]  # Reverse order for fits
-                axis_names = [i["coordinate_type"] for i in axis_type_dict]
-                spec_idx = axis_names.index("spectral")
-                stokes_idx = axis_names.index("stokes")
-                slicer = [slice(None)] * len(outfh[0].data.shape)
-                slicer[spec_idx] = chan
-                slicer[stokes_idx] = 0  # only do single stokes
-                slicer = tuple(slicer)
+    if mpiSwitch:
+        # Send to master proc
+        outlist = comm.gather(outfile_dict, root=0)
+    else:
+        outlist = [outfile_dict]
 
-                outfh[0].data[slicer] = newim.astype(
-                    np.float32
-                )  # make sure data is 32-bit
-                outfh.flush()
-            logger.info(f"{outfile}  - channel {chan} - Done")
+    if mpiSwitch:
+        comm.Barrier()
+
+    # Now do the convolution in parallel
+    if myPE == 0:
+        # Conver list to dict and save to main dict
+        outlist_dict = {}
+        for d in outlist:
+            outlist_dict.update(d)
+        # Also make inputs list
+        inputs = []
+        for key in datadict.keys():
+            datadict[key]["outfile"] = outlist_dict[key]
+            for chan in range(nchans):
+                inputs.append((key, chan))
+
+    else:
+        datadict = None
+        inputs = None
+    if mpiSwitch:
+        comm.Barrier()
+    if mpiSwitch:
+        inputs = comm.bcast(inputs, root=0)
+        datadict = comm.bcast(datadict, root=0)
+
+    dims = len(files) * nchans
+    assert len(inputs) == dims
+    count = dims // nPE
+    rem = dims % nPE
+    if myPE < rem:
+        # The first 'remainder' ranks get 'count + 1' tasks each
+        my_start = myPE * (count + 1)
+        my_end = my_start + count
+
+    else:
+        # The remaining 'size - remainder' ranks get 'count' task each
+        my_start = myPE * count + rem
+        my_end = my_start + (count - 1)
+    if myPE == 0:
+        logger.info(f"There are {nchans} channels, across {len(files)} files")
+    logger.debug(f"My start is {my_start}, my end is {my_end}")
+
+    for inp in inputs[my_start : my_end + 1]:
+        key, chan = inp
+        outfile = datadict[key]["outfile"]
+        logger.debug(f"{outfile}  - channel {chan} - Started")
+
+        cubedict = datadict[key]
+        newim = worker(
+            filename=cubedict["filename"],
+            idx=chan,
+            dx=cubedict["dx"],
+            dy=cubedict["dy"],
+            old_beam=cubedict["beams"][chan],
+            final_beam=cubedict["commonbeams"][chan],
+            conbeam=cubedict["convbeams"][chan],
+            sfactor=cubedict["facs"][chan],
+            conv_mode=conv_mode,
+        )
+
+        with fits.open(outfile, mode="update", memmap=True) as outfh:
+            # Find which axis is the spectral and stokes
+            wcs = WCS(outfh[0])
+            axis_type_dict = wcs.get_axis_types()[::-1]  # Reverse order for fits
+            axis_names = [i["coordinate_type"] for i in axis_type_dict]
+            spec_idx = axis_names.index("spectral")
+            stokes_idx = axis_names.index("stokes")
+            slicer = [slice(None)] * len(outfh[0].data.shape)
+            slicer[spec_idx] = chan
+            slicer[stokes_idx] = 0  # only do single stokes
+            slicer = tuple(slicer)
+
+            outfh[0].data[slicer] = newim.astype(np.float32)  # make sure data is 32-bit
+            outfh.flush()
+        logger.info(f"{outfile}  - channel {chan} - Done")
 
     logger.info("Done!")
     return datadict
