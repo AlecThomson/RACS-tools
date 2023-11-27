@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
 Code to generate FT of final 2D-Gaussian to be used
 for convolving an image. The code deconvolves the input

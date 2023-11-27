@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """ Fast convolution in the UV domain """
 __author__ = "Wasim Raja"
 

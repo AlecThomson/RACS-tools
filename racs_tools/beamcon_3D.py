@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """ Convolve ASKAP cubes to common resolution """
 __author__ = "Alec Thomson"
 
