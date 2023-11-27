@@ -4,7 +4,7 @@ Code to generate FT of final 2D-Gaussian to be used
 for convolving an image. The code deconvolves the input
 psf. The intrinsic psf must be specified.
 
-Python version of gaussft.f
+Python version of gaussft.f by Wasim Raja
 """
 from typing import Tuple
 
