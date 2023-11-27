@@ -29,7 +29,7 @@ REQUIRED = [
     "schwimmbad",
     "psutil",
     "scipy",
-    "spectral_cube @ git+https://github.com/radio-astro-tools/spectral-cube",  # Will be released in 0.6.3
+    "spectral_cube>=0.6.3",
     "tqdm",
 ]
 
