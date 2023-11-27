@@ -7,11 +7,10 @@ import os
 import sys
 from functools import partial
 from hashlib import new
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import astropy.wcs
 import numpy as np
-import psutil
 import schwimmbad
 from astropy import units as u
 from astropy.io import ascii, fits
@@ -45,7 +44,7 @@ def round_up(n: float, decimals: int = 0) -> float:
     return np.ceil(n * multiplier) / multiplier
 
 
-def my_ceil(a: float, precision: float = 0) -> float:
+def my_ceil(a: float, precision: float = 0.0) -> float:
     """Modified ceil function to round up to precision
 
     Args:
@@ -63,7 +62,7 @@ def getbeam(
     new_beam: Beam,
     dx: u.Quantity,
     dy: u.Quantity,
-    cutoff: float = None,
+    cutoff: Optional[float] = None,
 ) -> Tuple[Beam, float]:
     """Get the beam to use for smoothing
 
@@ -196,7 +195,7 @@ def worker(
     conv_mode: str,
     suffix: str = "",
     prefix: str = "",
-    cutoff: float = None,
+    cutoff: Optional[float] = None,
     dryrun: bool = False,
 ) -> dict:
     """Parallel worker function
@@ -280,7 +279,7 @@ def getmaxbeam(
     files: List[str],
     conv_mode: str = "robust",
     target_beam: Beam = None,
-    cutoff: float = None,
+    cutoff: Optional[float] = None,
     tolerance: float = 0.0001,
     nsamps: float = 200,
     epsilon: float = 0.0005,
@@ -462,17 +461,17 @@ def writelog(output: List[Dict], commonbeam_log: str):
 def main(
     pool,
     infile: list = [],
-    prefix: str = None,
-    suffix: str = None,
-    outdir: str = None,
+    prefix: Optional[str] = None,
+    suffix: Optional[str] = None,
+    outdir: Optional[str] = None,
     conv_mode: str = "robust",
     dryrun: bool = False,
-    bmaj: float = None,
-    bmin: float = None,
-    bpa: float = None,
-    log: str = None,
+    bmaj: Optional[float] = None,
+    bmin: Optional[float] = None,
+    bpa: Optional[float] = None,
+    log: Optional[str] = None,
     circularise: bool = False,
-    cutoff: float = None,
+    cutoff: Optional[float] = None,
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
@@ -565,6 +564,8 @@ def main(
                 disable=(logger.level > logging.INFO),
             )
         ):
+            if cutoff is not None and beam.major.to(u.arcsec) > cutoff * u.arcsec:
+                continue
             try:
                 target_beam.deconvolve(beam)
             except ValueError:
