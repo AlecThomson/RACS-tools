@@ -63,8 +63,6 @@ def convolve(
         bpa=new_beam.pa.to(units.deg).value,
         u=u_image,
         v=v_image,
-        nx=nx,
-        ny=ny,
     )
     # Perform the x-ing in the FT domain
     im_f = np.fft.fft2(image)

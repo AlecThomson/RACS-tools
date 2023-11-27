@@ -19,7 +19,7 @@ URL = "https://github.com/AlecThomson/RACS-tools"
 EMAIL = "alec.thomson@csiro.au"
 AUTHOR = "Alec Thomson"
 REQUIRES_PYTHON = ">=3.8.0"
-VERSION = "2.4.3"
+VERSION = "2.5"
 
 # What packages are required for this module to be executed?
 REQUIRED = [
@@ -31,20 +31,13 @@ REQUIRED = [
     "scipy",
     "spectral_cube>=0.6.3",
     "tqdm",
+    "numba",
 ]
 
 # What packages are optional?
 EXTRAS = {
     "mpi": ["mpi4py"],
-    # 'fancy feature': ['django'],
 }
-
-lib = Extension(
-    name="racs_tools.gaussft",
-    sources=["racs_tools/gaussft.f"],
-    extra_f90_compile_args=["-ffixed-form"],
-)
-
 # The rest you shouldn't have to touch too much :)
 # ------------------------------------------------
 # Except, perhaps the License and Trove Classifiers!
@@ -131,7 +124,6 @@ setup(
     },
     install_requires=REQUIRED,
     extras_require=EXTRAS,
-    ext_modules=[lib],
     include_package_data=True,
     license="BSD",
     classifiers=[
