@@ -26,15 +26,7 @@ singularity pull docker://alecthomson/racstools
 NOTE: These builds are still experimental, and have not been widely tested. In particular, parallelisation may not work as expected.
 
 ### Pip
-You can also pip install this package into an existing Python environment.
-
-```bash
-conda install numpy
-# or
-pip install numpy
-```
-
-Use the package manager [pip](https://pip.pypa.io/en/stable/) to install RACS-tools.
+You can also use the package manager [pip](https://pip.pypa.io/en/stable/) to install RACS-tools.
 
 
 ```bash
