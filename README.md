@@ -1,4 +1,5 @@
-[![Docker Build and Push](https://github.com/AlecThomson/RACS-tools/actions/workflows/docker.yml/badge.svg)](https://github.com/AlecThomson/RACS-tools/actions/workflows/docker.yml) ![Tests](https://github.com/AlecThomson/RACS-tools/actions/workflows/pytest.yml/badge.svg) [![Python package](https://github.com/AlecThomson/RACS-tools/actions/workflows/python-package.yml/badge.svg)](https://github.com/AlecThomson/RACS-tools/actions/workflows/python-package.yml) [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Docker Build and Push](https://github.com/AlecThomson/RACS-tools/actions/workflows/docker.yml/badge.svg)](https://github.com/AlecThomson/RACS-tools/actions/workflows/docker.yml) ![Tests](https://github.com/AlecThomson/RACS-tools/actions/workflows/pytest.yml/badge.svg) [![Python package](https://github.com/AlecThomson/RACS-tools/actions/workflows/python-package.yml/badge.svg)](https://github.com/AlecThomson/RACS-tools/actions/workflows/python-package.yml) [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/AlecThomson/RACS-tools/master.svg)](https://results.pre-commit.ci/latest/github/AlecThomson/RACS-tools/master)
+
 # RACS-tools
 Useful scripts for RACS
 
