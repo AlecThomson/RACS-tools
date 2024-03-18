@@ -806,9 +806,9 @@ def initfiles(
         # Make a CASA beamtable
         header["CASAMBM"] = True
         header["COMMENT"] = "The PSF in each image plane varies."
-        header[
-            "COMMENT"
-        ] = "Full beam information is stored in the second FITS extension."
+        header["COMMENT"] = (
+            "Full beam information is stored in the second FITS extension."
+        )
         tiny = np.finfo(np.float32).tiny
         beam_table = Table(
             data=[
