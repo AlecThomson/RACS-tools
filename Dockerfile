@@ -10,8 +10,9 @@ RUN apt autoremove -y
 RUN apt clean -y
 # RUN cd / \
 # && git clone https://github.com/AlecThomson/RACS-tools
+RUN mkdir /tmp/numba_cache & chmod 777 /tmp/numba_cache & NUMBA_CACHE_DIR=/tmp/numba_cache
 WORKDIR ./
-
+ENV NUMBA_CACHE_DIR=/tmp/numba_cache
 ADD . /tmp/
 RUN conda env create -f /tmp/environment.yml
 # Pull the environment name out of the environment.yml
