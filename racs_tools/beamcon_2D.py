@@ -793,6 +793,7 @@ def cli():
 
         comm = MPI.COMM_WORLD
         myPE = comm.Get_rank()
+        assert comm.size > 1, "MPI pool must have at least 2 processes"
     else:
         try:
             myPE = psutil.Process().cpu_num()
