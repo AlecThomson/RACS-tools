@@ -2,26 +2,28 @@
 """ Convolve ASKAP images to common resolution """
 __author__ = "Alec Thomson"
 
-import logging as logger
+import logging
 import os
 import sys
 from functools import partial
 from hashlib import new
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import astropy.wcs
 import numpy as np
-import psutil
 import schwimmbad
 from astropy import units as u
 from astropy.io import ascii, fits
 from astropy.table import Table
+from astropy.wcs import WCS
+from astropy.wcs.utils import proj_plane_pixel_scales
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 from tqdm import tqdm
 
 from racs_tools import au2
 from racs_tools.convolve_uv import smooth
+from racs_tools.logging import logger, setup_logger
 
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
@@ -42,7 +44,7 @@ def round_up(n: float, decimals: int = 0) -> float:
     return np.ceil(n * multiplier) / multiplier
 
 
-def my_ceil(a: float, precision: float = 0) -> float:
+def my_ceil(a: float, precision: float = 0.0) -> float:
     """Modified ceil function to round up to precision
 
     Args:
@@ -60,7 +62,7 @@ def getbeam(
     new_beam: Beam,
     dx: u.Quantity,
     dy: u.Quantity,
-    cutoff: float = None,
+    cutoff: Optional[float] = None,
 ) -> Tuple[Beam, float]:
     """Get the beam to use for smoothing
 
@@ -134,9 +136,8 @@ def getimdata(cubenm: str) -> dict:
     """
     logger.info(f"Getting image data from {cubenm}")
     with fits.open(cubenm, memmap=True, mode="denywrite") as hdu:
-
         w = astropy.wcs.WCS(hdu[0])
-        pixelscales = astropy.wcs.utils.proj_plane_pixel_scales(w)
+        pixelscales = proj_plane_pixel_scales(w)
 
         dxas = pixelscales[0] * u.deg
         dyas = pixelscales[1] * u.deg
@@ -194,7 +195,7 @@ def worker(
     conv_mode: str,
     suffix: str = "",
     prefix: str = "",
-    cutoff: float = None,
+    cutoff: Optional[float] = None,
     dryrun: bool = False,
 ) -> dict:
     """Parallel worker function
@@ -221,7 +222,7 @@ def worker(
         outdir = "."
 
     outfile = os.path.basename(file)
-    outfile = outfile.replace(".fits", f".{suffix}.fits")
+    outfile = outfile.replace(".fits", "") + f".{suffix}.fits"
     if prefix is not None:
         outfile = prefix + outfile
     datadict = getimdata(file)
@@ -278,7 +279,7 @@ def getmaxbeam(
     files: List[str],
     conv_mode: str = "robust",
     target_beam: Beam = None,
-    cutoff: float = None,
+    cutoff: Optional[float] = None,
     tolerance: float = 0.0001,
     nsamps: float = 200,
     epsilon: float = 0.0005,
@@ -327,31 +328,38 @@ def getmaxbeam(
             return nan_beam, nan_beams
     else:
         flags = np.array([False for beam in beams])
-    try:
-        cmn_beam = beams[~flags].common_beam(
-            tolerance=tolerance, epsilon=epsilon, nsamps=nsamps
-        )
-    except BeamError:
-        logger.warning(
-            "Couldn't find common beam with defaults\nTrying again with smaller tolerance"
-        )
-        cmn_beam = beams[~flags].common_beam(
-            tolerance=tolerance * 0.1, epsilon=epsilon, nsamps=nsamps
+
+    if target_beam is None:
+        # Find the common beam
+        try:
+            cmn_beam = beams[~flags].common_beam(
+                tolerance=tolerance, epsilon=epsilon, nsamps=nsamps
+            )
+        except BeamError:
+            logger.warning(
+                "Couldn't find common beam with defaults\nTrying again with smaller tolerance"
+            )
+            cmn_beam = beams[~flags].common_beam(
+                tolerance=tolerance * 0.1, epsilon=epsilon, nsamps=nsamps
+            )
+
+        # Round up values
+        cmn_beam = Beam(
+            major=my_ceil(cmn_beam.major.to(u.arcsec).value, precision=1) * u.arcsec,
+            minor=my_ceil(cmn_beam.minor.to(u.arcsec).value, precision=1) * u.arcsec,
+            pa=round_up(cmn_beam.pa.to(u.deg), decimals=2),
         )
 
-    # Round up values
-    cmn_beam = Beam(
-        major=my_ceil(cmn_beam.major.to(u.arcsec).value, precision=1) * u.arcsec,
-        minor=my_ceil(cmn_beam.minor.to(u.arcsec).value, precision=1) * u.arcsec,
-        pa=round_up(cmn_beam.pa.to(u.deg), decimals=2),
-    )
+    else:
+        cmn_beam = target_beam
+
     target_header = header
-    w = astropy.wcs.WCS(target_header)
-    pixelscales = astropy.wcs.utils.proj_plane_pixel_scales(w)
+    w = WCS(target_header)
+    pixelscales = proj_plane_pixel_scales(w)
 
     dx = pixelscales[0] * u.deg
     dy = pixelscales[1] * u.deg
-    if not dx == dy:
+    if not np.isclose(dx, dy):
         raise Exception("GRID MUST BE SAME IN X AND Y")
     grid = dy
     if conv_mode != "robust":
@@ -453,17 +461,17 @@ def writelog(output: List[Dict], commonbeam_log: str):
 def main(
     pool,
     infile: list = [],
-    prefix: str = None,
-    suffix: str = None,
-    outdir: str = None,
+    prefix: Optional[str] = None,
+    suffix: Optional[str] = None,
+    outdir: Optional[str] = None,
     conv_mode: str = "robust",
     dryrun: bool = False,
-    bmaj: float = None,
-    bmin: float = None,
-    bpa: float = None,
-    log: str = None,
+    bmaj: Optional[float] = None,
+    bmin: Optional[float] = None,
+    bpa: Optional[float] = None,
+    log: Optional[str] = None,
     circularise: bool = False,
-    cutoff: float = None,
+    cutoff: Optional[float] = None,
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
@@ -553,9 +561,11 @@ def main(
                 zip(allbeams, files),
                 total=len(allbeams),
                 desc="Deconvolving",
-                disable=(logger.root.level > logger.INFO),
+                disable=(logger.level > logging.INFO),
             )
         ):
+            if cutoff is not None and beam.major.to(u.arcsec) > cutoff * u.arcsec:
+                continue
             try:
                 target_beam.deconvolve(beam)
             except ValueError:
@@ -675,7 +685,7 @@ def cli():
         default="robust",
         help="""Which method to use for convolution [robust].
         'robust' computes the analytic FT of the convolving Gaussian.
-        Note this mode cannot handle NaNs in the data.
+        Note this mode can now handle NaNs in the data.
         Can also be 'scipy', 'astropy', or 'astropy_fft'.
         Note these other methods cannot cope well with small convolving beams.
         """,
@@ -788,31 +798,12 @@ def cli():
     )
 
     args = parser.parse_args()
-    if args.mpi:
-        from mpi4py import MPI
+    # Set up logging
+    logger = setup_logger(
+        verbosity=args.verbosity,
+        filename=args.logfile,
+    )
 
-        comm = MPI.COMM_WORLD
-        myPE = comm.Get_rank()
-        assert comm.size > 1, "MPI pool must have at least 2 processes"
-    else:
-        try:
-            myPE = psutil.Process().cpu_num()
-        except AttributeError:
-            myPE = 0
-    if args.verbosity == 1:
-        logger.basicConfig(
-            filename=args.logfile,
-            level=logger.INFO,
-            format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    elif args.verbosity >= 2:
-        logger.basicConfig(
-            filename=args.logfile,
-            level=logger.DEBUG,
-            format=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
     pool = schwimmbad.choose_pool(mpi=args.mpi, processes=args.n_cores)
     if args.mpi:
         if not pool.is_master():

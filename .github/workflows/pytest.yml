@@ -1,0 +1,66 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Pytest
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [3.8, 3.9, "3.10", "3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip' # caching pip dependencies
+    - uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: gfortran wget bzip2 libx11-6 csh
+        version: 1.0
+    - name: A Hack for fortran
+      run: |
+        echo "Downloading gcc-6-base"
+        wget http://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-6/gcc-6-base_6.4.0-17ubuntu1_amd64.deb
+        echo "Downloading libgfortran3"
+        wget "http://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-6/libgfortran3_6.4.0-17ubuntu1_amd64.deb"
+        echo "Installing gcc-6-base"
+        sudo dpkg -i gcc-6-base_6.4.0-17ubuntu1_amd64.deb
+        echo "Installing libgfortran3"
+        sudo dpkg -i libgfortran3_6.4.0-17ubuntu1_amd64.deb
+    - name: Install dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        python3 -m pip install pytest numpy git+https://github.com/radio-astro-tools/spectral-cube.git
+        python3 -m pip install -U .
+    - name: Install miriad
+      run: |
+        cd /opt
+        wget ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-common.tar.bz2 ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-linux64.tar.bz2 && \
+          tar xf miriad-common.tar.bz2 && \
+          tar xf miriad-linux64.tar.bz2 && \
+          rm -rf *tar.bz2
+        cd /opt/miriad
+        sed -e "s,@MIRROOT@,/opt/miriad," scripts/MIRRC.sh.in > MIRRC.sh && \
+          chmod 644 MIRRC.sh && \
+          echo source /opt/miriad/MIRRC.sh >> $HOME/.bashrc &&
+          echo export PATH=\${MIRBIN}:\${PATH} >> $HOME/.bashrc
+        source $HOME/.bashrc
+        echo "/opt/miriad/linux64/bin" >> $GITHUB_PATH
+    - name: Test with pytest
+      run: |
+        pytest

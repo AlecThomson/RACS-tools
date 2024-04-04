@@ -1,4 +1,5 @@
-[![Docker Build and Push](https://github.com/AlecThomson/RACS-tools/actions/workflows/docker.yml/badge.svg)](https://github.com/AlecThomson/RACS-tools/actions/workflows/docker.yml) [![Python package](https://github.com/AlecThomson/RACS-tools/actions/workflows/python-package.yml/badge.svg)](https://github.com/AlecThomson/RACS-tools/actions/workflows/python-package.yml) [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Docker Build and Push](https://github.com/AlecThomson/RACS-tools/actions/workflows/docker.yml/badge.svg)](https://github.com/AlecThomson/RACS-tools/actions/workflows/docker.yml) ![Tests](https://github.com/AlecThomson/RACS-tools/actions/workflows/pytest.yml/badge.svg) [![Python package](https://github.com/AlecThomson/RACS-tools/actions/workflows/python-package.yml/badge.svg)](https://github.com/AlecThomson/RACS-tools/actions/workflows/python-package.yml) [![PyPi](https://github.com/AlecThomson/RACS-tools/actions/workflows/pypi.yml/badge.svg)](https://github.com/AlecThomson/RACS-tools/actions/workflows/pypi.yml) [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/AlecThomson/RACS-tools/master.svg)](https://results.pre-commit.ci/latest/github/AlecThomson/RACS-tools/master)
+
 # RACS-tools
 Useful scripts for RACS
 
@@ -26,15 +27,7 @@ singularity pull docker://alecthomson/racstools
 NOTE: These builds are still experimental, and have not been widely tested. In particular, parallelisation may not work as expected.
 
 ### Pip
-You can also pip install this package into an existing Python environment. You will need both `numpy` and a fortran compiler before running `pip install`.
-
-```bash
-conda install numpy
-# or
-pip install numpy
-```
-
-Use the package manager [pip](https://pip.pypa.io/en/stable/) to install RACS-tools.
+You can also use the package manager [pip](https://pip.pypa.io/en/stable/) to install RACS-tools.
 
 
 ```bash
@@ -50,9 +43,7 @@ pip install git+https://github.com/AlecThomson/RACS-tools
 
 ```
 $ beamcon_2D -h
-usage: beamcon_2D [-h] [-p PREFIX] [-s SUFFIX] [-o OUTDIR] [--conv_mode {robust,scipy,astropy,astropy_fft}] [-v] [-d] [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA]
-                  [--log LOG] [--logfile LOGFILE] [-c CUTOFF] [--circularise] [-t TOLERANCE] [-e EPSILON] [-n NSAMPS] [--ncores N_CORES | --mpi]
-                  infile [infile ...]
+usage: beamcon_2D [-h] [-p PREFIX] [-s SUFFIX] [-o OUTDIR] [--conv_mode {robust,scipy,astropy,astropy_fft}] [-v] [-d] [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA] [--log LOG] [--logfile LOGFILE] [-c CUTOFF] [--circularise] [-t TOLERANCE] [-e EPSILON] [-n NSAMPS] [--ncores N_CORES | --mpi] infile [infile ...]
 
     Smooth a field of 2D images to a common resolution.
 
@@ -79,7 +70,7 @@ optional arguments:
   --conv_mode {robust,scipy,astropy,astropy_fft}
                         Which method to use for convolution [robust].
                                 'robust' computes the analytic FT of the convolving Gaussian.
-                                Note this mode cannot handle NaNs in the data.
+                                Note this mode can now handle NaNs in the data.
                                 Can also be 'scipy', 'astropy', or 'astropy_fft'.
                                 Note these other methods cannot cope well with small convolving beams.
 
@@ -105,10 +96,7 @@ optional arguments:
 
 ```
 $ beamcon_3D -h
-usage: beamcon_3D [-h] [--uselogs] [--mode MODE] [--conv_mode {robust,scipy,astropy,astropy_fft}] [-v] [--logfile LOGFILE] [-d] [-p PREFIX] [-s SUFFIX]
-                  [-o OUTDIR] [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA] [-c CUTOFF] [--circularise] [--ref_chan {first,last,mid}] [-t TOLERANCE] [-e EPSILON]
-                  [-n NSAMPS]
-                  infile [infile ...]
+usage: beamcon_3D [-h] [--uselogs] [--mode MODE] [--conv_mode {robust,scipy,astropy,astropy_fft}] [-v] [--logfile LOGFILE] [-d] [-p PREFIX] [-s SUFFIX] [-o OUTDIR] [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA] [-c CUTOFF] [--circularise] [--ref_chan {first,last,mid}] [-t TOLERANCE] [-e EPSILON] [-n NSAMPS] infile [infile ...]
 
     Smooth a field of 3D cubes to a common resolution.
 
@@ -141,7 +129,7 @@ optional arguments:
   --conv_mode {robust,scipy,astropy,astropy_fft}
                         Which method to use for convolution [robust].
                                 'robust' computes the analytic FT of the convolving Gaussian.
-                                Note this mode cannot handle NaNs in the data.
+                                Note this mode can now handle NaNs in the data.
                                 Can also be 'scipy', 'astropy', or 'astropy_fft'.
                                 Note these other methods cannot cope well with small convolving beams.
 
@@ -177,7 +165,7 @@ optional arguments:
 
 ```
 $ getnoise_list -h
-usage: getnoise_list [-h] [-b] [-c CLIPLEV] [-i ITERATE] [-f FILE] qfile ufile
+usage: getnoise_list [-h] [-s] [-b] [-c CLIPLEV] [-i ITERATE] [-f FILE] qfile ufile
 
  Find bad channels by checking statistics of each channel image.
 
@@ -185,8 +173,9 @@ positional arguments:
   qfile                 Stokes Q fits file
   ufile                 Stokes U fits file
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
+  -s, --save_noise      Save noise values to disk [default False]
   -b, --blank           Blank bad channels? [default False - just print out bad channels]
   -c CLIPLEV, --cliplev CLIPLEV
                         Clip level in sigma, make this number lower to be more aggressive [default 5]

@@ -6,8 +6,9 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -y install tzdata
 RUN apt install -y build-essential gfortran
 RUN apt autoremove -y
 RUN apt clean -y
+RUN mkdir /tmp/numba_cache & chmod 777 /tmp/numba_cache & NUMBA_CACHE_DIR=/tmp/numba_cache
 WORKDIR ./
-
+ENV NUMBA_CACHE_DIR=/tmp/numba_cache
 ADD . /tmp/
 RUN conda env create -f /tmp/environment.yml
 

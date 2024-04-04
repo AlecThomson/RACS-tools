@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "racs-tools"
+version = "3.0.3"
+description = "Useful scripts for RACS."
+authors = ["Alec Thomson"]
+license = "BSD"
+readme = "README.md"
+packages = [{include = "racs_tools"}]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+numpy = "<2"
+astropy = "^5"
+radio_beam = "*"
+schwimmbad = "*"
+scipy = "*"
+spectral_cube = "^0.6.3"
+tqdm = "*"
+numba = "*"
+mpi4py = {version = "*", optional = true}
+
+[tool.poetry.dev-dependencies]
+black = "*"
+isort = "*"
+
+[tool.poetry.extras]
+mpi = ["mpi4py"]
+
+[tool.poetry.scripts]
+beamcon_2D = "racs_tools.beamcon_2D:cli"
+beamcon_3D = "racs_tools.beamcon_3D:cli"
+getnoise_list = "racs_tools.getnoise_list:cli"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
