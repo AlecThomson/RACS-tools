@@ -75,4 +75,3 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}_MPICH
           labels: ${{ steps.meta.outputs.labels }}
           file: ./Dockerfile.mpich
-
