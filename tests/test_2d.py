@@ -1,20 +1,35 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import logging
 import subprocess as sp
-import unittest
-from typing import List, Tuple, Union
+from os import path
+from pathlib import Path
+from typing import List, NamedTuple, Tuple, Union
 
 import astropy.units as u
 import numpy as np
+import pytest
 import schwimmbad
 from astropy.io import fits
 from radio_beam import Beam
 
-from racs_tools import beamcon_2D
+from racs_tools import au2, beamcon_2D
+from racs_tools.convolve_uv import smooth
+from racs_tools.logging import logger
+
+logger.setLevel(logging.DEBUG)
 
 
-def make_2d_image(beam: Beam) -> str:
+class TestImage(NamedTuple):
+    path: Path
+    beam: Beam
+    data: np.ndarray
+    pix_scale: u.Quantity
+
+
+@pytest.fixture
+def make_2d_image(tmpdir) -> TestImage:
     """Make a fake 2D image from with a Gaussian beam.
 
     Args:
@@ -24,6 +39,8 @@ def make_2d_image(beam: Beam) -> str:
         str: Name of the output FITS file.
     """
     pix_scale = 2.5 * u.arcsec
+
+    beam = Beam(20 * u.arcsec, 10 * u.arcsec, 10 * u.deg)
 
     data = beam.as_kernel(pixscale=pix_scale, x_size=100, y_size=100).array
     data /= data.max()
@@ -47,13 +64,19 @@ def make_2d_image(beam: Beam) -> str:
     hdu.header["LONPOLE"] = 180.0
     hdu.header["LATPOLE"] = 0.0
 
-    outf = "2d.fits"
+    outf = Path(tmpdir) / "2d.fits"
     hdu.writeto(outf, overwrite=True)
 
-    return outf
+    return TestImage(
+        path=outf,
+        beam=beam,
+        data=data,
+        pix_scale=pix_scale,
+    )
 
 
-def mirsmooth(outf: str, target_beam: Beam) -> Tuple[str, str, str]:
+@pytest.fixture
+def mirsmooth(make_2d_image: TestImage) -> Tuple[str, str, str]:
     """Smooth a FITS image to a target beam using MIRIAD.
 
     Args:
@@ -63,22 +86,28 @@ def mirsmooth(outf: str, target_beam: Beam) -> Tuple[str, str, str]:
     Returns:
         Tuple[str, str, str]: Names of the output images.
     """
-    outim = outf.replace(".fits", ".im")
-    cmd = f"fits op=xyin in={outf} out={outim}"
+    target_beam = Beam(40 * u.arcsec, 40 * u.arcsec, 0 * u.deg)
+    outim = make_2d_image.path.with_suffix(".im")
+    cmd = f"fits op=xyin in={make_2d_image.path.as_posix()} out={outim.as_posix()}"
     sp.run(cmd.split())
 
-    smoothim = outim.replace(".im", ".smooth.im")
+    smoothim = make_2d_image.path.with_suffix(".smooth.im")
     cmd = f"convol map={outim} fwhm={target_beam.major.to(u.arcsec).value},{target_beam.minor.to(u.arcsec).value} pa={target_beam.pa.to(u.deg).value} options=final out={smoothim}"
     sp.run(cmd.split())
 
-    smoothfits = outim.replace(".im", ".mirsmooth.fits")
-    cmd = f"fits op=xyout in={outim.replace('.im', '.smooth.im')} out={smoothfits}"
+    smoothfits = outim.with_suffix(".mirsmooth.fits")
+    cmd = f"fits op=xyout in={smoothim} out={smoothfits}"
     sp.run(cmd.split())
 
-    return outim, smoothim, smoothfits
+    return TestImage(
+        path=smoothfits,
+        beam=target_beam,
+        data=fits.getdata(smoothfits),
+        pix_scale=make_2d_image.pix_scale,
+    )
 
 
-def check_images(fname_1: str, fname_2: str) -> bool:
+def check_images(image_1: Path, image_2: Path) -> bool:
     """Compare two FITS images.
 
     Args:
@@ -88,106 +117,98 @@ def check_images(fname_1: str, fname_2: str) -> bool:
     Returns:
         bool: True if the images are the same.
     """
-    data_1 = fits.getdata(fname_1)
-    data_2 = fits.getdata(fname_2)
+    data_1 = fits.getdata(image_1)
+    data_2 = fits.getdata(image_2)
 
     return np.allclose(data_1, data_2, atol=1e-5)
 
 
-def cleanup(files: List[str]):
-    """Remove files.
+def test_robust(make_2d_image: TestImage, mirsmooth: TestImage):
+    """Test the robust convolution."""
+    with schwimmbad.SerialPool() as pool:
+        beamcon_2D.main(
+            pool=pool,
+            infile=[make_2d_image.path.as_posix()],
+            suffix="robust",
+            conv_mode="robust",
+            bmaj=mirsmooth.beam.major.to(u.arcsec).value,
+            bmin=mirsmooth.beam.minor.to(u.arcsec).value,
+            bpa=mirsmooth.beam.pa.to(u.deg).value,
+        )
 
-    Args:
-        files (List[str]): List of files to remove.
-    """
-    for f in files:
-        sp.run(f"rm -rfv {f}".split())
+    fname_beamcon = make_2d_image.path.with_suffix(".robust.fits")
+    assert check_images(mirsmooth.path, fname_beamcon), "Beamcon does not match miriad"
 
 
-class test_Beamcon2D(unittest.TestCase):
-    """Test the 2D beam convolution."""
+def test_astropy(make_2d_image: TestImage, mirsmooth: TestImage):
+    """Test the astropy convolution."""
+    with schwimmbad.SerialPool() as pool:
+        beamcon_2D.main(
+            pool=pool,
+            infile=[make_2d_image.path.as_posix()],
+            suffix="astropy",
+            conv_mode="astropy",
+            bmaj=mirsmooth.beam.major.to(u.arcsec).value,
+            bmin=mirsmooth.beam.minor.to(u.arcsec).value,
+            bpa=mirsmooth.beam.pa.to(u.deg).value,
+        )
 
-    def setUp(self) -> None:
-        """Set up the test."""
-        self.orginal_beam = Beam(20 * u.arcsec, 10 * u.arcsec, 10 * u.deg)
-        test_image = make_2d_image(self.orginal_beam)
+    fname_beamcon = make_2d_image.path.with_suffix(".astropy.fits")
+    assert check_images(mirsmooth.path, fname_beamcon), "Beamcon does not match miriad"
 
-        self.test_image = test_image
-        self.target_beam = Beam(40 * u.arcsec, 40 * u.arcsec, 0 * u.deg)
-        mirfile, mirfile_smooth, fname_mir = mirsmooth(test_image, self.target_beam)
-        self.test_mir = fname_mir
 
-        self.files = [
-            test_image,
-            mirfile,
-            mirfile_smooth,
-            fname_mir,
-        ]
+def test_scipy(make_2d_image: TestImage, mirsmooth: TestImage):
+    """Test the scipy convolution."""
+    with schwimmbad.SerialPool() as pool:
+        beamcon_2D.main(
+            pool=pool,
+            infile=[make_2d_image.path.as_posix()],
+            suffix="scipy",
+            conv_mode="scipy",
+            bmaj=mirsmooth.beam.major.to(u.arcsec).value,
+            bmin=mirsmooth.beam.minor.to(u.arcsec).value,
+            bpa=mirsmooth.beam.pa.to(u.deg).value,
+        )
 
-    def test_robust(self):
-        """Test the robust convolution."""
-        with schwimmbad.SerialPool() as pool:
-            beamcon_2D.main(
-                pool=pool,
-                infile=[self.test_image],
-                suffix="robust",
-                conv_mode="robust",
-                bmaj=self.target_beam.major.to(u.arcsec).value,
-                bmin=self.target_beam.minor.to(u.arcsec).value,
-                bpa=self.target_beam.pa.to(u.deg).value,
+    fname_beamcon = make_2d_image.path.with_suffix(".scipy.fits")
+    assert check_images(mirsmooth.path, fname_beamcon), "Beamcon does not match miriad"
+
+
+def test_smooth(make_2d_image: TestImage, mirsmooth: TestImage):
+    """Test the smoothing function."""
+    logger.debug(f"Testing smooth with {make_2d_image.path}")
+    target_beam = mirsmooth.beam
+    old_beam = make_2d_image.beam
+    dx = make_2d_image.pix_scale
+    dy = make_2d_image.pix_scale
+    for conv_mode in ("robust", "astropy", "scipy"):
+        if conv_mode != "robust":
+            conbm = target_beam.deconvolve(old_beam)
+            fac, _, _, _, _ = au2.gauss_factor(
+                beamConv=[
+                    conbm.major.to(u.arcsec).value,
+                    conbm.minor.to(u.arcsec).value,
+                    conbm.pa.to(u.deg).value,
+                ],
+                beamOrig=[
+                    old_beam.major.to(u.arcsec).value,
+                    old_beam.minor.to(u.arcsec).value,
+                    old_beam.pa.to(u.deg).value,
+                ],
+                dx1=dx.to(u.arcsec).value,
+                dy1=dy.to(u.arcsec).value,
             )
-
-        fname_beamcon = self.test_image.replace(".fits", ".robust.fits")
-        self.files.append(fname_beamcon)
-        assert check_images(
-            self.test_mir, fname_beamcon
-        ), "Beamcon does not match miriad"
-
-    def test_astropy(self):
-        """Test the astropy convolution."""
-        print(f"{self.test_image=}")
-        with schwimmbad.SerialPool() as pool:
-            beamcon_2D.main(
-                pool=pool,
-                infile=[self.test_image],
-                suffix="astropy",
-                conv_mode="astropy",
-                bmaj=self.target_beam.major.to(u.arcsec).value,
-                bmin=self.target_beam.minor.to(u.arcsec).value,
-                bpa=self.target_beam.pa.to(u.deg).value,
-            )
-
-        fname_beamcon = self.test_image.replace(".fits", ".astropy.fits")
-        self.files.append(fname_beamcon)
-        assert check_images(
-            self.test_mir, fname_beamcon
-        ), "Beamcon does not match miriad"
-
-    def test_scipy(self):
-        """Test the scipy convolution."""
-        with schwimmbad.SerialPool() as pool:
-            beamcon_2D.main(
-                pool=pool,
-                infile=[self.test_image],
-                suffix="scipy",
-                conv_mode="scipy",
-                bmaj=self.target_beam.major.to(u.arcsec).value,
-                bmin=self.target_beam.minor.to(u.arcsec).value,
-                bpa=self.target_beam.pa.to(u.deg).value,
-            )
-
-        fname_beamcon = self.test_image.replace(".fits", ".scipy.fits")
-        self.files.append(fname_beamcon)
-        assert check_images(
-            self.test_mir, fname_beamcon
-        ), "Beamcon does not match miriad"
-
-    def tearDown(self) -> None:
-        """Clean up."""
-        cleanup(self.files)
-
-
-if __name__ == "__main__":
-    unittest.TestLoader.sortTestMethodsUsing = None
-    suite = unittest.TestLoader().loadTestsFromTestCase(test_Beamcon2D)
-    unittest.TextTestRunner(verbosity=1).run(suite)
+        else:
+            fac = 1
+        smooth_data = smooth(
+            image=make_2d_image.data,
+            old_beam=old_beam,
+            final_beam=target_beam,
+            dx=make_2d_image.pix_scale,
+            dy=make_2d_image.pix_scale,
+            sfactor=fac,
+            conv_mode=conv_mode,
+        )
+        assert np.allclose(
+            smooth_data, mirsmooth.data, atol=1e-5
+        ), f"Smooth with {conv_mode} does not match miriad"
