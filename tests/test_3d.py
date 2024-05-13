@@ -24,9 +24,9 @@ from .test_2d import TestImage, check_images
 def make_3d_image(
     tmpdir: str,
     beams: Beams = Beams(
-        major=np.linspace(50, 10, 10) * u.arcsec,
-        minor=np.linspace(10, 10, 10) * u.arcsec,
-        pa=np.random.uniform(0, 180, 10) * u.deg,
+        major=[50, 50, 50] * u.arcsec,
+        minor=[10, 10, 10] * u.arcsec,
+        pa=[0, 0, 0] * u.deg,
     ),
 ) -> TestImage:
     """Make a fake 3D image from with a Gaussian beam.
@@ -95,6 +95,8 @@ def make_3d_image(
     )
     tab_hdu = fits.table_to_hdu(beam_table)
     tab_header = tab_hdu.header
+    beam = beams[0]
+    hdu.header = beam.attach_to_header(hdu.header)
     tab_header["EXTNAME"] = "BEAMS"
     tab_header["NCHAN"] = len(freqs)
     tab_header["NPOL"] = 1  # Only one pol for now
