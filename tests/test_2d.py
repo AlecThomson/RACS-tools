@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import shutil
 import subprocess as sp
 from os import path
 from pathlib import Path
@@ -67,16 +68,18 @@ def make_2d_image(tmpdir) -> TestImage:
     outf = Path(tmpdir) / "2d.fits"
     hdu.writeto(outf, overwrite=True)
 
-    return TestImage(
+    yield TestImage(
         path=outf,
         beam=beam,
         data=data,
         pix_scale=pix_scale,
     )
 
+    outf.unlink()
+
 
 @pytest.fixture
-def mirsmooth(make_2d_image: TestImage) -> Tuple[str, str, str]:
+def mirsmooth(make_2d_image: TestImage) -> TestImage:
     """Smooth a FITS image to a target beam using MIRIAD.
 
     Args:
@@ -99,12 +102,18 @@ def mirsmooth(make_2d_image: TestImage) -> Tuple[str, str, str]:
     cmd = f"fits op=xyout in={smoothim} out={smoothfits}"
     sp.run(cmd.split())
 
-    return TestImage(
+    yield TestImage(
         path=smoothfits,
         beam=target_beam,
         data=fits.getdata(smoothfits),
         pix_scale=make_2d_image.pix_scale,
     )
+
+    for f in (outim, smoothim, smoothfits):
+        if f.is_dir():
+            shutil.rmtree(f)
+        else:
+            f.unlink()
 
 
 def check_images(image_1: Path, image_2: Path) -> bool:
