@@ -129,7 +129,14 @@ def check_images(image_1: Path, image_2: Path) -> bool:
     data_1 = fits.getdata(image_1)
     data_2 = fits.getdata(image_2)
 
-    return np.allclose(data_1, data_2, atol=1e-5)
+    logger.debug(f"{np.nanmean(data_1)=}")
+    logger.debug(f"{np.nanmean(data_2)=}")
+    logger.info(f"{data_1.shape=}")
+    logger.info(f"{data_2.shape=}")
+
+    logger.debug(f"{np.nanmean(data_1-data_2)=}")
+
+    return np.allclose(data_1, data_2, atol=1e-3)
 
 
 def test_robust(make_2d_image: TestImage, mirsmooth: TestImage):

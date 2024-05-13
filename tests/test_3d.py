@@ -14,57 +14,10 @@ import schwimmbad
 from astropy.io import fits
 from astropy.table import Table
 from radio_beam import Beam, Beams
-from test_2d import TestImage, check_images, mirsmooth
 
 from racs_tools import beamcon_3D
 
-
-@pytest.fixture
-def smoothcube(
-    tmpdir: str,
-    outf: Path,
-    target_beam: Beam = Beam(60 * u.arcsec, 60 * u.arcsec, 0 * u.deg),
-) -> TestImage:
-    """Smooth a FITS cube to a target beam.
-
-    Args:
-        tmpdir (str): Temporary directory.
-        outf (str): FITS cube to smooth.
-        target_beam (Beam): Target beam.
-
-    Returns:
-        str: Output FITS cube.
-    """
-    cube = np.squeeze(fits.getdata(outf))
-    header = fits.getheader(outf)
-    with fits.open(outf) as hdulist:
-        beams = Beams.from_fits_bintable(hdulist[1])
-
-    smoothcube = []
-
-    for image, beam in zip(cube, beams):
-        hdu = fits.PrimaryHDU(data=image, header=header)
-        hdu.header = beam.attach_to_header(hdu.header)
-        hdu.writeto("tmp.fits", overwrite=True)
-        outim, smoothim, smoothfits = mirsmooth("tmp.fits", target_beam)
-        smoothcube.append(fits.getdata(smoothfits))
-        os.remove("tmp.fits")
-        os.remove(smoothfits)
-        shutil.rmtree(outim)
-        shutil.rmtree(smoothim)
-
-    smoothcube = np.array(smoothcube)
-    cube_hdu = fits.PrimaryHDU(data=smoothcube, header=header)
-    cube_hdu.header = target_beam.attach_to_header(cube_hdu.header)
-
-    smooth_outf = Path(tmpdir) / "smoothcube.fits"
-    cube_hdu.writeto(smooth_outf, overwrite=True)
-
-    return TestImage(
-        path=smooth_outf,
-        beam=target_beam,
-        data=smoothcube,
-    )
+from .test_2d import TestImage, check_images
 
 
 @pytest.fixture
@@ -154,25 +107,65 @@ def make_3d_image(
         path=outf,
         beam=beams,
         data=cube,
+        pix_scale=pix_scale,
     )
-
     outf.unlink()
 
 
-def test_robust(make_3d_image, smoothcube):
+@pytest.fixture
+def mirsmooth_3d(make_3d_image: TestImage) -> TestImage:
+    """Smooth a FITS image to a target beam using MIRIAD.
+
+    Args:
+        outf (str): FITS image to smooth.
+        target_beam (Beam): Target beam.
+
+    Returns:
+        Tuple[str, str, str]: Names of the output images.
+    """
+    target_beam = Beam(60 * u.arcsec, 60 * u.arcsec, 0 * u.deg)
+    outim = make_3d_image.path.with_suffix(".im")
+    cmd = f"fits op=xyin in={make_3d_image.path.as_posix()} out={outim.as_posix()}"
+    sp.run(cmd.split())
+
+    smoothim = make_3d_image.path.with_suffix(".smooth.im")
+    cmd = f"convol map={outim} fwhm={target_beam.major.to(u.arcsec).value},{target_beam.minor.to(u.arcsec).value} pa={target_beam.pa.to(u.deg).value} options=cube out={smoothim}"
+    sp.run(cmd.split())
+
+    smoothfits = outim.with_suffix(".mirsmooth_3d.fits")
+    cmd = f"fits op=xyout in={smoothim} out={smoothfits}"
+    sp.run(cmd.split())
+
+    yield TestImage(
+        path=smoothfits,
+        beam=target_beam,
+        data=fits.getdata(smoothfits),
+        pix_scale=make_3d_image.pix_scale,
+    )
+
+    for f in (outim, smoothim, smoothfits):
+        if f.is_dir():
+            shutil.rmtree(f)
+        else:
+            f.unlink()
+
+
+def test_robust_3d(make_3d_image, mirsmooth_3d):
     """Test the robust mode."""
     beamcon_3D.main(
         infile=[make_3d_image.path.as_posix()],
         suffix="robust",
         conv_mode="robust",
         mode="total",
-        bmaj=smoothcube.beam.major.to(u.arcsec).value,
-        bmin=smoothcube.beam.minor.to(u.arcsec).value,
-        bpa=smoothcube.beam.pa.to(u.deg).value,
+        bmaj=mirsmooth_3d.beam.major.to(u.arcsec).value,
+        bmin=mirsmooth_3d.beam.minor.to(u.arcsec).value,
+        bpa=mirsmooth_3d.beam.pa.to(u.deg).value,
     )
 
     fname_beamcon = make_3d_image.path.with_suffix(".robust.fits")
-    assert check_images(smoothcube.path, fname_beamcon), "Beamcon does not match Miriad"
+    assert check_images(
+        mirsmooth_3d.path, fname_beamcon
+    ), "Beamcon does not match Miriad"
 
 
 # def test_astropy(self):
