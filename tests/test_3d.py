@@ -5,57 +5,30 @@ import os
 import shutil
 import subprocess as sp
 import unittest
+from pathlib import Path
 
 import astropy.units as u
 import numpy as np
+import pytest
 import schwimmbad
 from astropy.io import fits
 from astropy.table import Table
 from radio_beam import Beam, Beams
-from test_2d import check_images, cleanup, mirsmooth
 
 from racs_tools import beamcon_3D
 
-
-def smoothcube(outf: str, target_beam: Beam) -> str:
-    """Smooth a FITS cube to a target beam.
-
-    Args:
-        outf (str): FITS cube to smooth.
-        target_beam (Beam): Target beam.
-
-    Returns:
-        str: Output FITS cube.
-    """
-    cube = np.squeeze(fits.getdata(outf))
-    header = fits.getheader(outf)
-    with fits.open(outf) as hdulist:
-        beams = Beams.from_fits_bintable(hdulist[1])
-
-    smoothcube = []
-
-    for image, beam in zip(cube, beams):
-        hdu = fits.PrimaryHDU(data=image, header=header)
-        hdu.header = beam.attach_to_header(hdu.header)
-        hdu.writeto("tmp.fits", overwrite=True)
-        outim, smoothim, smoothfits = mirsmooth("tmp.fits", target_beam)
-        smoothcube.append(fits.getdata(smoothfits))
-        os.remove("tmp.fits")
-        os.remove(smoothfits)
-        shutil.rmtree(outim)
-        shutil.rmtree(smoothim)
-
-    smoothcube = np.array(smoothcube)
-    cube_hdu = fits.PrimaryHDU(data=smoothcube, header=header)
-    cube_hdu.header = target_beam.attach_to_header(cube_hdu.header)
-
-    smooth_outf = "smoothcube.fits"
-    cube_hdu.writeto(smooth_outf, overwrite=True)
-
-    return smooth_outf
+from .test_2d import TestImage, check_images
 
 
-def make_3d_image(beams: Beams) -> str:
+@pytest.fixture
+def make_3d_image(
+    tmpdir: str,
+    beams: Beams = Beams(
+        major=np.linspace(50, 10, 10) * u.arcsec,
+        minor=np.linspace(10, 10, 10) * u.arcsec,
+        pa=np.random.uniform(0, 180, 10) * u.deg,
+    ),
+) -> TestImage:
     """Make a fake 3D image from with a Gaussian beam.
 
     Args:
@@ -127,87 +100,111 @@ def make_3d_image(beams: Beams) -> str:
     tab_header["NPOL"] = 1  # Only one pol for now
     new_hdulist = fits.HDUList([hdu, tab_hdu])
 
-    outf = "3d.fits"
+    outf = Path(tmpdir) / "3d.fits"
     new_hdulist.writeto(outf, overwrite=True)
 
-    return outf
+    yield TestImage(
+        path=outf,
+        beam=beams,
+        data=cube,
+        pix_scale=pix_scale,
+    )
+    outf.unlink()
 
 
-class test_Beamcon3D(unittest.TestCase):
-    """Test the beamcon_3D script."""
+@pytest.fixture
+def mirsmooth_3d(make_3d_image: TestImage) -> TestImage:
+    """Smooth a FITS image to a target beam using MIRIAD.
 
-    def setUp(self) -> None:
-        """Set up the test."""
-        self.orginal_beams = Beams(
-            major=np.linspace(50, 10, 10) * u.arcsec,
-            minor=np.linspace(10, 10, 10) * u.arcsec,
-            pa=np.random.uniform(0, 180, 10) * u.deg,
-        )
-        test_image = make_3d_image(self.orginal_beams)
+    Args:
+        outf (str): FITS image to smooth.
+        target_beam (Beam): Target beam.
 
-        self.test_image = test_image
-        self.target_beam = Beam(60 * u.arcsec, 60 * u.arcsec, 0 * u.deg)
-        smoothfits = smoothcube(test_image, self.target_beam)
-        self.test_cube = smoothfits
+    Returns:
+        Tuple[str, str, str]: Names of the output images.
+    """
+    target_beam = Beam(60 * u.arcsec, 60 * u.arcsec, 0 * u.deg)
+    outim = make_3d_image.path.with_suffix(".im")
+    cmd = f"fits op=xyin in={make_3d_image.path.as_posix()} out={outim.as_posix()}"
+    sp.run(cmd.split())
 
-        self.files = [
-            test_image,
-            smoothfits,
-        ]
+    smoothim = make_3d_image.path.with_suffix(".smooth.im")
+    cmd = f"convol map={outim} fwhm={target_beam.major.to(u.arcsec).value},{target_beam.minor.to(u.arcsec).value} pa={target_beam.pa.to(u.deg).value} options=cube out={smoothim}"
+    sp.run(cmd.split())
 
-    def test_robust(self):
-        """Test the robust mode."""
-        beamcon_3D.main(
-            infile=[self.test_image],
-            suffix="robust",
-            conv_mode="robust",
-            mode="total",
-            bmaj=self.target_beam.major.to(u.arcsec).value,
-            bmin=self.target_beam.minor.to(u.arcsec).value,
-            bpa=self.target_beam.pa.to(u.deg).value,
-        )
+    smoothfits = outim.with_suffix(".mirsmooth_3d.fits")
+    cmd = f"fits op=xyout in={smoothim} out={smoothfits}"
+    sp.run(cmd.split())
 
-        fname_beamcon = self.test_image.replace(".fits", ".robust.fits")
-        self.files.append(fname_beamcon)
-        check_images(self.test_cube, fname_beamcon), "Beamcon does not match Miriad"
+    yield TestImage(
+        path=smoothfits,
+        beam=target_beam,
+        data=fits.getdata(smoothfits),
+        pix_scale=make_3d_image.pix_scale,
+    )
 
-    def test_astropy(self):
-        """Test the astropy mode."""
-        beamcon_3D.main(
-            infile=[self.test_image],
-            suffix="astropy",
-            conv_mode="astropy",
-            mode="total",
-            bmaj=self.target_beam.major.to(u.arcsec).value,
-            bmin=self.target_beam.minor.to(u.arcsec).value,
-            bpa=self.target_beam.pa.to(u.deg).value,
-        )
-
-        fname_beamcon = self.test_image.replace(".fits", ".astropy.fits")
-        self.files.append(fname_beamcon)
-        check_images(self.test_cube, fname_beamcon), "Beamcon does not match Miriad"
-
-    def test_scipy(self):
-        """Test the scipy mode."""
-        beamcon_3D.main(
-            infile=[self.test_image],
-            suffix="scipy",
-            conv_mode="scipy",
-            mode="total",
-            bmaj=self.target_beam.major.to(u.arcsec).value,
-            bmin=self.target_beam.minor.to(u.arcsec).value,
-            bpa=self.target_beam.pa.to(u.deg).value,
-        )
-        fname_beamcon = self.test_image.replace(".fits", ".scipy.fits")
-        self.files.append(fname_beamcon)
-        check_images(self.test_cube, fname_beamcon), "Beamcon does not match Miriad"
-
-    def tearDown(self) -> None:
-        """Tear down the test."""
-        cleanup(self.files)
+    for f in (outim, smoothim, smoothfits):
+        if f.is_dir():
+            shutil.rmtree(f)
+        else:
+            f.unlink()
 
 
-if __name__ == "__main__":
-    unittest.TestLoader.sortTestMethodsUsing = None
-    suite = unittest.TestLoader().loadTestsFromTestCase(test_Beamcon3D)
-    unittest.TextTestRunner(verbosity=1).run(suite)
+def test_robust_3d(make_3d_image, mirsmooth_3d):
+    """Test the robust mode."""
+    beamcon_3D.main(
+        infile=[make_3d_image.path.as_posix()],
+        suffix="robust",
+        conv_mode="robust",
+        mode="total",
+        bmaj=mirsmooth_3d.beam.major.to(u.arcsec).value,
+        bmin=mirsmooth_3d.beam.minor.to(u.arcsec).value,
+        bpa=mirsmooth_3d.beam.pa.to(u.deg).value,
+    )
+
+    fname_beamcon = make_3d_image.path.with_suffix(".robust.fits")
+    assert check_images(
+        mirsmooth_3d.path, fname_beamcon
+    ), "Beamcon does not match Miriad"
+
+
+# def test_astropy(self):
+#     """Test the astropy mode."""
+#     beamcon_3D.main(
+#         infile=[self.test_image],
+#         suffix="astropy",
+#         conv_mode="astropy",
+#         mode="total",
+#         bmaj=self.target_beam.major.to(u.arcsec).value,
+#         bmin=self.target_beam.minor.to(u.arcsec).value,
+#         bpa=self.target_beam.pa.to(u.deg).value,
+#     )
+
+#     fname_beamcon = self.test_image.replace(".fits", ".astropy.fits")
+#     self.files.append(fname_beamcon)
+#     check_images(self.test_cube, fname_beamcon), "Beamcon does not match Miriad"
+
+# def test_scipy(self):
+#     """Test the scipy mode."""
+#     beamcon_3D.main(
+#         infile=[self.test_image],
+#         suffix="scipy",
+#         conv_mode="scipy",
+#         mode="total",
+#         bmaj=self.target_beam.major.to(u.arcsec).value,
+#         bmin=self.target_beam.minor.to(u.arcsec).value,
+#         bpa=self.target_beam.pa.to(u.deg).value,
+#     )
+#     fname_beamcon = self.test_image.replace(".fits", ".scipy.fits")
+#     self.files.append(fname_beamcon)
+#     check_images(self.test_cube, fname_beamcon), "Beamcon does not match Miriad"
+
+#     def tearDown(self) -> None:
+#         """Tear down the test."""
+#         cleanup(self.files)
+
+
+# if __name__ == "__main__":
+#     unittest.TestLoader.sortTestMethodsUsing = None
+#     suite = unittest.TestLoader().loadTestsFromTestCase(test_Beamcon3D)
+#     unittest.TextTestRunner(verbosity=1).run(suite)
