@@ -104,9 +104,12 @@ def getbeam(
         return conbm, fac
     try:
         conbm = new_beam.deconvolve(old_beam)
-    except Exception as err:
-        logger.warning(f"Could not deconvolve. New: {new_beam!r}, Old: {old_beam!r}")
-        raise err
+    except BeamError as err:
+        logger.error(err)
+        logger.warning(
+            f"Could not deconvolve. New: {new_beam!r}, Old: {old_beam!r} - will set convolving beam to 0.0"
+        )
+        conbm = new_beam.deconvolve(old_beam, failure_returns_pointlike=True)
     fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
         beamConv=[
             conbm.major.to(u.arcsec).value,
@@ -366,7 +369,18 @@ def getmaxbeam(
         # Get the minor axis of the convolving beams
         minorcons = []
         for beam in beams:
-            minorcons += [cmn_beam.deconvolve(beam).minor.to(u.arcsec).value]
+            try:
+                minorcons += [cmn_beam.deconvolve(beam).minor.to(u.arcsec).value]
+            except BeamError as err:
+                logger.error(err)
+                logger.warning(
+                    f"Could not deconvolve. New: {cmn_beam!r}, Old: {beam!r} - will set convolving beam to 0.0"
+                )
+                minorcons += [
+                    cmn_beam.deconvolve(beam, failure_returns_pointlike=True)
+                    .minor.to(u.arcsec)
+                    .value
+                ]
         minorcons = np.array(minorcons) * u.arcsec
         samps = minorcons / grid.to(u.arcsec)
         # Check that convolving beam will be Nyquist sampled
