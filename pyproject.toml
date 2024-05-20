@@ -12,12 +12,10 @@ python = ">=3.8"
 numpy = "<2"
 astropy = ">=5"
 radio_beam = "*"
-schwimmbad = "*"
 scipy = "*"
 spectral_cube = ">=0.6.3"
 tqdm = "*"
 numba = "*"
-mpi4py = {version = "*", optional = true}
 
 [tool.poetry.dev-dependencies]
 black = "*"
