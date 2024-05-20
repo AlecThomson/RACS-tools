@@ -21,8 +21,6 @@ numba = "*"
 black = "*"
 isort = "*"
 
-[tool.poetry.extras]
-mpi = ["mpi4py"]
 
 [tool.poetry.scripts]
 beamcon_2D = "racs_tools.beamcon_2D:cli"
