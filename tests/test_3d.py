@@ -24,9 +24,21 @@ from .test_2d import TestImage, check_images
 def make_3d_image(
     tmpdir: str,
     beams: Beams = Beams(
-        major=[50, 50, 50] * u.arcsec,
-        minor=[10, 10, 10] * u.arcsec,
-        pa=[0, 0, 0] * u.deg,
+        major=[
+            50,
+        ]
+        * 100
+        * u.arcsec,
+        minor=[
+            10,
+        ]
+        * 100
+        * u.arcsec,
+        pa=[
+            0,
+        ]
+        * 100
+        * u.deg,
     ),
 ) -> TestImage:
     """Make a fake 3D image from with a Gaussian beam.
@@ -42,9 +54,11 @@ def make_3d_image(
     freqs = np.linspace(1, 2, len(beams)) * u.GHz
 
     cube = []
-    for beam in beams:
+    peaks = np.random.uniform(0.1, 10, len(beams))
+    for beam, peak in zip(beams, peaks):
         data = beam.as_kernel(pixscale=pix_scale, x_size=100, y_size=100).array
         data /= data.max()
+        data *= peak
         cube.append(data)
 
     cube = np.array(cube)[np.newaxis]
