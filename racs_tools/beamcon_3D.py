@@ -7,7 +7,9 @@ import os
 import stat
 import sys
 import warnings
-from typing import Dict, List, Tuple
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import Dict, List, Literal, NamedTuple, Optional, Tuple
 
 import numpy as np
 from astropy import units as u
@@ -24,7 +26,7 @@ from tqdm import tqdm, trange
 
 from racs_tools import au2
 from racs_tools.beamcon_2D import my_ceil, round_up
-from racs_tools.convolve_uv import smooth
+from racs_tools.convolve_uv import parse_conv_mode, smooth
 from racs_tools.logging import logger, setup_logger
 
 mpiSwitch = False
@@ -141,28 +143,34 @@ def copyfileobj(fsrc, fdst, length=16 * 1024):
             pbar.update(copied)
 
 
-def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
+class CubeBeams(NamedTuple):
+    """Cube beams"""
+
+    beam_table: Table
+    """Beam table"""
+    nchan: int
+    """Number of channels"""
+    beamlog: Path
+    """Beamlog filename"""
+
+
+def get_beams(file: Path, header: fits.Header) -> CubeBeams:
     """Get beam information from a fits file or beamlog.
 
     Args:
         file (str): FITS filename.
-        header (fits.Header): FITS header.
+        header (fits.Header): FITS headesr.
 
     Returns:
-        Tuple[Table, int, str]: Table of beams, number of beams, and beamlog filename.
+        CubeBeams: Table of beams, number of beams, and beamlog filename.
     """
     # Add beamlog info to dict just in case
-    dirname = os.path.dirname(file)
-    basename = os.path.basename(file)
-    if dirname == "":
-        dirname = "."
-    beamlog = f"{dirname}/beamlog.{basename}".replace(".fits", ".txt")
+    dirname = file.parent
+    basename = file.name
+    beamlog = (dirname / f"beamlog.{basename}").with_suffix(".txt")
 
     # First check for CASA beams
-    try:
-        headcheck = header["CASAMBM"]
-    except KeyError:
-        headcheck = False
+    headcheck = header.get("CASAMBM", False)
     if headcheck:
         logger.info(
             "CASA beamtable found in header - will use this table for beam calculations"
@@ -173,7 +181,7 @@ def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
 
     # Otherwise use beamlog file
     else:
-        try:
+        if beamlog.exists():
             logger.info("No CASA beamtable found in header - looking for beamlogs")
             logger.info(f"Getting beams from {beamlog}")
 
@@ -191,7 +199,7 @@ def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
                     unit = u.Unit(col[idx + 1 : -1])
                 beams[col].unit = unit
                 beams[col].name = new_col
-        except FileNotFoundError:
+        else:
             logger.warning("No beamlog found")
             logger.warning("Using header beam - assuming a constant beam")
             try:
@@ -213,7 +221,7 @@ def getbeams(file: str, header: fits.Header) -> Tuple[Table, int, str]:
                 raise e
 
     nchan = len(beams)
-    return beams, nchan, beamlog
+    return CubeBeams(beams, nchan, beamlog)
 
 
 def getfacs(
@@ -235,7 +243,7 @@ def getfacs(
         if conbm == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg):
             fac = 1.0
         else:
-            fac, amp, outbmaj, outbmin, outbpa = au2.gauss_factor(
+            fac, _, _, _, _ = au2.gauss_factor(
                 beamConv=[
                     conbm.major.to(u.arcsec).value,
                     conbm.minor.to(u.arcsec).value,
@@ -320,7 +328,43 @@ def smooth_plane(
     return newim
 
 
-def makedata(files: List[str], outdir: str) -> Dict[str, dict]:
+class CubeData(NamedTuple):
+    """Cube data and metadata"""
+
+    filename: Path
+    """Cube filename"""
+    outdir: Path
+    """Output directory"""
+    dx: u.Quantity
+    """Pixel size in x direction"""
+    dy: u.Quantity
+    """Pixel size in y direction"""
+    beamlog: Path
+    """Beamlog filename"""
+    beam_table: Table
+    """Beam table"""
+    beams: Beams
+    """Beams object"""
+    nchan: int
+    """Number of channels"""
+    mask: np.ndarray
+    """Mask array"""
+
+    def with_options(self, **kwargs):
+        """Create a new CubeData instance with keywords updated
+
+        Returns:
+            CubeData: New CubeData instance with updated attributes
+        """
+        # TODO: Update the signature to have the actual attributes to
+        # help keep mypy and other linters happy
+        as_dict = self._asdict()
+        as_dict.update(kwargs)
+
+        return CubeData(**as_dict)
+
+
+def make_data(files: List[Path], outdir: List[Path]) -> List[CubeData]:
     """Create data dictionary.
 
     Args:
@@ -333,12 +377,8 @@ def makedata(files: List[str], outdir: str) -> Dict[str, dict]:
     Returns:
         Dict[Dict]: Data and metadata for each channel and image.
     """
-    datadict = {}  # type: Dict[str,dict]
-    for i, (file, out) in enumerate(zip(files, outdir)):
-        # Set up files
-        datadict[f"cube_{i}"] = {}
-        datadict[f"cube_{i}"]["filename"] = file
-        datadict[f"cube_{i}"]["outdir"] = out
+    cube_data_list: List[CubeData] = []
+    for _, (file, out) in enumerate(zip(files, outdir)):
         # Get metadata
         header = fits.getheader(file)
         w = WCS(header)
@@ -346,24 +386,48 @@ def makedata(files: List[str], outdir: str) -> Dict[str, dict]:
 
         dxas = pixelscales[0] * u.deg
         dyas = pixelscales[1] * u.deg
-
-        datadict[f"cube_{i}"]["dx"] = dxas
-        datadict[f"cube_{i}"]["dy"] = dyas
         if not np.isclose(dxas, dyas):
-            raise Exception("GRID MUST BE SAME IN X AND Y")
+            raise ValueError(f"GRID MUST BE SAME IN X AND Y, got {dxas} and {dyas}")
         # Get beam info
-        beam, nchan, beamlog = getbeams(file=file, header=header)
-        datadict[f"cube_{i}"]["beamlog"] = beamlog
-        datadict[f"cube_{i}"]["beam"] = beam
-        datadict[f"cube_{i}"]["nchan"] = nchan
-    return datadict
+        beam_table, nchan, beamlog = get_beams(file=file, header=header)
+        # Construct beams
+        bmaj = np.array(beam_table["BMAJ"]) * beam_table["BMAJ"].unit
+        bmin = np.array(beam_table["BMIN"]) * beam_table["BMIN"].unit
+        bpa = np.array(beam_table["BPA"]) * beam_table["BPA"].unit
+        beams = Beams(major=bmaj, minor=bmin, pa=bpa)
+        cube_data = CubeData(
+            filename=file,
+            outdir=out,
+            dx=dxas,
+            dy=dyas,
+            beamlog=beamlog,
+            beam_table=beam_table,
+            beams=beams,
+            nchan=nchan,
+            mask=np.array([False] * nchan),
+        )
+        cube_data_list.append(cube_data)
+    return cube_data_list
+
+
+class CommonBeamData(NamedTuple):
+    """Common beam data"""
+
+    commonbeams: Beams
+    """Common beams"""
+    convbeams: Beams
+    """Convolving beams"""
+    facs: np.ndarray
+    """Scaling factors"""
+    commonbeamlog: Path
+    """Common beamlog filename"""
 
 
 def commonbeamer(
-    datadict: Dict[str, dict],
+    cube_data_list: List[CubeData],
     nchans: int,
-    conv_mode: str = "robust",
-    mode: str = "natural",
+    conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
+    mode: Literal["natural", "total"] = "natural",
     suffix: str = None,
     target_beam: Beam = None,
     circularise: bool = False,
@@ -404,11 +468,11 @@ def commonbeamer(
             majors_list = []
             minors_list = []
             pas_list = []
-            for key in datadict.keys():
-                major = datadict[key]["beams"][n].major
-                minor = datadict[key]["beams"][n].minor
-                pa = datadict[key]["beams"][n].pa
-                if datadict[key]["mask"][n]:
+            for cube_data in cube_data_list:
+                major = cube_data.beams[n].major
+                minor = cube_data.beams[n].minor
+                pa = cube_data.beams[n].pa
+                if cube_data.mask[n]:
                     major *= np.nan
                     minor *= np.nan
                     pa *= np.nan
@@ -464,7 +528,7 @@ def commonbeamer(
                     pa=round_up(commonbeam.pa.to(u.deg), decimals=2),
                 )
 
-                grid = datadict[key]["dy"]
+                grid = cube_data.dy
                 if conv_mode != "robust":
                     # Get the minor axis of the convolving beams
                     minorcons = []
@@ -517,13 +581,13 @@ def commonbeamer(
         majors_list = []
         minors_list = []
         pas_list = []
-        for key in datadict.keys():
-            major = datadict[key]["beams"].major
-            minor = datadict[key]["beams"].minor
-            pa = datadict[key]["beams"].pa
-            major[datadict[key]["mask"]] *= np.nan
-            minor[datadict[key]["mask"]] *= np.nan
-            pa[datadict[key]["mask"]] *= np.nan
+        for cube_data in cube_data_list:
+            major = cube_data.beams.major
+            minor = cube_data.beams.minor
+            pa = cube_data.beams.pa
+            major[cube_data.mask] *= np.nan
+            minor[cube_data.mask] *= np.nan
+            pa[cube_data.mask] *= np.nan
             majors_list.append(major.to(u.arcsec).value)
             minors_list.append(minor.to(u.arcsec).value)
             pas_list.append(pa.to(u.deg).value)
@@ -564,7 +628,7 @@ def commonbeamer(
             )
         if conv_mode != "robust":
             # Get the minor axis of the convolving beams
-            grid = datadict[key]["dy"]
+            grid = cube_data.dy
             minorcons = []
             for beam in big_beams[~np.isnan(big_beams)]:
                 minorcons += [commonbeam.deconvolve(beam).minor.to(u.arcsec).value]
@@ -614,8 +678,9 @@ def commonbeamer(
     for i, commonbeam in enumerate(commonbeams):
         logger.info(f"Channel {i}: {commonbeam!r}")
 
-    for key in tqdm(
-        datadict.keys(),
+    common_beam_data_list: List[CommonBeamData] = []
+    for cube_data in tqdm(
+        cube_data_list,
         desc="Getting convolution data",
         disable=(logger.level > logging.INFO),
     ):
@@ -623,8 +688,8 @@ def commonbeamer(
         conv_bmaj = []
         conv_bmin = []
         conv_bpa = []
-        old_beams = datadict[key]["beams"]
-        masks = datadict[key]["mask"]
+        old_beams = cube_data.beams
+        masks = cube_data.mask
         for commonbeam, old_beam, mask in zip(commonbeams, old_beams, masks):
             if mask:
                 convbeam = Beam(
@@ -664,18 +729,21 @@ def commonbeamer(
 
         # Get gaussian beam factors
         facs = getfacs(
-            beams=datadict[key]["beams"],
+            beams=cube_data.beams,
             convbeams=convbeams,
-            dx=datadict[key]["dx"],
-            dy=datadict[key]["dy"],
+            dx=cube_data.dx,
+            dy=cube_data.dy,
         )
-        datadict[key]["facs"] = facs
 
         # Setup conv beamlog
-        datadict[key]["convbeams"] = convbeams
-        commonbeam_log = datadict[key]["beamlog"].replace(".txt", f".{suffix}.txt")
-        datadict[key]["commonbeams"] = commonbeams
-        datadict[key]["commonbeamlog"] = commonbeam_log
+        commonbeam_log = cube_data.beamlog.with_suffix(f".{suffix}.txt")
+        common_beam_data = CommonBeamData(
+            commonbeams=commonbeams,
+            convbeams=convbeams,
+            facs=facs,
+            commonbeamlog=commonbeam_log,
+        )
+        common_beam_data_list.append(common_beam_data)
 
         commonbeam_tab = Table()
         # Save target
@@ -705,10 +773,12 @@ def commonbeamer(
         )
         logger.info(f"Convolving log written to {commonbeam_log}")
 
-    return datadict
+    return common_beam_data_list
 
 
-def masking(nchans: int, datadict: dict, cutoff: u.Quantity = None) -> dict:
+def masking(
+    cube_data_list: List[CubeData], cutoff: u.Quantity = None
+) -> List[CubeData]:
     """Apply masking to data.
 
     Args:
@@ -719,37 +789,36 @@ def masking(nchans: int, datadict: dict, cutoff: u.Quantity = None) -> dict:
     Returns:
         dict: Updated data dictionary.
     """
-    for key in datadict.keys():
-        mask = np.array([False] * nchans)
-        datadict[key]["mask"] = mask
-    if cutoff is not None:
-        for key in datadict.keys():
-            majors = datadict[key]["beams"].major
-            cutmask = majors > cutoff
-            datadict[key]["mask"] += cutmask
-
     # Check for pipeline masking
     nullbeam = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
     tiny = np.finfo(np.float32).tiny  # Smallest positive number - used to mask
     smallbeam = Beam(major=tiny * u.deg, minor=tiny * u.deg, pa=tiny * u.deg)
-    for key in datadict.keys():
+    masked_cube_data_list: List[CubeData] = []
+    for cube_data in cube_data_list:
+        mask = cube_data.mask
+        if cutoff is not None:
+            majors = cube_data.beams.major
+            cutmask = majors > cutoff
+            mask += cutmask
         nullmask = np.logical_or(
-            datadict[key]["beams"] == nullbeam,
-            datadict[key]["beams"] == smallbeam,
+            cube_data.beams == nullbeam,
+            cube_data.beams == smallbeam,
         )
-        datadict[key]["mask"] += nullmask
-    return datadict
+        mask += nullmask
+        masked_cube_data = cube_data.with_options(mask=mask)
+        masked_cube_data_list.append(masked_cube_data)
+    return masked_cube_data_list
 
 
 def initfiles(
-    filename: str,
+    filename: Path,
     commonbeams: Beams,
-    outdir: str,
+    outdir: Path,
     mode: str,
-    suffix=None,
-    prefix=None,
+    suffix="",
+    prefix="",
     ref_chan=None,
-):
+) -> Path:
     """Initialise output files
 
     Args:
@@ -849,19 +918,20 @@ def initfiles(
     # Set up output file
     if suffix is None:
         suffix = mode
-    outname = os.path.basename(filename)
-    outname = outname.replace(".fits", "") + f".{suffix}.fits"
-    if prefix is not None:
-        outname = prefix + outname
+    outfile = Path(filename.name)
+    if suffix:
+        outfile = outfile.with_suffix(f".{suffix}.fits")
+    if prefix:
+        outfile = Path(prefix + outfile.name)
 
-    outfile = os.path.join(outdir, outname)
+    outfile = outdir / outfile.name
     logger.info(f"Initialising to {outfile}")
     new_hdulist.writeto(outfile, overwrite=True)
 
     return outfile
 
 
-def readlogs(commonbeam_log: str) -> Tuple[Beams, Beams, np.ndarray]:
+def readlogs(commonbeam_log: Path) -> CommonBeamData:
     """Read convolving log files
 
     Args:
@@ -893,24 +963,65 @@ def readlogs(commonbeam_log: str) -> Tuple[Beams, Beams, np.ndarray]:
     logger.info("Final beams are:")
     for i, commonbeam in enumerate(commonbeams):
         logger.info(f"Channel {i}: {commonbeam!r}")
-    return commonbeams, convbeams, facs
+    return CommonBeamData(
+        commonbeams=commonbeams,
+        convbeams=convbeams,
+        facs=facs,
+        commonbeamlog=commonbeam_log,
+    )
 
 
-def main(
-    infile: list,
+def smooth_and_write_plane(
+    chan: int,
+    cube_data: CubeData,
+    common_beam_data: CommonBeamData,
+    outfile: Path,
+    conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
+):
+    logger.debug(f"{outfile}  - channel {chan} - Started")
+
+    newim = smooth_plane(
+        filename=cube_data.filename,
+        idx=chan,
+        old_beam=cube_data.beams[chan],
+        new_beam=common_beam_data.commonbeams[chan],
+        dx=cube_data.dx,
+        dy=cube_data.dy,
+        conv_mode=conv_mode,
+    )
+
+    with fits.open(outfile, mode="update", memmap=True) as outfh:
+        # Find which axis is the spectral and stokes
+        wcs = WCS(outfh[0])
+        axis_type_dict = wcs.get_axis_types()[::-1]  # Reverse order for fits
+        axis_names = [i["coordinate_type"] for i in axis_type_dict]
+        spec_idx = axis_names.index("spectral")
+        stokes_idx = axis_names.index("stokes")
+        slicer = [slice(None)] * len(outfh[0].data.shape)
+        slicer[spec_idx] = chan
+        slicer[stokes_idx] = 0  # only do single stokes
+        slicer = tuple(slicer)
+
+        outfh[0].data[slicer] = newim.astype(np.float32)  # make sure data is 32-bit
+        outfh.flush()
+    logger.info(f"{outfile}  - channel {chan} - Done")
+
+
+def smooth_fits_cube(
+    infiles_list: List[Path],
     uselogs: bool = False,
-    mode: str = "natural",
-    conv_mode: str = "robust",
+    mode: Literal["natural", "total"] = "natural",
+    conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     dryrun: bool = False,
     prefix: str = None,
     suffix: str = None,
-    outdir: str = None,
-    bmaj: float = None,
-    bmin: float = None,
-    bpa: float = None,
-    cutoff: float = None,
+    outdir: Optional[Path] = None,
+    bmaj: Optional[float] = None,
+    bmin: Optional[float] = None,
+    bpa: Optional[float] = None,
+    cutoff: Optional[float] = None,
     circularise: bool = False,
-    ref_chan: int = None,
+    ref_chan: Optional[int] = None,
     tolerance: float = 0.0001,
     epsilon: float = 0.0005,
     nsamps: int = 200,
@@ -921,268 +1032,125 @@ def main(
         args (args): Command line args
 
     """
+    if dryrun:
+        logger.info("Doing a dry run -- no files will be saved")
 
-    if myPE == 0:
-        logger.info(f"Total number of MPI ranks = {nPE}")
-        # Parse args
-        if dryrun:
-            logger.info("Doing a dry run -- no files will be saved")
-
-        # Check mode
-        logger.info(f"Mode is {mode}")
-        if mode == "natural" and mode == "total":
-            raise Exception("'mode' must be 'natural' or 'total'")
-        if mode == "natural":
-            logger.info("Smoothing each channel to a common resolution")
-        if mode == "total":
-            logger.info("Smoothing all channels to a common resolution")
-
-        # Check cutoff
-        if cutoff is not None:
-            cutoff *= u.arcsec
-            logger.info(f"Cutoff is: {cutoff}")
-
-        # Check target
-        logger.debug(conv_mode)
-        if (
-            not conv_mode == "robust"
-            and not conv_mode == "scipy"
-            and not conv_mode == "astropy"
-            and not conv_mode == "astropy_fft"
-        ):
-            raise Exception("Please select valid convolution method!")
-
-        logger.info(f"Using convolution method {conv_mode}")
-        if conv_mode == "robust":
-            logger.info("This is the most robust method. And fast!")
-        elif conv_mode == "scipy":
-            logger.info("This fast, but not robust to NaNs or small PSF changes")
-        else:
-            logger.info(
-                "This is slower, but robust to NaNs, but not to small PSF changes"
-            )
-
-        nonetest = [test is None for test in [bmaj, bmin, bpa]]
-
-        if not all(nonetest) and mode != "total":
-            raise Exception("Only specify a target beam in 'total' mode")
-
-        if all(nonetest):
-            target_beam = None
-
-        elif not all(nonetest) and any(nonetest):
-            raise Exception("Please specify all target beam params!")
-
-        elif not all(nonetest) and not any(nonetest):
-            target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
-            logger.info(f"Target beam is {target_beam!r}")
-
-        files = sorted(infile)
-        if files == []:
-            raise Exception("No files found!")
-
-        if outdir is not None:
-            if outdir[-1] == "/":
-                outdir = outdir[:-1]
-            outdir = [outdir] * len(files)
-        else:
-            outdir = []
-            for f in files:
-                out = os.path.dirname(f)
-                if out == "":
-                    out = "."
-                outdir += [out]
-
-        datadict = makedata(files, outdir)
-
-        # Sanity check channel counts
-        nchans = np.array([datadict[key]["nchan"] for key in datadict.keys()])
-        check = all(nchans == nchans[0])
-
-        if not check:
-            raise Exception("Unequal number of spectral channels!")
-
-        else:
-            nchans = nchans[0]
-
-        # Check suffix
-        if suffix is None:
-            suffix = mode
-
-        # Construct Beams objects
-        for key in datadict.keys():
-            beam = datadict[key]["beam"]
-            bmaj = np.array(beam["BMAJ"]) * beam["BMAJ"].unit
-            bmin = np.array(beam["BMIN"]) * beam["BMIN"].unit
-            bpa = np.array(beam["BPA"]) * beam["BPA"].unit
-            beams = Beams(major=bmaj, minor=bmin, pa=bpa)
-            datadict[key]["beams"] = beams
-
-        # Apply some masking
-        datadict = masking(nchans=nchans, datadict=datadict, cutoff=cutoff)
-
-        if not uselogs:
-            datadict = commonbeamer(
-                datadict=datadict,
-                nchans=nchans,
-                conv_mode=conv_mode,
-                target_beam=target_beam,
-                mode=mode,
-                suffix=suffix,
-                circularise=circularise,
-                tolerance=tolerance,
-                nsamps=nsamps,
-                epsilon=epsilon,
-            )
-        else:
-            logger.info("Reading from convolve beamlog files")
-            for key in datadict.keys():
-                commonbeam_log = datadict[key]["beamlog"].replace(
-                    ".txt", f".{suffix}.txt"
-                )
-                commonbeams, convbeams, facs = readlogs(commonbeam_log)
-                # Save to datadict
-                datadict[key]["facs"] = facs
-                datadict[key]["convbeams"] = convbeams
-                datadict[key]["commonbeams"] = commonbeams
-                datadict[key]["commonbeamlog"] = commonbeam_log
+    # Check mode
+    logger.info(f"Mode is {mode}")
+    if mode == "natural":
+        logger.info("Smoothing each channel to a common resolution")
+    if mode == "total":
+        logger.info("Smoothing all channels to a common resolution")
     else:
-        files = None
-        datadict = None
-        nchans = None
+        raise Exception(f"Mode must be 'natural' or 'total', not '{mode}'")
+
+    # Check cutoff
+    if cutoff is not None:
+        cutoff *= u.arcsec
+        logger.info(f"Cutoff is: {cutoff}")
+
+    # Check target
+    conv_mode = parse_conv_mode(conv_mode)
+
+    nonetest = [param is None for param in (bmaj, bmin, bpa)]
+    if all(nonetest):
+        target_beam = None
+    elif any(nonetest):
+        raise Exception("Please specify all target beam params!")
+    else:
+        target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
+        logger.info(f"Target beam is {target_beam!r}")
+
+    files = sorted(infiles_list)
+    if len(files) == 0:
+        raise FileNotFoundError("No files found!")
+
+    outdir_list: List[Path] = (
+        [outdir] * len(files) if outdir is not None else [f.parent for f in files]
+    )
+
+    cube_data_list = make_data(files, outdir_list)
+
+    # Sanity check channel counts
+    nchans = np.array([cube_data.nchan for cube_data in cube_data_list])
+    check = all(nchans == nchans[0])
+
+    if not check:
+        raise ValueError(f"Unequal number of spectral channels! Got {nchans}")
+
+    nchans = nchans[0]
+
+    # Check suffix
+    if suffix is None:
+        suffix = mode
+
+    # Apply some masking
+    cube_data_list = masking(cube_data_list, cutoff=cutoff)
+
+    if not uselogs:
+        common_beam_data_list = commonbeamer(
+            cube_data_list=cube_data_list,
+            nchans=nchans,
+            conv_mode=conv_mode,
+            target_beam=target_beam,
+            mode=mode,
+            suffix=suffix,
+            circularise=circularise,
+            tolerance=tolerance,
+            nsamps=nsamps,
+            epsilon=epsilon,
+        )
+    else:
+        logger.info("Reading from convolve beamlog files")
+        common_beam_data_list: List[CommonBeamData] = []
+        for cube_data in cube_data_list:
+            commonbeam_log = cube_data.beamlog.with_suffix(f".{suffix}.txt")
+            common_beam_data = readlogs(commonbeam_log)
+            common_beam_data_list.append(common_beam_data)
 
     if dryrun:
         logger.info("Doing a dryrun so all done!")
-        return datadict
+        return cube_data_list, common_beam_data_list
 
     # Init the files in parallel
-    if myPE == 0:
-        logger.info("Initialising output files")
-    if mpiSwitch:
-        files = comm.bcast(files, root=0)
-        datadict = comm.bcast(datadict, root=0)
-        nchans = comm.bcast(nchans, root=0)
-
-    inputs = list(datadict.keys())
-    dims = len(inputs)
-
-    if nPE > dims:
-        my_start = myPE
-        my_end = myPE
-
-    else:
-        count = dims // nPE
-        rem = dims % nPE
-        if myPE < rem:
-            # The first 'remainder' ranks get 'count + 1' tasks each
-            my_start = myPE * (count + 1)
-            my_end = my_start + count
-
-        else:
-            # The remaining 'size - remainder' ranks get 'count' task each
-            my_start = myPE * count + rem
-            my_end = my_start + (count - 1)
-
-    if myPE == 0:
-        logger.info(f"There are {dims} files to init")
-    logger.debug(f"My start is {my_start}, my end is {my_end}")
+    logger.info("Initialising output files")
 
     # Init output files and retrieve file names
-    outfile_dict = {}
-    for inp in inputs[my_start : my_end + 1]:
-        outfile = initfiles(
-            filename=datadict[inp]["filename"],
-            commonbeams=datadict[inp]["commonbeams"],
-            outdir=datadict[inp]["outdir"],
-            mode=mode,
-            suffix=suffix,
-            prefix=prefix,
-            ref_chan=ref_chan,
-        )
-        outfile_dict.update({inp: outfile})
+    with ThreadPoolExecutor() as executor:
+        futures = []
+        for cube_data, common_beam_data in zip(cube_data_list, common_beam_data_list):
+            future = executor.submit(
+                initfiles,
+                filename=cube_data.filename,
+                commonbeams=common_beam_data.commonbeams,
+                outdir=cube_data.outdir,
+                mode=mode,
+                suffix=suffix,
+                prefix=prefix,
+                ref_chan=ref_chan,
+            )
+            futures.append(future)
+    outfiles = [future.result() for future in futures]
 
-    if mpiSwitch:
-        # Send to master proc
-        outlist = comm.gather(outfile_dict, root=0)
-    else:
-        outlist = [outfile_dict]
-
-    if mpiSwitch:
-        comm.Barrier()
-
-    # Now do the convolution in parallel
-    if myPE == 0:
-        # Conver list to dict and save to main dict
-        outlist_dict = {}
-        for d in outlist:
-            outlist_dict.update(d)
-        # Also make inputs list
-        inputs = []
-        for key in datadict.keys():
-            datadict[key]["outfile"] = outlist_dict[key]
+    with ThreadPoolExecutor() as executor:
+        futures = []
+        for cube_data, common_beam_data, outfile in zip(
+            cube_data_list, common_beam_data_list, outfiles
+        ):
             for chan in range(nchans):
-                inputs.append((key, chan))
-
-    else:
-        datadict = None
-        inputs = None
-    if mpiSwitch:
-        comm.Barrier()
-    if mpiSwitch:
-        inputs = comm.bcast(inputs, root=0)
-        datadict = comm.bcast(datadict, root=0)
-
-    dims = len(files) * nchans
-    assert len(inputs) == dims
-    count = dims // nPE
-    rem = dims % nPE
-    if myPE < rem:
-        # The first 'remainder' ranks get 'count + 1' tasks each
-        my_start = myPE * (count + 1)
-        my_end = my_start + count
-
-    else:
-        # The remaining 'size - remainder' ranks get 'count' task each
-        my_start = myPE * count + rem
-        my_end = my_start + (count - 1)
-    if myPE == 0:
-        logger.info(f"There are {nchans} channels, across {len(files)} files")
-    logger.debug(f"My start is {my_start}, my end is {my_end}")
-
-    for inp in inputs[my_start : my_end + 1]:
-        key, chan = inp
-        outfile = datadict[key]["outfile"]
-        logger.debug(f"{outfile}  - channel {chan} - Started")
-
-        cubedict = datadict[key]
-        newim = smooth_plane(
-            filename=cubedict["filename"],
-            idx=chan,
-            old_beam=cubedict["beams"][chan],
-            new_beam=cubedict["commonbeams"][chan],
-            dx=cubedict["dx"],
-            dy=cubedict["dy"],
-            conv_mode=conv_mode,
-        )
-
-        with fits.open(outfile, mode="update", memmap=True) as outfh:
-            # Find which axis is the spectral and stokes
-            wcs = WCS(outfh[0])
-            axis_type_dict = wcs.get_axis_types()[::-1]  # Reverse order for fits
-            axis_names = [i["coordinate_type"] for i in axis_type_dict]
-            spec_idx = axis_names.index("spectral")
-            stokes_idx = axis_names.index("stokes")
-            slicer = [slice(None)] * len(outfh[0].data.shape)
-            slicer[spec_idx] = chan
-            slicer[stokes_idx] = 0  # only do single stokes
-            slicer = tuple(slicer)
-
-            outfh[0].data[slicer] = newim.astype(np.float32)  # make sure data is 32-bit
-            outfh.flush()
-        logger.info(f"{outfile}  - channel {chan} - Done")
+                future = executor.submit(
+                    smooth_and_write_plane,
+                    chan=chan,
+                    cube_data=cube_data,
+                    common_beam_data=common_beam_data,
+                    outfile=outfile,
+                    conv_mode=conv_mode,
+                )
+                futures.append(future)
+        _ = [future.result() for future in futures]
 
     logger.info("Done!")
-    return datadict
+    return cube_data_list, common_beam_data_list
 
 
 def cli():
@@ -1213,7 +1181,7 @@ def cli():
     parser.add_argument(
         "infile",
         metavar="infile",
-        type=str,
+        type=Path,
         help="""Input FITS image(s) to smooth (can be a wildcard)
         - CASA beamtable will be used if present i.e. if CASAMBM = T
         - Otherwise beam info must be in co-located beamlog files.
@@ -1295,7 +1263,7 @@ def cli():
         "-o",
         "--outdir",
         dest="outdir",
-        type=str,
+        type=Path,
         default=None,
         help="Output directory of smoothed FITS image(s) [None - same as input].",
     )
@@ -1384,13 +1352,24 @@ def cli():
         filename=args.logfile,
     )
 
-    arg_dict = vars(args)
-    # Pop the verbosity argument
-    _ = arg_dict.pop("verbosity")
-    # Pop the logfile argument
-    _ = arg_dict.pop("logfile")
-
-    _ = main(**arg_dict)
+    _ = smooth_fits_cube(
+        infiles_list=args.infile,
+        uselogs=args.uselogs,
+        mode=args.mode,
+        conv_mode=args.conv_mode,
+        dryrun=args.dryrun,
+        prefix=args.prefix,
+        suffix=args.suffix,
+        outdir=args.outdir,
+        bmaj=args.bmaj,
+        bmin=args.bmin,
+        bpa=args.bpa,
+        cutoff=args.cutoff,
+        circularise=args.circularise,
+        ref_chan=args.ref_chan,
+        tolerance=args.tolerance,
+        epsilon=args.epsilon,
+    )
 
 
 if __name__ == "__main__":

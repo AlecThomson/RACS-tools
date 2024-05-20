@@ -154,8 +154,8 @@ def mirsmooth_3d(make_3d_image: TestImage) -> TestImage:
 
 def test_robust_3d(make_3d_image, mirsmooth_3d):
     """Test the robust mode."""
-    beamcon_3D.main(
-        infile=[make_3d_image.path.as_posix()],
+    beamcon_3D.smooth_fits_cube(
+        infiles_list=[make_3d_image.path],
         suffix="robust",
         conv_mode="robust",
         mode="total",
