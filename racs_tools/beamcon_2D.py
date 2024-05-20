@@ -146,10 +146,12 @@ def savefile(
         new_beam (Beam): New beam.
         outdir (str, optional): Output directory. Defaults to ".".
     """
-    logger.info(f"Saving to {outfile}")
+    logger.info(f"Saving to {outfile.absolute()}")
     beam = new_beam
     header = beam.attach_to_header(header)
-    fits.writeto(outfile, newimage.astype(np.float32), header=header, overwrite=True)
+    fits.writeto(
+        outfile.absolute(), newimage.astype(np.float32), header=header, overwrite=True
+    )
 
     assert outfile.exists(), f"File {outfile} not saved!"
 
@@ -203,7 +205,7 @@ def beamcon_2d_on_fits(
     if outdir is not None:
         outdir = outdir.absolute()
     else:
-        outdir = file.parent
+        outdir = file.parent.absolute()
 
     image_data = getimdata(file)
 
