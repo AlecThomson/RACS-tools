@@ -1040,7 +1040,7 @@ def smooth_fits_cube(
     logger.info(f"Mode is {mode}")
     if mode == "natural":
         logger.info("Smoothing each channel to a common resolution")
-    if mode == "total":
+    elif mode == "total":
         logger.info("Smoothing all channels to a common resolution")
     else:
         raise Exception(f"Mode must be 'natural' or 'total', not '{mode}'")
