@@ -2,9 +2,8 @@
 """ Find bad channels by checking statistics of each channel image. """
 
 import argparse
-import logging
 import warnings
-from typing import List, Tuple, Union
+from typing import Tuple, Union
 
 import astropy.units as u
 import numpy as np

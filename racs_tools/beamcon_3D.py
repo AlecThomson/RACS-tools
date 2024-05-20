@@ -10,7 +10,6 @@ import warnings
 from typing import Dict, List, Tuple
 
 import numpy as np
-import scipy.signal
 from astropy import units as u
 from astropy.io import ascii, fits
 from astropy.table import Table
@@ -275,10 +274,14 @@ def cpu_to_use(max_cpu: int, count: int) -> int:
     return max(factors[factors <= max_cpu])
 
 
-def worker(
+def smooth_plane(
     filename: str,
     idx: int,
-    **kwargs,
+    old_beam: Beam,
+    new_beam: Beam,
+    dx: u.Quantity,
+    dy: u.Quantity,
+    conv_mode: str = "robust",
 ) -> np.ndarray:
     """Smooth worker function.
 
@@ -306,7 +309,14 @@ def worker(
 
     plane = cube.unmasked_data[slicer].value.astype(np.float32)
     logger.debug(f"Size of plane is {(plane.nbytes*u.byte).to(u.MB)}")
-    newim = smooth(image=plane, **kwargs)
+    newim = smooth(
+        image=plane,
+        old_beam=old_beam,
+        new_beam=new_beam,
+        dx=dx,
+        dy=dy,
+        conv_mode=conv_mode,
+    )
     return newim
 
 
@@ -785,7 +795,7 @@ def initfiles(
     nstokes = stokes_axis.array_shape[0]
     if nstokes > 1:
         logger.critical(
-            f"More than one Stokes parameter in header. Only the first one will be used."
+            "More than one Stokes parameter in header. Only the first one will be used."
         )
     pols = np.zeros_like(chans)  # Zeros because we take the first one
     if any(
@@ -1145,15 +1155,13 @@ def main(
         logger.debug(f"{outfile}  - channel {chan} - Started")
 
         cubedict = datadict[key]
-        newim = worker(
+        newim = smooth_plane(
             filename=cubedict["filename"],
             idx=chan,
+            old_beam=cubedict["beams"][chan],
+            new_beam=cubedict["commonbeams"][chan],
             dx=cubedict["dx"],
             dy=cubedict["dy"],
-            old_beam=cubedict["beams"][chan],
-            final_beam=cubedict["commonbeams"][chan],
-            conbeam=cubedict["convbeams"][chan],
-            sfactor=cubedict["facs"][chan],
             conv_mode=conv_mode,
         )
 
