@@ -151,6 +151,8 @@ def savefile(
     header = beam.attach_to_header(header)
     fits.writeto(outfile, newimage.astype(np.float32), header=header, overwrite=True)
 
+    assert outfile.exists(), f"File {outfile} not saved!"
+
 
 class BeamLogInfo(NamedTuple):
     """Beam log info"""
