@@ -414,6 +414,7 @@ def smooth_fits_files(
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
+    ncores: Optional[int] = None,
 ):
     """Main script.
 
@@ -489,7 +490,9 @@ def smooth_fits_files(
 
     logger.info(f"Final beam is {common_beam!r}")
 
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(
+        max_workers=ncores,
+    ) as executor:
         futures = []
         for file in files:
             future = executor.submit(
@@ -532,7 +535,7 @@ def cli():
 
     # Parse the command line options
     parser = argparse.ArgumentParser(
-        description=descStr, formatter_class=argparse.RawTextHelpFormatter
+        description=descStr, formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
     parser.add_argument(
@@ -677,6 +680,13 @@ def cli():
         help="nsamps for radio_beam.commonbeam.",
     )
 
+    parser.add_argument(
+        "--ncores",
+        type=int,
+        default=None,
+        help="Number of cores to use for parallelisation. If None, use all available cores.",
+    )
+
     args = parser.parse_args()
 
     nonetest = [param is None for param in (args.bmaj, args.bmin, args.bpa)]
@@ -703,6 +713,7 @@ def cli():
         tolerance=args.tolerance,
         nsamps=args.nsamps,
         epsilon=args.epsilon,
+        ncores=args.ncores,
     )
 
 

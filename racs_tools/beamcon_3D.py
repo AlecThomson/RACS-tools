@@ -1025,6 +1025,7 @@ def smooth_fits_cube(
     tolerance: float = 0.0001,
     epsilon: float = 0.0005,
     nsamps: int = 200,
+    ncores: Optional[int] = None,
 ):
     """main script
 
@@ -1116,7 +1117,7 @@ def smooth_fits_cube(
     logger.info("Initialising output files")
 
     # Init output files and retrieve file names
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=ncores) as executor:
         futures = []
         for cube_data, common_beam_data in zip(cube_data_list, common_beam_data_list):
             future = executor.submit(
@@ -1132,7 +1133,7 @@ def smooth_fits_cube(
             futures.append(future)
     outfiles = [future.result() for future in futures]
 
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=ncores) as executor:
         futures = []
         for cube_data, common_beam_data, outfile in zip(
             cube_data_list, common_beam_data_list, outfiles
@@ -1175,7 +1176,7 @@ def cli():
 
     # Parse the command line options
     parser = argparse.ArgumentParser(
-        description=descStr, formatter_class=argparse.RawTextHelpFormatter
+        description=descStr, formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
     parser.add_argument(
@@ -1344,6 +1345,13 @@ def cli():
         help="nsamps for radio_beam.commonbeam.",
     )
 
+    parser.add_argument(
+        "--ncores",
+        type=int,
+        default=None,
+        help="Number of cores to use for parallelisation. If None, use all available cores.",
+    )
+
     args = parser.parse_args()
 
     # Set up logging
@@ -1369,6 +1377,7 @@ def cli():
         ref_chan=args.ref_chan,
         tolerance=args.tolerance,
         epsilon=args.epsilon,
+        ncores=args.ncores,
     )
 
 
