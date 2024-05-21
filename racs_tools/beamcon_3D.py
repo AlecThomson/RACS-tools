@@ -3,13 +3,11 @@
 __author__ = "Alec Thomson"
 
 import logging
-import os
-import stat
 import sys
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Dict, List, Literal, NamedTuple, Optional, Tuple
+from typing import List, Literal, NamedTuple, Optional
 
 import numpy as np
 from astropy import units as u
@@ -36,89 +34,6 @@ warnings.filterwarnings("ignore", message="invalid value encountered in true_div
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
 #############################################
-
-
-class Error(OSError):
-    pass
-
-
-class SameFileError(Error):
-    """Raised when source and destination are the same file."""
-
-
-class SpecialFileError(OSError):
-    """Raised when trying to do a kind of operation (e.g. copying) which is
-    not supported on a special file (e.g. a named pipe)"""
-
-
-class ExecError(OSError):
-    """Raised when a command could not be executed"""
-
-
-class ReadError(OSError):
-    """Raised when an archive cannot be read"""
-
-
-class RegistryError(Exception):
-    """Raised when a registry operation with the archiving
-    and unpacking registeries fails"""
-
-
-def _samefile(src, dst):
-    # Macintosh, Unix.
-    if hasattr(os.path, "samefile"):
-        try:
-            return os.path.samefile(src, dst)
-        except OSError:
-            return False
-
-
-def copyfile(src, dst, *, follow_symlinks=True):
-    """Copy data from src to dst.
-
-    If follow_symlinks is not set and src is a symbolic link, a new
-    symlink will be created instead of copying the file it points to.
-
-    """
-    if _samefile(src, dst):
-        raise SameFileError(f"{src!r} and {dst!r} are the same file")
-
-    for fn in [src, dst]:
-        try:
-            st = os.stat(fn)
-        except OSError:
-            # File most likely does not exist
-            pass
-        else:
-            # XXX What about other special files? (sockets, devices...)
-            if stat.S_ISFIFO(st.st_mode):
-                raise SpecialFileError("`%s` is a named pipe" % fn)
-
-    if not follow_symlinks and os.path.islink(src):
-        os.symlink(os.readlink(src), dst)
-    else:
-        with open(src, "rb") as fsrc:
-            with open(dst, "wb") as fdst:
-                copyfileobj(fsrc, fdst)
-    return dst
-
-
-def copyfileobj(fsrc, fdst, length=16 * 1024):
-    # copied = 0
-    total = os.fstat(fsrc.fileno()).st_size
-    with tqdm(
-        total=total,
-        disable=(logger.level > logging.INFO),
-        unit_scale=True,
-        desc="Copying file",
-    ) as pbar:
-        while True:
-            buf = fsrc.read(length)
-            if not buf:
-                break
-            fdst.write(buf)
-            copied = len(buf)
-            pbar.update(copied)
 
 
 class CubeBeams(NamedTuple):

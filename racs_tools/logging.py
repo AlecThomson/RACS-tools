@@ -9,7 +9,7 @@ logger = logging.getLogger("racs_tools")
 logger.setLevel(logging.WARNING)
 
 formatter = logging.Formatter(
-    fmt=f"[%(threadName)s] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
+    fmt="[%(threadName)s] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 

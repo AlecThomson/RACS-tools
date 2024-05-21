@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
 import shutil
 import subprocess as sp
-import unittest
 from pathlib import Path
 
 import astropy.units as u
 import numpy as np
 import pytest
-import schwimmbad
 from astropy.io import fits
 from astropy.table import Table
 from radio_beam import Beam, Beams
