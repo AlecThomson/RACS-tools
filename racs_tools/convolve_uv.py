@@ -3,7 +3,7 @@
 __author__ = "Wasim Raja"
 
 
-from typing import NamedTuple, Optional, Tuple
+from typing import Literal, NamedTuple, Optional, Tuple
 
 import astropy.units as units
 import numpy as np
@@ -146,6 +146,7 @@ def convolve(
         new_beam (Beam): Target image PSF.
         dx (u.Quantity): Grid size in x (e.g. CDELT1)
         dy (u.Quantity): Grid size in y (e.g. CDELT2)
+        cutoff (Optional[float], optional): Dummy cutoff for beamszie in arcsec. Defaults to None. NOT USED.
 
     Returns:
         ConvolutionResult: convolved image, scaling factor
@@ -214,6 +215,19 @@ def convolve_scipy(
     dy: u.Quantity,
     cutoff: Optional[float] = None,
 ) -> ConvolutionResult:
+    """Convolve using scipy's convolution
+
+    Args:
+        image (np.ndarray): Image to be convolved.
+        old_beam (Beam): Current beam.
+        new_beam (Beam): Target beam.
+        dx (u.Quantity): Pixel size in x.
+        dy (u.Quantity): Pixel size in y.
+        cutoff (Optional[float], optional): Cutoff for beamszie in arcsec. Defaults to None.
+
+    Returns:
+        ConvolutionResult: Convolved image, scaling factor.
+    """
     conbeam, sfactor = get_convolving_beam(
         old_beam=old_beam,
         new_beam=new_beam,
@@ -249,6 +263,19 @@ def convolve_astropy(
     dy: u.Quantity,
     cutoff: Optional[float] = None,
 ) -> ConvolutionResult:
+    """Convolve using astropy's convolution
+
+    Args:
+        image (np.ndarray): Image to be convolved.
+        old_beam (Beam): Current beam.
+        new_beam (Beam): Target beam.
+        dx (u.Quantity): Pixel size in x.
+        dy (u.Quantity): Pixel size in y.
+        cutoff (Optional[float], optional): Cutoff for beamszie in arcsec. Defaults to None.
+
+    Returns:
+        ConvolutionResult: Convolved image, scaling factor.
+    """
     conbeam, sfactor = get_convolving_beam(
         old_beam=old_beam,
         new_beam=new_beam,
@@ -287,6 +314,19 @@ def convolve_astropy_fft(
     dy: u.Quantity,
     cutoff: Optional[float] = None,
 ) -> ConvolutionResult:
+    """Convolve using astropy's FFT convolution
+
+    Args:
+        image (np.ndarray): Image to be convolved.
+        old_beam (Beam): Current beam.
+        new_beam (Beam): Target beam.
+        dx (u.Quantity): Pixel size in x.
+        dy (u.Quantity): Pixel size in y.
+        cutoff (Optional[float], optional): Cutoff for beamszie in arcsec. Defaults to None.
+
+    Returns:
+        ConvolutionResult: Convolved image, scaling factor.
+    """
     conbeam, sfactor = get_convolving_beam(
         old_beam=old_beam,
         new_beam=new_beam,
@@ -326,7 +366,17 @@ CONVOLUTION_FUNCTIONS = {
 }
 
 
-def parse_conv_mode(conv_mode: str) -> str:
+def parse_conv_mode(
+    conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"]
+) -> str:
+    """Parse convolution mode
+
+    Args:
+        conv_mode (str): Convolution mode.
+
+    Returns:
+        str: Convolution mode.
+    """
     logger.info(f"Convolution mode: {conv_mode}")
     if conv_mode not in CONVOLUTION_FUNCTIONS.keys():
         raise ValueError(
@@ -424,10 +474,10 @@ def smooth(
     new_beam: Beam,
     dx: u.Quantity,
     dy: u.Quantity,
-    conv_mode: str = "robust",
+    conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     cutoff: Optional[float] = None,
 ) -> np.ndarray:
-    """Apply smoothing to image
+    """Apply smoothing to image in Jy/beam
 
     Args:
         image (np.ndarray): 2D image array.
