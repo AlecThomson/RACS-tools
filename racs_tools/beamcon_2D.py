@@ -27,9 +27,44 @@ from racs_tools.convolve_uv import (
 )
 from racs_tools.logging import logger, setup_logger
 
+
 #############################################
 #### ADAPTED FROM SCRIPT BY T. VERNSTROM ####
 #############################################
+class ImageData(NamedTuple):
+    """Image data and metadata"""
+
+    filename: Path
+    """Filename of FITS file"""
+    image: np.ndarray
+    """Image data"""
+    four_d: bool
+    """Does the image have spectral and polarization axes?"""
+    header: fits.Header
+    """FITS header"""
+    old_beam: Beam
+    """Original beam"""
+    nx: int
+    """Number of pixels in x"""
+    ny: int
+    """Number of pixels in y"""
+    dx: u.Quantity
+    """Pixel size in x"""
+    dy: u.Quantity
+    """Pixel size in y"""
+
+
+class BeamLogInfo(NamedTuple):
+    """Beam log info"""
+
+    filename: Path
+    """Filename of FITS file"""
+    old_beam: Beam
+    """Original beam"""
+    new_beam: Beam
+    """Target beam"""
+    conv_beam: Beam
+    """Convolving beam"""
 
 
 def check_target_beam(
@@ -37,7 +72,21 @@ def check_target_beam(
     all_beams: Beams,
     files: List[Path],
     cutoff: Optional[float] = None,
-):
+) -> bool:
+    """Check that target beam will deconvolve
+
+    Args:
+        target_beam (Beam): Target beam.
+        all_beams (Beams): All the beams to check.
+        files (List[Path]): All the FITS files to check.
+        cutoff (Optional[float], optional): Cutoff of beam in arcsec. Defaults to None.
+
+    Raises:
+        BeamError: If beam deconvolution fails.
+
+    Returns:
+        bool: If the target beam will deconvolve.
+    """
     logger.info("Checking that target beam will deconvolve...")
     mask_count = 0
     failed = []
@@ -66,29 +115,6 @@ def check_target_beam(
         logger.error(failed)
 
     return is_good
-
-
-class ImageData(NamedTuple):
-    """Image data and metadata"""
-
-    filename: Path
-    """Filename of FITS file"""
-    image: np.ndarray
-    """Image data"""
-    four_d: bool
-    """Does the image have spectral and polarization axes?"""
-    header: fits.Header
-    """FITS header"""
-    old_beam: Beam
-    """Original beam"""
-    nx: int
-    """Number of pixels in x"""
-    ny: int
-    """Number of pixels in y"""
-    dx: u.Quantity
-    """Pixel size in x"""
-    dy: u.Quantity
-    """Pixel size in y"""
 
 
 def getimdata(cubenm: Path) -> ImageData:
@@ -141,10 +167,12 @@ def savefile(
 
     Args:
         newimage (np.ndarray): Smoothed image.
-        filename (str): File name.
+        outfile (Path): File name.
         header (fits.Header): FITS header.
         new_beam (Beam): New beam.
-        outdir (str, optional): Output directory. Defaults to ".".
+
+    Raises:
+        FileNotFoundError: If file is not saved.
     """
     logger.info(f"Saving to {outfile.absolute()}")
     beam = new_beam
@@ -153,46 +181,34 @@ def savefile(
         outfile.absolute(), newimage.astype(np.float32), header=header, overwrite=True
     )
 
-    assert outfile.exists(), f"File {outfile} not saved!"
-
-
-class BeamLogInfo(NamedTuple):
-    """Beam log info"""
-
-    filename: Path
-    """Filename of FITS file"""
-    old_beam: Beam
-    """Original beam"""
-    new_beam: Beam
-    """Target beam"""
-    conv_beam: Beam
-    """Convolving beam"""
+    if not outfile.exists():
+        raise FileNotFoundError(f"File {outfile} not saved!")
 
 
 def beamcon_2d_on_fits(
     file: Path,
     new_beam: Beam,
-    conv_mode: str,
+    conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"],
     suffix: str = "",
     prefix: str = "",
     outdir: Optional[Path] = None,
     cutoff: Optional[float] = None,
     dryrun: bool = False,
-) -> dict:
-    """Parallel worker function
+) -> BeamLogInfo:
+    """Run beamcon_2d on a FITS file
 
     Args:
-        file (str): FITS file to smooth.
-        outdir (str): Output directory.
-        new_beam (Beam): Target PSF.
-        conv_mode (str): Convolving mode.
+        file (Path): FITS file to smooth.
+        new_beam (Beam): Target beam.
+        conv_mode (str): Convolution mode.
         suffix (str, optional): Filename suffix. Defaults to "".
         prefix (str, optional): Filename prefix. Defaults to "".
-        cutoff (float, optional): PSF cutoff. Defaults to None.
-        dryrun (bool, optional): Do a dryrun. Defaults to False.
+        outdir (Optional[Path], optional): Ouput directory. Defaults to None (will be same as input).
+        cutoff (Optional[float], optional): Cutoff for beamsize in arcsec. Defaults to None.
+        dryrun (bool, optional): Don't save any images. Defaults to False.
 
     Returns:
-        dict: Output data.
+        BeamLogInfo: Beamlog information.
     """
     logger.info(f"Working on {file}")
 
@@ -254,8 +270,8 @@ def beamcon_2d_on_fits(
 
 
 def get_common_beam(
-    files: List[str],
-    conv_mode: str = "robust",
+    files: List[Path],
+    conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     target_beam: Optional[Beam] = None,
     cutoff: Optional[float] = None,
     tolerance: float = 0.0001,
@@ -265,17 +281,13 @@ def get_common_beam(
     """Get the smallest common beam.
 
     Args:
-        files (List[str]): List of FITS files.
-        conv_mode (str, optional): Convolution mode. Defaults to "robust".
-        target_beam (Beam, optional): Target PSF. Defaults to None.
-        cutoff (float, optional): Cutoff PSF BMAJ in arcsec. Defaults to None.
-        tolerance (float, optional): Common beam tolerance. Defaults to 0.0001.
-        nsamps (float, optional): Common beam samples. Defaults to 200.
-        epsilon (float, optional): Commonn beam epsilon. Defaults to 0.0005.
-
-    Raises:
-        Exception: X and Y pixel sizes are not the same.
-        Exception: Convolving beam will be undersampled on pixel grid.
+        files (List[Path]): FITS files to convolve.
+        conv_mode (Literal["robust", "scipy", "astropy", "astropy_fft"], optional): _description_. Defaults to "robust".
+        target_beam (Optional[Beam], optional): Target beam. Defaults to None.
+        cutoff (Optional[float], optional): Cutoff for beamsize in arcse. Defaults to None.
+        tolerance (float, optional): Radio beam tolerance. Defaults to 0.0001.
+        nsamps (float, optional): Radio beam nsamps. Defaults to 200.
+        epsilon (float, optional): Radio beam epsilon. Defaults to 0.0005.
 
     Returns:
         Tuple[Beam, Beams]: Common beam and all beams.
@@ -336,12 +348,12 @@ def get_common_beam(
     return target_beam, beams
 
 
-def writelog(output: List[BeamLogInfo], commonbeam_log: str):
+def writelog(output: List[BeamLogInfo], commonbeam_log: Path):
     """Write beamlog file.
 
     Args:
-        output (List[Dict]): List of dictionaries containing output.
-        commonbeam_log (str): Name of log file.
+        output (List[BeamLogInfo]): List of beamlog information.
+        commonbeam_log (Path): Name of log file.
     """
     commonbeam_tab = Table()
     commonbeam_tab.add_column([out["filename"] for out in output], name="FileName")
@@ -415,33 +427,34 @@ def smooth_fits_files(
     nsamps: int = 200,
     epsilon: float = 0.0005,
     ncores: Optional[int] = None,
-):
-    """Main script.
+) -> Beam:
+    """Smooth a field of 2D images to a common resolution.
 
     Args:
-        pool (mp.Pool): Multiprocessing pool.
-        infile (list, optional): List of images to convolve. Defaults to [].
-        prefix (str, optional): Output prefix. Defaults to None.
-        suffix (str, optional): Output suffix. Defaults to None.
-        outdir (str, optional): Output directory. Defaults to None.
-        conv_mode (str, optional): Colvolution mode. Defaults to "robust".
-        dryrun (bool, optional): Do a dryrun. Defaults to False.
-        bmaj (float, optional): Target BMAJ. Defaults to None.
-        bmin (float, optional): Target BMIN. Defaults to None.
-        bpa (float, optional): Target BPA. Defaults to None.
-        log (str, optional): Input beamlog. Defaults to None.
-        circularise (bool, optional): Make beam circular. Defaults to False.
-        cutoff (float, optional): Cutoff beams. Defaults to None.
-        tolerance (float, optional): Common tolerance. Defaults to 0.0001.
-        nsamps (int, optional): Common samples. Defaults to 200.
-        epsilon (float, optional): Common epsilon. Defaults to 0.0005.
-
+        infile_list (List[Path], optional): List of FITS files to convolve. Defaults to [].
+        prefix (Optional[str], optional): Output filename prefix. Defaults to None.
+        suffix (Optional[str], optional): Output filename suffix. Defaults to None.
+        outdir (Optional[Path], optional): Output directory. Defaults to None - same as input.
+        conv_mode (Literal["robust", "scipy", "astropy", "astropy_fft"], optional): Convolution mode. Defaults to "robust".
+        dryrun (bool, optional): Don't save any images. Defaults to False.
+        bmaj (Optional[float], optional): Target beam major axis in arcsec. Defaults to None.
+        bmin (Optional[float], optional): Target beam minor axis in arcsec. Defaults to None.
+        bpa (Optional[float], optional): Target beam poistion angle in deg. Defaults to None.
+        log (Optional[str], optional): Ouput logfile. Defaults to None.
+        circularise (bool, optional): Set minor axis to same as major. Defaults to False.
+        cutoff (Optional[float], optional): Cutoff for beamsize in arcse. Defaults to None.
+        tolerance (float, optional): Radio beam tolerance. Defaults to 0.0001.
+        nsamps (int, optional): Radio beam nsamp. Defaults to 200.
+        epsilon (float, optional): Radio beam epsilon. Defaults to 0.0005.
+        ncores (Optional[int], optional): Maximum number of cores to use. Defaults to None.
 
     Raises:
-        Exception: If no files are found.
-        Exception: If invalid convolution mode is specified.
-        Exception: If partial target beam is specified.
-        Exception: If target beam cannot be used.
+        FileNotFoundError: If no files are found.
+        ValueError: If target beam is not specified completely.
+        BeamError: If target beam is too small.
+
+    Returns:
+        Beam: Common beam used.
     """
 
     if dryrun:
@@ -458,7 +471,7 @@ def smooth_fits_files(
     if all(nonetest):
         target_beam = None
     elif any(nonetest):
-        raise Exception("Please specify all target beam params!")
+        raise ValueError("Please specify all target beam params!")
     else:
         target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
         logger.info(f"Target beam is {target_beam!r}")
