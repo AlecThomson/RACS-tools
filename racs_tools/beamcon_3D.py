@@ -47,12 +47,64 @@ class CubeBeams(NamedTuple):
     """Beamlog filename"""
 
 
+class CubeData(NamedTuple):
+    """Cube data and metadata"""
+
+    filename: Path
+    """Cube filename"""
+    outdir: Path
+    """Output directory"""
+    dx: u.Quantity
+    """Pixel size in x direction"""
+    dy: u.Quantity
+    """Pixel size in y direction"""
+    beamlog: Path
+    """Beamlog filename"""
+    beam_table: Table
+    """Beam table"""
+    beams: Beams
+    """Beams object"""
+    nchan: int
+    """Number of channels"""
+    mask: np.ndarray
+    """Mask array"""
+
+    def with_options(self, **kwargs):
+        """Create a new CubeData instance with keywords updated
+
+        Returns:
+            CubeData: New CubeData instance with updated attributes
+        """
+        # TODO: Update the signature to have the actual attributes to
+        # help keep mypy and other linters happy
+        as_dict = self._asdict()
+        as_dict.update(kwargs)
+
+        return CubeData(**as_dict)
+
+
+class CommonBeamData(NamedTuple):
+    """Common beam data"""
+
+    commonbeams: Beams
+    """Common beams"""
+    convbeams: Beams
+    """Convolving beams"""
+    facs: np.ndarray
+    """Scaling factors"""
+    commonbeamlog: Path
+    """Common beamlog filename"""
+
+
 def get_beams(file: Path, header: fits.Header) -> CubeBeams:
     """Get beam information from a fits file or beamlog.
 
     Args:
-        file (str): FITS filename.
+        file (Path): FITS filename.
         header (fits.Header): FITS headesr.
+
+    Raises:
+        e: If beam information cannot be extracted.
 
     Returns:
         CubeBeams: Table of beams, number of beams, and beamlog filename.
@@ -155,48 +207,28 @@ def getfacs(
     return facs
 
 
-def cpu_to_use(max_cpu: int, count: int) -> int:
-    """Find number of cpus to use.
-    Find the right number of cpus to use when dividing up a task, such
-    that there are no remainders.
-    Args:
-        max_cpu (int): Maximum number of cores to use for a process.
-        count (int): Number of tasks.
-
-    Returns:
-        int: Maximum number of cores to be used that divides into the number
-        of tasks.
-    """
-    factors_list = []
-    for i in range(1, count + 1):
-        if count % i == 0:
-            factors_list.append(i)
-    factors = np.array(factors_list)
-    return max(factors[factors <= max_cpu])
-
-
 def smooth_plane(
-    filename: str,
+    filename: Path,
     idx: int,
     old_beam: Beam,
     new_beam: Beam,
     dx: u.Quantity,
     dy: u.Quantity,
-    conv_mode: str = "robust",
+    conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
 ) -> np.ndarray:
-    """Smooth worker function.
-
-    Extracts a single image from a FITS cube and smooths it.
+    """Smooth a single plane of a cube.
 
     Args:
-        filename (str): FITS cube filename.
+        filename (Path): FITS filename.
         idx (int): Channel index.
-
-    Kwargs:
-        Passed to :func:`smooth`.
+        old_beam (Beam): Old beam.
+        new_beam (Beam): Target beam.
+        dx (u.Quantity): Pixel size in x direction.
+        dy (u.Quantity): Pixel size in y direction.
+        conv_mode (Literal["robust", "scipy", "astropy", "astropy_fft"], optional): Convolution mode. Defaults to "robust".
 
     Returns:
-        np.ndarray: Smoothed channel image.
+        np.ndarray: Convolved plane.
     """
     cube = SpectralCube.read(filename)
     # Get spectral axis
@@ -221,54 +253,18 @@ def smooth_plane(
     return newim
 
 
-class CubeData(NamedTuple):
-    """Cube data and metadata"""
-
-    filename: Path
-    """Cube filename"""
-    outdir: Path
-    """Output directory"""
-    dx: u.Quantity
-    """Pixel size in x direction"""
-    dy: u.Quantity
-    """Pixel size in y direction"""
-    beamlog: Path
-    """Beamlog filename"""
-    beam_table: Table
-    """Beam table"""
-    beams: Beams
-    """Beams object"""
-    nchan: int
-    """Number of channels"""
-    mask: np.ndarray
-    """Mask array"""
-
-    def with_options(self, **kwargs):
-        """Create a new CubeData instance with keywords updated
-
-        Returns:
-            CubeData: New CubeData instance with updated attributes
-        """
-        # TODO: Update the signature to have the actual attributes to
-        # help keep mypy and other linters happy
-        as_dict = self._asdict()
-        as_dict.update(kwargs)
-
-        return CubeData(**as_dict)
-
-
 def make_data(files: List[Path], outdir: List[Path]) -> List[CubeData]:
     """Create data dictionary.
 
     Args:
-        files (List[str]): List of filenames.
-        outdir (str): Output directory.
+        files (List[Path]): List of filenames.
+        outdir (List[Path]): Output directories.
 
     Raises:
         Exception: If pixel grid in X and Y is not the same.
 
     Returns:
-        Dict[Dict]: Data and metadata for each channel and image.
+        List[CubeData]: Data and metadata for each channel and image.
     """
     cube_data_list: List[CubeData] = []
     for _, (file, out) in enumerate(zip(files, outdir)):
@@ -303,19 +299,6 @@ def make_data(files: List[Path], outdir: List[Path]) -> List[CubeData]:
     return cube_data_list
 
 
-class CommonBeamData(NamedTuple):
-    """Common beam data"""
-
-    commonbeams: Beams
-    """Common beams"""
-    convbeams: Beams
-    """Convolving beams"""
-    facs: np.ndarray
-    """Scaling factors"""
-    commonbeamlog: Path
-    """Common beamlog filename"""
-
-
 def commonbeamer(
     cube_data_list: List[CubeData],
     nchans: int,
@@ -332,10 +315,10 @@ def commonbeamer(
     Computed beams will be written to convolving beam logger.
 
     Args:
-        datadict (Dict[str, dict]): Main data dictionary.
+        cube_data_list (List[CubeData]): List of cube data.
         nchans (int): Number of channels.
-        conv_mode (str, optional): Convolution mode. Defaults to "robust".
-        mode (str, optional): Frequency mode. Defaults to "natural".
+        conv_mode (Literal["robust", "scipy", "astropy", "astropy_fft"], optional): Convolution mode. Defaults to "robust".
+        mode (Literal["natural", "total"], optional): Frequency mode. Defaults to "natural".
         target_beam (Beam, optional): Target PSF. Defaults to None.
         circularise (bool, optional): Circularise PSF. Defaults to False.
         tolerance (float, optional): Common beam tolerance. Defaults to 0.0001.
@@ -346,7 +329,7 @@ def commonbeamer(
         Exception: If convolving beam will be undersampled on pixel grid.
 
     Returns:
-        Dict[str, dict]: Updated data dictionary.
+        List[CommonBeamData]: Common beam data for each channel and cube.
     """
     if suffix is None:
         suffix = mode
@@ -670,17 +653,16 @@ def commonbeamer(
 
 
 def masking(
-    cube_data_list: List[CubeData], cutoff: u.Quantity = None
+    cube_data_list: List[CubeData], cutoff: Optional[u.Quantity] = None
 ) -> List[CubeData]:
-    """Apply masking to data.
+    """Apply masking to cubes
 
     Args:
-        nchans (int): Number of channels in cubes.
-        datadict (dict): Data dictionary.
-        cutoff (None, optional): Cutoff BMAJ size for masking. Defaults to None.
+        cube_data_list (List[CubeData]): List of cube data.
+        cutoff (Optional[u.Quantity], optional): Cutoff for PSF. Defaults to None.
 
     Returns:
-        dict: Updated data dictionary.
+        List[CubeData]: List of masked cube data.
     """
     # Check for pipeline masking
     nullbeam = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
@@ -707,19 +689,27 @@ def initfiles(
     filename: Path,
     commonbeams: Beams,
     outdir: Path,
-    mode: str,
+    mode: Literal["natural", "total"],
     suffix="",
     prefix="",
-    ref_chan=None,
+    ref_chan: Optional[int] = None,
 ) -> Path:
     """Initialise output files
 
     Args:
-        datadict (dict): Main data dict - indexed
-        mode (str): 'total' or 'natural'
+        filename (Path): Original filename
+        commonbeams (Beams): Common beams for each channel
+        outdir (Path): Output directory
+        mode (Literal["natural", "total"]): Frequency mode - natural or total
+        suffix (str, optional): Output suffix. Defaults to "".
+        prefix (str, optional): Output prefix. Defaults to "".
+        ref_chan (Optional[int], optional): Reference channel index. Defaults to None.
+
+    Raises:
+        ValueError: If no Stokes axis is found in the header
 
     Returns:
-        datadict: Updated datadict
+        Path: Output filename
     """
     logger.debug(f"Reading {filename}")
     with fits.open(filename, memmap=True, mode="denywrite") as hdulist:
@@ -828,13 +818,13 @@ def readlogs(commonbeam_log: Path) -> CommonBeamData:
     """Read convolving log files
 
     Args:
-        commonbeam_log (str): Filename of the common beam log
+        commonbeam_log (Path): Filename of the common beam log
 
     Raises:
         Exception: If the log file is not found
 
     Returns:
-        Tuple[Beams, Beams, np.ndarray]: Common beams, convolving beams, and scaling factors
+        CommonBeamData: Common beams, convolving beams, and scaling factors
     """
     logger.info(f"Reading from {commonbeam_log}")
     try:
@@ -870,7 +860,16 @@ def smooth_and_write_plane(
     common_beam_data: CommonBeamData,
     outfile: Path,
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
-):
+) -> None:
+    """Smooth a single plane of a cube and write to a output file.
+
+    Args:
+        chan (int): Channel index.
+        cube_data (CubeData): Cube data.
+        common_beam_data (CommonBeamData): Common beam data.
+        outfile (Path): Output filename.
+        conv_mode (Literal["robust", "scipy", "astropy", "astropy_fft"], optional): _description_. Defaults to "robust".
+    """
     logger.debug(f"{outfile}  - channel {chan} - Started")
 
     newim = smooth_plane(
@@ -919,12 +918,37 @@ def smooth_fits_cube(
     epsilon: float = 0.0005,
     nsamps: int = 200,
     ncores: Optional[int] = None,
-):
-    """main script
+) -> tuple[List[CubeData], List[CommonBeamData]]:
+    """Convolve a set of FITS cubes to a common beam.
 
     Args:
-        args (args): Command line args
+        infiles_list (List[Path]): FITS files to convolve.
+        uselogs (bool, optional): Use beamlogs. Defaults to False.
+        mode (Literal["natural", "total"], optional): Frequency mode. Defaults to "natural".
+        conv_mode (Literal["robust", "scipy", "astropy", "astropy_fft"], optional): Convolution mode. Defaults to "robust".
+        dryrun (bool, optional): Do not write any images. Defaults to False.
+        prefix (str, optional): Output filename prefix. Defaults to None.
+        suffix (str, optional): Output filename suffix. Defaults to None.
+        outdir (Optional[Path], optional): Output directory. Defaults to None.
+        bmaj (Optional[float], optional): Target beam major axis in arcsec. Defaults to None.
+        bmin (Optional[float], optional): Target beam minor axis in arcsec. Defaults to None.
+        bpa (Optional[float], optional): Target beam position angle in deg. Defaults to None.
+        cutoff (Optional[float], optional): Beam cutoff in arcsec. Defaults to None.
+        circularise (bool, optional): Set minor axis to major axis. Defaults to False.
+        ref_chan (Optional[int], optional): Reference channel for PSF in header. Defaults to None.
+        tolerance (float, optional): Radio beam tolerance. Defaults to 0.0001.
+        epsilon (float, optional): Radio beam epsilon. Defaults to 0.0005.
+        nsamps (int, optional): Radio beam nsamps. Defaults to 200.
+        ncores (Optional[int], optional): Radio beam ncores. Defaults to None.
 
+    Raises:
+        ValueError: If mode is not 'natural' or 'total'.
+        ValueError: If target beam is not fully specified.
+        FileNotFoundError: If no files are found.
+        ValueError: If number of channels are not equal.
+
+    Returns:
+        tuple[List[CubeData], List[CommonBeamData]]: Cube data and common beam data.
     """
     if dryrun:
         logger.info("Doing a dry run -- no files will be saved")
@@ -936,7 +960,7 @@ def smooth_fits_cube(
     elif mode == "total":
         logger.info("Smoothing all channels to a common resolution")
     else:
-        raise Exception(f"Mode must be 'natural' or 'total', not '{mode}'")
+        raise ValueError(f"Mode must be 'natural' or 'total', not '{mode}'")
 
     # Check cutoff
     if cutoff is not None:
@@ -950,7 +974,7 @@ def smooth_fits_cube(
     if all(nonetest):
         target_beam = None
     elif any(nonetest):
-        raise Exception("Please specify all target beam params!")
+        raise ValueError("Please specify all target beam params!")
     else:
         target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
         logger.info(f"Target beam is {target_beam!r}")
