@@ -7,7 +7,7 @@ import sys
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import List, Literal, NamedTuple, Optional
+from typing import List, Literal, NamedTuple, Optional, Tuple
 
 import numpy as np
 from astropy import units as u
@@ -918,7 +918,7 @@ def smooth_fits_cube(
     epsilon: float = 0.0005,
     nsamps: int = 200,
     ncores: Optional[int] = None,
-) -> tuple[List[CubeData], List[CommonBeamData]]:
+) -> Tuple[List[CubeData], List[CommonBeamData]]:
     """Convolve a set of FITS cubes to a common beam.
 
     Args:
@@ -948,7 +948,7 @@ def smooth_fits_cube(
         ValueError: If number of channels are not equal.
 
     Returns:
-        tuple[List[CubeData], List[CommonBeamData]]: Cube data and common beam data.
+        Tuple[List[CubeData], List[CommonBeamData]]: Cube data and common beam data.
     """
     if dryrun:
         logger.info("Doing a dry run -- no files will be saved")
