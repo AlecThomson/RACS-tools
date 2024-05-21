@@ -29,28 +29,6 @@ from racs_tools.beamcon_2D import my_ceil, round_up
 from racs_tools.convolve_uv import parse_conv_mode, smooth
 from racs_tools.logging import logger, setup_logger
 
-mpiSwitch = False
-if (
-    os.environ.get("OMPI_COMM_WORLD_SIZE") is not None
-    or int(os.environ.get("SLURM_NTASKS") or 1) > 1
-):
-    mpiSwitch = True
-
-if mpiSwitch:
-    try:
-        from mpi4py import MPI
-    except ModuleNotFoundError:
-        raise ModuleNotFoundError(
-            "Script called with mpiexec/mpirun/srun, but mpi4py not installed"
-        )
-    # Get the processing environment
-    comm = MPI.COMM_WORLD
-    nPE = comm.Get_size()
-    myPE = comm.Get_rank()
-else:
-    nPE = 1
-    myPE = 0
-
 warnings.filterwarnings(action="ignore", category=SpectralCubeWarning, append=True)
 warnings.simplefilter("ignore", category=AstropyWarning)
 warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
@@ -428,13 +406,13 @@ def commonbeamer(
     nchans: int,
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     mode: Literal["natural", "total"] = "natural",
-    suffix: str = None,
-    target_beam: Beam = None,
+    suffix: Optional[str] = None,
+    target_beam: Optional[Beam] = None,
     circularise: bool = False,
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
-) -> Dict[str, dict]:
+) -> List[CommonBeamData]:
     """Find common beam for all channels.
     Computed beams will be written to convolving beam logger.
 
@@ -1161,8 +1139,6 @@ def cli():
     # Help string to be shown using the -h option
     descStr = """
     Smooth a field of 3D cubes to a common resolution.
-
-    - Parallelisation is done using MPI.
 
     - Default names of output files are /path/to/beamlog{infile//.fits/.{SUFFIX}.fits}
 

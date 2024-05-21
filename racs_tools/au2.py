@@ -162,6 +162,6 @@ def gauss_factor(
         * bmin2
         / math.sqrt(alpha * beta - 0.25 * gamma * gamma)
     )
-    fac = ((math.sqrt(dx1**2) * math.sqrt(dy1**2))) / amp
+    fac = (math.sqrt(dx1**2) * math.sqrt(dy1**2)) / amp
 
     return fac, amp, bmaj, bmin, np.degrees(bpa)
