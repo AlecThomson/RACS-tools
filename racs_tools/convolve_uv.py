@@ -367,7 +367,7 @@ CONVOLUTION_FUNCTIONS = {
 
 
 def parse_conv_mode(
-    conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"]
+    conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"],
 ) -> str:
     """Parse convolution mode
 
