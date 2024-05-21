@@ -1130,7 +1130,7 @@ def cli():
         "--dryrun",
         dest="dryrun",
         action="store_true",
-        help="Compute common beam and stop [False].",
+        help="Compute common beam and stop.",
     )
 
     parser.add_argument(
