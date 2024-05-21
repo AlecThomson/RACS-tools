@@ -3,7 +3,7 @@
 __author__ = "Wasim Raja"
 
 
-from typing import Optional, Tuple
+from typing import NamedTuple, Optional, Tuple
 
 import astropy.units as units
 import numpy as np
@@ -19,6 +19,15 @@ from radio_beam.utils import BeamError
 import racs_tools.gaussft as gaussft
 from racs_tools import au2
 from racs_tools.logging import logger
+
+
+class ConvolutionResult(NamedTuple):
+    """Result of convolution"""
+
+    image: np.ndarray
+    """Convolved image"""
+    scaling_factor: float
+    """Scaling factor for the image in Jy/beam"""
 
 
 def round_up(n: float, decimals: int = 0) -> float:
@@ -53,6 +62,20 @@ def get_nyquist_beam(
     target_header: fits.Header,
     beams: Beams,
 ) -> Beam:
+    """Get the Nyquist sampled beam
+
+    Args:
+        target_beam (Beam): Target beam.
+        target_header (fits.Header): Target header.
+        beams (Beams): All the beams to be convolved.
+
+    Raises:
+        ValueError: If grid is not same in x and y.
+        ValueError: If beam is undersampled.
+
+    Returns:
+        Beam: Nyquist sampled beam.
+    """
     wcs = WCS(target_header)
     pixelscales = proj_plane_pixel_scales(wcs)
 
@@ -104,8 +127,13 @@ def get_nyquist_beam(
 
 
 def convolve(
-    image: np.ndarray, old_beam: Beam, new_beam: Beam, dx: u.Quantity, dy: u.Quantity
-) -> Tuple[np.ndarray, float]:
+    image: np.ndarray,
+    old_beam: Beam,
+    new_beam: Beam,
+    dx: u.Quantity,
+    dy: u.Quantity,
+    cutoff: Optional[float] = None,
+) -> ConvolutionResult:
     """Convolve by X-ing in the Fourier domain.
         - convolution with Gaussian kernels only
         - no need for generation of a kernel image
@@ -120,7 +148,7 @@ def convolve(
         dy (u.Quantity): Grid size in y (e.g. CDELT2)
 
     Returns:
-        Tuple[np.ndarray, float]: (convolved image, scaling factor)
+        ConvolutionResult: convolved image, scaling factor
     """
 
     nanflag = np.isnan(image).any()
@@ -175,14 +203,126 @@ def convolve(
         )
         im_conv[mask_conv > 0] = np.nan
 
-    return im_conv, g_ratio
+    return ConvolutionResult(image=im_conv, scaling_factor=g_ratio)
+
+
+def convolve_scipy(
+    image: np.ndarray,
+    old_beam: Beam,
+    new_beam: Beam,
+    dx: u.Quantity,
+    dy: u.Quantity,
+    cutoff: Optional[float] = None,
+) -> ConvolutionResult:
+    conbeam, sfactor = get_convolving_beam(
+        old_beam=old_beam,
+        new_beam=new_beam,
+        dx=dx,
+        dy=dy,
+        cutoff=cutoff,
+    )
+    if np.isnan(sfactor):
+        logger.warning("Beam larger than cutoff -- blanking")
+        newim = np.ones_like(image) * np.nan
+        return ConvolutionResult(newim, sfactor)
+    if conbeam is None:
+        conbeam = new_beam.deconvolve(old_beam)
+    if np.isnan(conbeam):
+        return ConvolutionResult(image * np.nan, sfactor)
+    if np.isnan(image).all():
+        return ConvolutionResult(image, sfactor)
+    if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
+        return ConvolutionResult(image, sfactor)
+
+    gauss_kern = conbeam.as_kernel(dy)
+    conbm1 = gauss_kern.array / gauss_kern.array.max()
+    newim = scipy.signal.convolve(image.astype("f8"), conbm1, mode="same")
+
+    return ConvolutionResult(newim, sfactor)
+
+
+def convolve_astropy(
+    image: np.ndarray,
+    old_beam: Beam,
+    new_beam: Beam,
+    dx: u.Quantity,
+    dy: u.Quantity,
+    cutoff: Optional[float] = None,
+) -> ConvolutionResult:
+    conbeam, sfactor = get_convolving_beam(
+        old_beam=old_beam,
+        new_beam=new_beam,
+        dx=dx,
+        dy=dy,
+        cutoff=cutoff,
+    )
+    if np.isnan(sfactor):
+        logger.warning("Beam larger than cutoff -- blanking")
+        newim = np.ones_like(image) * np.nan
+        return ConvolutionResult(newim, sfactor)
+    if conbeam is None:
+        conbeam = new_beam.deconvolve(old_beam)
+    if np.isnan(conbeam):
+        return ConvolutionResult(image * np.nan, sfactor)
+    if np.isnan(image).all():
+        return ConvolutionResult(image, sfactor)
+    if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
+        return ConvolutionResult(image, sfactor)
+    gauss_kern = conbeam.as_kernel(dy)
+    conbm1 = gauss_kern.array / gauss_kern.array.max()
+    newim = convolution.convolve(
+        image.astype("f8"),
+        conbm1,
+        normalize_kernel=False,
+    )
+
+    return ConvolutionResult(newim, sfactor)
+
+
+def convolve_astropy_fft(
+    image: np.ndarray,
+    old_beam: Beam,
+    new_beam: Beam,
+    dx: u.Quantity,
+    dy: u.Quantity,
+    cutoff: Optional[float] = None,
+) -> ConvolutionResult:
+    conbeam, sfactor = get_convolving_beam(
+        old_beam=old_beam,
+        new_beam=new_beam,
+        dx=dx,
+        dy=dy,
+        cutoff=cutoff,
+    )
+    if np.isnan(sfactor):
+        logger.warning("Beam larger than cutoff -- blanking")
+        newim = np.ones_like(image) * np.nan
+        return ConvolutionResult(newim, sfactor)
+    if conbeam is None:
+        conbeam = new_beam.deconvolve(old_beam)
+    if np.isnan(conbeam):
+        return ConvolutionResult(image * np.nan, sfactor)
+    if np.isnan(image).all():
+        return ConvolutionResult(image, sfactor)
+    if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
+        return ConvolutionResult(image, sfactor)
+    gauss_kern = conbeam.as_kernel(dy)
+    conbm1 = gauss_kern.array / gauss_kern.array.max()
+    newim = convolution.convolve_fft(
+        image.astype("f8"),
+        conbm1,
+        normalize_kernel=False,
+        allow_huge=True,
+    )
+
+    return ConvolutionResult(newim, sfactor)
 
 
 CONVOLUTION_FUNCTIONS = {
     "robust": convolve,
-    "scipy": convolution.convolve,
-    "astropy": convolution.convolve,
-    "astropy_fft": convolution.convolve_fft,
+    "scipy": convolve_scipy,
+    "astropy": convolve_astropy,
+    "astropy_fft": convolve_astropy_fft,
 }
 
 
@@ -271,7 +411,10 @@ def get_convolving_beam(
         dx1=dx.to(u.arcsec).value,
         dy1=dy.to(u.arcsec).value,
     )
-
+    logger.debug(f"Old beam is {old_beam!r}")
+    logger.debug(f"Using convolving beam {conbm!r}")
+    logger.debug(f"Target beam is {new_beam!r}")
+    logger.debug(f"Using scaling factor {fac}")
     return conbm, fac
 
 
@@ -292,75 +435,27 @@ def smooth(
         new_beam (Beam): Target beam.
         dx (u.Quantity): Pixel size in x.
         dy (u.Quantity): Pixel size in y.
-        sfactor (float): Scaling factor.
-        conbeam (Beam, optional): Convoling beam to use. Defaults to None.
         conv_mode (str, optional): Convolution mode to use. Defaults to "robust".
+        cutoff (Optional[float], optional): Cutoff for beamsize in arcsec. Defaults to None.
 
     Returns:
         np.ndarray: Smoothed image.
 
     """
-
-    conbeam, sfactor = get_convolving_beam(
+    conv_func = CONVOLUTION_FUNCTIONS.get(conv_mode, convolve)
+    new_image, fac = conv_func(
+        image=image,
         old_beam=old_beam,
         new_beam=new_beam,
         dx=dx,
         dy=dy,
         cutoff=cutoff,
     )
-
-    if np.isnan(sfactor):
-        logger.warning("Beam larger than cutoff -- blanking")
-        newim = np.ones_like(image) * np.nan
-        return newim
-    if conbeam is None:
-        conbeam = new_beam.deconvolve(old_beam)
-    if np.isnan(conbeam):
-        return image * np.nan
-    if np.isnan(image).all():
-        return image
-    if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
-        return image
-    # using Beams package
-    logger.debug(f"Old beam is {old_beam!r}")
-    logger.debug(f"Using convolving beam {conbeam!r}")
-    logger.debug(f"Target beam is {new_beam!r}")
-    logger.debug(f"Using scaling factor {sfactor}")
-    pix_scale = dy
-
-    gauss_kern = conbeam.as_kernel(pix_scale)
-    conbm1 = gauss_kern.array / gauss_kern.array.max()
-    fac = sfactor
-    if conv_mode == "robust":
-        newim, fac = convolve(
-            image.astype("f8"),
-            old_beam,
-            new_beam,
-            dx,
-            dy,
-        )
-        # keep the new sfactor computed by this method
-        sfactor = fac
-    if conv_mode == "scipy":
-        newim = scipy.signal.convolve(image.astype("f8"), conbm1, mode="same")
-    elif conv_mode == "astropy":
-        newim = convolution.convolve(
-            image.astype("f8"),
-            conbm1,
-            normalize_kernel=False,
-        )
-    elif conv_mode == "astropy_fft":
-        newim = convolution.convolve_fft(
-            image.astype("f8"),
-            conbm1,
-            normalize_kernel=False,
-            allow_huge=True,
-        )
     logger.debug(f"Using scaling factor {fac}")
-    if np.any(np.isnan(newim)):
-        logger.warning(f"{np.isnan(newim).sum()} NaNs present in smoothed output")
+    if np.any(np.isnan(new_image)):
+        logger.warning(f"{np.isnan(new_image).sum()} NaNs present in smoothed output")
 
-    newim *= fac
+    new_image *= fac
 
     # Ensure the output data-type is the same as the input
-    return newim.astype(image.dtype)
+    return new_image.astype(image.dtype)
