@@ -2,7 +2,7 @@
 """ Fast convolution in the UV domain """
 __author__ = "Wasim Raja"
 
-
+import gc
 from typing import Literal, NamedTuple, Optional, Tuple
 
 import astropy.units as units
@@ -492,6 +492,7 @@ def smooth(
         np.ndarray: Smoothed image.
 
     """
+    out_dtype = image.dtype
     conv_func = CONVOLUTION_FUNCTIONS.get(conv_mode, convolve)
     new_image, fac = conv_func(
         image=image,
@@ -501,6 +502,8 @@ def smooth(
         dy=dy,
         cutoff=cutoff,
     )
+    del image
+    gc.collect()
     logger.debug(f"Using scaling factor {fac}")
     if np.any(np.isnan(new_image)):
         logger.warning(f"{np.isnan(new_image).sum()} NaNs present in smoothed output")
@@ -508,4 +511,4 @@ def smooth(
     new_image *= fac
 
     # Ensure the output data-type is the same as the input
-    return new_image.astype(image.dtype)
+    return new_image.astype(out_dtype)

@@ -2,6 +2,7 @@
 """ Convolve ASKAP images to common resolution """
 __author__ = "Alec Thomson"
 
+import gc
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -250,6 +251,7 @@ def beamcon_2d_on_fits(
         conv_mode=conv_mode,
         cutoff=cutoff,
     )
+
     if image_data.four_d:
         # make it back into a 4D image
         new_image = np.expand_dims(np.expand_dims(new_image, axis=0), axis=0)
@@ -260,6 +262,8 @@ def beamcon_2d_on_fits(
         header=image_data.header,
         new_beam=new_beam,
     )
+    del new_image
+    gc.collect()
 
     return BeamLogInfo(
         filename=outfile,

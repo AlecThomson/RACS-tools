@@ -2,6 +2,7 @@
 """ Convolve ASKAP cubes to common resolution """
 __author__ = "Alec Thomson"
 
+import gc
 import logging
 import sys
 import warnings
@@ -250,6 +251,8 @@ def smooth_plane(
         dy=dy,
         conv_mode=conv_mode,
     )
+    del plane
+    gc.collect()
     return newim
 
 
@@ -896,6 +899,9 @@ def smooth_and_write_plane(
 
         outfh[0].data[slicer] = newim.astype(np.float32)  # make sure data is 32-bit
         outfh.flush()
+        del newim
+        gc.collect()
+
     logger.info(f"{outfile}  - channel {chan} - Done")
 
 
