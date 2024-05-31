@@ -4,19 +4,12 @@
 import logging
 from typing import Optional
 
-try:
-    from mpi4py import MPI
-
-    myPE = MPI.COMM_WORLD.Get_rank()
-except ImportError:
-    myPE = 0
-
 logging.captureWarnings(True)
 logger = logging.getLogger("racs_tools")
 logger.setLevel(logging.WARNING)
 
 formatter = logging.Formatter(
-    fmt=f"[{myPE}] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
+    fmt="[%(threadName)s] %(asctime)s.%(msecs)03d %(levelname)s %(module)s - %(funcName)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 

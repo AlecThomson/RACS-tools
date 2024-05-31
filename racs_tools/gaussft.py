@@ -50,11 +50,13 @@ def gaussft(
     )
     bmaj_rad, bmin_rad, bpa_rad = bmaj * deg2rad, bmin * deg2rad, bpa * deg2rad
 
-    sx, sy = bmaj_rad / (2 * np.sqrt(2.0 * np.log(2.0))), bmin_rad / (
-        2 * np.sqrt(2.0 * np.log(2.0))
+    sx, sy = (
+        bmaj_rad / (2 * np.sqrt(2.0 * np.log(2.0))),
+        bmin_rad / (2 * np.sqrt(2.0 * np.log(2.0))),
     )
-    sx_in, sy_in = bmaj_in_rad / (2.0 * np.sqrt(2.0 * np.log(2.0))), bmin_in_rad / (
-        2.0 * np.sqrt(2.0 * np.log(2.0))
+    sx_in, sy_in = (
+        bmaj_in_rad / (2.0 * np.sqrt(2.0 * np.log(2.0))),
+        bmin_in_rad / (2.0 * np.sqrt(2.0 * np.log(2.0))),
     )
 
     u_cosbpa, u_sinbpa = u * np.cos(bpa_rad), u * np.sin(bpa_rad)

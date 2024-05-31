@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "racs-tools"
-version = "3.0.5"
+version = "4.0.0"
 description = "Useful scripts for RACS."
 authors = ["Alec Thomson"]
 license = "BSD"
@@ -12,12 +12,11 @@ python = ">=3.8"
 numpy = "<2"
 astropy = ">=5"
 radio_beam = "*"
-schwimmbad = "*"
 scipy = "*"
 spectral_cube = ">=0.6.3"
 tqdm = "*"
 numba = "*"
-mpi4py = {version = "*", optional = true}
+mpi4py = {version = ">=3", optional = true}
 
 [tool.poetry.dev-dependencies]
 black = "*"
