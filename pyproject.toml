@@ -16,11 +16,14 @@ scipy = "*"
 spectral_cube = ">=0.6.3"
 tqdm = "*"
 numba = "*"
+mpi4py = {version = ">=3", optional = true}
 
 [tool.poetry.dev-dependencies]
 black = "*"
 isort = "*"
 
+[tool.poetry.extras]
+mpi = ["mpi4py"]
 
 [tool.poetry.scripts]
 beamcon_2D = "racs_tools.beamcon_2D:cli"

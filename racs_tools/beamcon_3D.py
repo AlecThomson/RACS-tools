@@ -6,7 +6,6 @@ import gc
 import logging
 import sys
 import warnings
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List, Literal, NamedTuple, Optional, Tuple
 
@@ -27,6 +26,7 @@ from racs_tools import au2
 from racs_tools.beamcon_2D import my_ceil, round_up
 from racs_tools.convolve_uv import parse_conv_mode, smooth
 from racs_tools.logging import logger, setup_logger
+from racs_tools.parallel import get_executor
 
 warnings.filterwarnings(action="ignore", category=SpectralCubeWarning, append=True)
 warnings.simplefilter("ignore", category=AstropyWarning)
@@ -924,6 +924,7 @@ def smooth_fits_cube(
     epsilon: float = 0.0005,
     nsamps: int = 200,
     ncores: Optional[int] = None,
+    executor_type: Literal["thread", "process", "mpi"] = "thread",
 ) -> Tuple[List[CubeData], List[CommonBeamData]]:
     """Convolve a set of FITS cubes to a common beam.
 
@@ -946,6 +947,7 @@ def smooth_fits_cube(
         epsilon (float, optional): Radio beam epsilon. Defaults to 0.0005.
         nsamps (int, optional): Radio beam nsamps. Defaults to 200.
         ncores (Optional[int], optional): Radio beam ncores. Defaults to None.
+        executor_type (Literal["thread", "process", "mpi"], optional): Executor type. Defaults to "thread".
 
     Raises:
         ValueError: If mode is not 'natural' or 'total'.
@@ -958,6 +960,9 @@ def smooth_fits_cube(
     """
     if dryrun:
         logger.info("Doing a dry run -- no files will be saved")
+
+    # Check early as can fail
+    Executor = get_executor(executor_type)
 
     # Check mode
     logger.info(f"Mode is {mode}")
@@ -1038,9 +1043,8 @@ def smooth_fits_cube(
 
     # Init the files in parallel
     logger.info("Initialising output files")
-
     # Init output files and retrieve file names
-    with ThreadPoolExecutor(max_workers=ncores) as executor:
+    with Executor(max_workers=ncores) as executor:
         futures = []
         for cube_data, common_beam_data in zip(cube_data_list, common_beam_data_list):
             future = executor.submit(
@@ -1056,7 +1060,7 @@ def smooth_fits_cube(
             futures.append(future)
     outfiles = [future.result() for future in futures]
 
-    with ThreadPoolExecutor(max_workers=ncores) as executor:
+    with Executor(max_workers=ncores) as executor:
         futures = []
         for cube_data, common_beam_data, outfile in zip(
             cube_data_list, common_beam_data_list, outfiles

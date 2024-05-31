@@ -4,7 +4,6 @@ __author__ = "Alec Thomson"
 
 import gc
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List, Literal, NamedTuple, Optional, Tuple
 
@@ -27,6 +26,7 @@ from racs_tools.convolve_uv import (
     smooth,
 )
 from racs_tools.logging import logger, setup_logger
+from racs_tools.parallel import get_executor
 
 
 #############################################
@@ -431,6 +431,7 @@ def smooth_fits_files(
     nsamps: int = 200,
     epsilon: float = 0.0005,
     ncores: Optional[int] = None,
+    executor_type: Literal["thread", "process", "mpi"] = "thread",
 ) -> Beam:
     """Smooth a field of 2D images to a common resolution.
 
@@ -451,6 +452,7 @@ def smooth_fits_files(
         nsamps (int, optional): Radio beam nsamp. Defaults to 200.
         epsilon (float, optional): Radio beam epsilon. Defaults to 0.0005.
         ncores (Optional[int], optional): Maximum number of cores to use. Defaults to None.
+        executor_type (Literal["thread", "process", "mpi"], optional): Executor to use. Defaults to "thread".
 
     Raises:
         FileNotFoundError: If no files are found.
@@ -463,6 +465,9 @@ def smooth_fits_files(
 
     if dryrun:
         logger.info("Doing a dry run -- no files will be saved")
+
+    # Check early as can fail
+    Executor = get_executor(executor_type)
 
     # Get file list
     files = sorted(infile_list)
@@ -506,8 +511,7 @@ def smooth_fits_files(
         )
 
     logger.info(f"Final beam is {common_beam!r}")
-
-    with ThreadPoolExecutor(
+    with Executor(
         max_workers=ncores,
     ) as executor:
         futures = []
