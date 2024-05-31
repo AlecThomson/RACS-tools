@@ -5,16 +5,14 @@ channels:
 - defaults
 - pkgw-forge
 dependencies:
-- python=3.8
+- python=3.10
 - pip
 - numpy
 - scipy
 - astropy
-- gfortran
 - mpi4py
 - pip:
   - spectral_cube
   - radio_beam
-  - schwimmbad
   - tqdm
   - ./
