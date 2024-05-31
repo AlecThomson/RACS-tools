@@ -708,6 +708,14 @@ def cli():
         help="Number of cores to use for parallelisation. If None, use all available cores.",
     )
 
+    parser.add_argument(
+        "--executor",
+        type=str,
+        choices=["thread", "process", "mpi"],
+        default="thread",
+        help="Executor to use for parallelisation",
+    )
+
     args = parser.parse_args()
 
     nonetest = [param is None for param in (args.bmaj, args.bmin, args.bpa)]
@@ -735,6 +743,7 @@ def cli():
         nsamps=args.nsamps,
         epsilon=args.epsilon,
         ncores=args.ncores,
+        executor_type=args.executor,
     )
 
 

@@ -1277,6 +1277,14 @@ def cli():
         help="Number of cores to use for parallelisation. If None, use all available cores.",
     )
 
+    parser.add_argument(
+        "--executor_type",
+        type=str,
+        default="thread",
+        choices=["thread", "process", "mpi"],
+        help="Executor type for parallelisation.",
+    )
+
     args = parser.parse_args()
 
     # Set up logging
@@ -1303,6 +1311,7 @@ def cli():
         tolerance=args.tolerance,
         epsilon=args.epsilon,
         ncores=args.ncores,
+        nsamps=args.nsamps,
     )
 
 
