@@ -43,9 +43,14 @@ pip install git+https://github.com/AlecThomson/RACS-tools
 
 ```
 $ beamcon_2D -h
-usage: beamcon_2D [-h] [-p PREFIX] [-s SUFFIX] [-o OUTDIR] [--conv_mode {robust,scipy,astropy,astropy_fft}] [-v] [-d] [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA] [--log LOG] [--logfile LOGFILE] [-c CUTOFF] [--circularise] [-t TOLERANCE] [-e EPSILON] [-n NSAMPS] [--ncores NCORES] infile [infile ...]
+usage: beamcon_2D [-h] [-p PREFIX] [-s SUFFIX] [-o OUTDIR] [--conv_mode {robust,scipy,astropy,astropy_fft}] [-v] [-d] [--bmaj BMAJ] [--bmin BMIN]
+                  [--bpa BPA] [--log LOG] [--logfile LOGFILE] [-c CUTOFF] [--circularise] [-t TOLERANCE] [-e EPSILON] [-n NSAMPS] [--ncores NCORES]
+                  [--executor {thread,process,mpi}]
+                  infile [infile ...]
 
-Smooth a field of 2D images to a common resolution. - Parallelisation can run using multiprocessing or MPI. - Default names of output files are /path/to/beamlog{infile//.fits/.{SUFFIX}.fits} - By default, the smallest common beam will be automatically computed. - Optionally, you can specify a target beam to use.
+Smooth a field of 2D images to a common resolution. - Parallelisation can run using multiprocessing or MPI. - Default names of output files are
+/path/to/beamlog{infile//.fits/.{SUFFIX}.fits} - By default, the smallest common beam will be automatically computed. - Optionally, you can specify a
+target beam to use.
 
 positional arguments:
   infile                Input FITS image(s) to smooth (can be a wildcard) - beam info must be in header.
@@ -59,7 +64,9 @@ options:
   -o OUTDIR, --outdir OUTDIR
                         Output directory of smoothed FITS image(s) [same as input file]. (default: None)
   --conv_mode {robust,scipy,astropy,astropy_fft}
-                        Which method to use for convolution [robust]. 'robust' computes the analytic FT of the convolving Gaussian. Note this mode can now handle NaNs in the data. Can also be 'scipy', 'astropy', or 'astropy_fft'. Note these other methods cannot cope well with small convolving beams. (default: robust)
+                        Which method to use for convolution [robust]. 'robust' computes the analytic FT of the convolving Gaussian. Note this mode can
+                        now handle NaNs in the data. Can also be 'scipy', 'astropy', or 'astropy_fft'. Note these other methods cannot cope well with
+                        small convolving beams. (default: robust)
   -v, --verbosity       Increase output verbosity (default: 0)
   -d, --dryrun          Compute common beam and stop [False]. (default: False)
   --bmaj BMAJ           Target BMAJ (arcsec) to convolve to [None]. (default: None)
@@ -77,23 +84,34 @@ options:
   -n NSAMPS, --nsamps NSAMPS
                         nsamps for radio_beam.commonbeam. (default: 200)
   --ncores NCORES       Number of cores to use for parallelisation. If None, use all available cores. (default: None)
+  --executor {thread,process,mpi}
+                        Executor to use for parallelisation (default: thread)
 ```
 
 ```
 $ beamcon_3D -h
-usage: beamcon_3D [-h] [--uselogs] [--mode MODE] [--conv_mode {robust,scipy,astropy,astropy_fft}] [-v] [--logfile LOGFILE] [-d] [-p PREFIX] [-s SUFFIX] [-o OUTDIR] [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA] [-c CUTOFF] [--circularise] [--ref_chan {first,last,mid}] [-t TOLERANCE] [-e EPSILON] [-n NSAMPS] [--ncores NCORES] infile [infile ...]
+usage: beamcon_3D [-h] [--uselogs] [--mode MODE] [--conv_mode {robust,scipy,astropy,astropy_fft}] [-v] [--logfile LOGFILE] [-d] [-p PREFIX] [-s SUFFIX]
+                  [-o OUTDIR] [--bmaj BMAJ] [--bmin BMIN] [--bpa BPA] [-c CUTOFF] [--circularise] [--ref_chan {first,last,mid}] [-t TOLERANCE]
+                  [-e EPSILON] [-n NSAMPS] [--ncores NCORES] [--executor_type {thread,process,mpi}]
+                  infile [infile ...]
 
-Smooth a field of 3D cubes to a common resolution. - Default names of output files are /path/to/beamlog{infile//.fits/.{SUFFIX}.fits} - By default, the smallest common beam will be automatically computed. - Optionally, you can specify a target beam to use. - It is currently assumed that cubes will be 4D with a dummy Stokes axis. - Iterating over Stokes axis is not yet supported.
+Smooth a field of 3D cubes to a common resolution. - Default names of output files are /path/to/beamlog{infile//.fits/.{SUFFIX}.fits} - By default, the
+smallest common beam will be automatically computed. - Optionally, you can specify a target beam to use. - It is currently assumed that cubes will be
+4D with a dummy Stokes axis. - Iterating over Stokes axis is not yet supported.
 
 positional arguments:
-  infile                Input FITS image(s) to smooth (can be a wildcard) - CASA beamtable will be used if present i.e. if CASAMBM = T - Otherwise beam info must be in co-located beamlog files. - beamlog must have the name /path/to/beamlog{infile//.fits/.txt}
+  infile                Input FITS image(s) to smooth (can be a wildcard) - CASA beamtable will be used if present i.e. if CASAMBM = T - Otherwise beam
+                        info must be in co-located beamlog files. - beamlog must have the name /path/to/beamlog{infile//.fits/.txt}
 
 options:
   -h, --help            show this help message and exit
   --uselogs             Get convolving information from previous run [False]. (default: False)
-  --mode MODE           Common resolution mode [natural]. natural -- allow frequency variation. total -- smooth all plans to a common resolution. (default: natural)
+  --mode MODE           Common resolution mode [natural]. natural -- allow frequency variation. total -- smooth all plans to a common resolution.
+                        (default: natural)
   --conv_mode {robust,scipy,astropy,astropy_fft}
-                        Which method to use for convolution [robust]. 'robust' computes the analytic FT of the convolving Gaussian. Note this mode can now handle NaNs in the data. Can also be 'scipy', 'astropy', or 'astropy_fft'. Note these other methods cannot cope well with small convolving beams. (default: robust)
+                        Which method to use for convolution [robust]. 'robust' computes the analytic FT of the convolving Gaussian. Note this mode can
+                        now handle NaNs in the data. Can also be 'scipy', 'astropy', or 'astropy_fft'. Note these other methods cannot cope well with
+                        small convolving beams. (default: robust)
   -v, --verbosity       Increase output verbosity (default: 0)
   --logfile LOGFILE     Save logging output to file (default: None)
   -d, --dryrun          Compute common beam and stop. (default: False)
@@ -110,7 +128,8 @@ options:
                         Cutoff BMAJ value (arcsec) -- Blank channels with BMAJ larger than this [None -- no limit] (default: None)
   --circularise         Circularise the final PSF -- Sets the BMIN = BMAJ, and BPA=0. (default: False)
   --ref_chan {first,last,mid}
-                        Reference psf for header [None]. first -- use psf for first frequency channel. last -- use psf for the last frequency channel. mid -- use psf for the centre frequency channel. Will use the CRPIX channel if not set. (default: None)
+                        Reference psf for header [None]. first -- use psf for first frequency channel. last -- use psf for the last frequency channel.
+                        mid -- use psf for the centre frequency channel. Will use the CRPIX channel if not set. (default: None)
   -t TOLERANCE, --tolerance TOLERANCE
                         tolerance for radio_beam.commonbeam. (default: 0.0001)
   -e EPSILON, --epsilon EPSILON
@@ -118,6 +137,8 @@ options:
   -n NSAMPS, --nsamps NSAMPS
                         nsamps for radio_beam.commonbeam. (default: 200)
   --ncores NCORES       Number of cores to use for parallelisation. If None, use all available cores. (default: None)
+  --executor_type {thread,process,mpi}
+                        Executor type for parallelisation. (default: thread)
 ```
 
 ```
