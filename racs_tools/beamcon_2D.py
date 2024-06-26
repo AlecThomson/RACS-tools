@@ -489,7 +489,7 @@ def main(
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
-    listfile: bool = False
+    listfile: bool = False,
 ):
     """Main script.
 
@@ -671,7 +671,7 @@ def cli():
     parser.add_argument(
         "--listfile",
         action="store_true",
-        help="Switch to assume `infile` is a text file list of images."
+        help="Switch to assume `infile` is a text file list of images.",
     )
 
     parser.add_argument(
