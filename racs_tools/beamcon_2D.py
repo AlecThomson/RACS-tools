@@ -489,6 +489,7 @@ def main(
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
+    listfile: bool = False,
 ):
     """Main script.
 
@@ -525,6 +526,9 @@ def main(
         outdir = os.path.abspath(outdir)
 
     # Get file list
+    if listfile:
+        with open(infile[0]) as f:
+            infile = f.read().splitlines()
     files = sorted(infile)
     if files == []:
         raise Exception("No files found!")
@@ -662,6 +666,12 @@ def cli():
         type=str,
         help="Input FITS image(s) to smooth (can be a wildcard) - beam info must be in header.",
         nargs="+",
+    )
+
+    parser.add_argument(
+        "--listfile",
+        action="store_true",
+        help="Switch to assume `infile` is a text file list of images.",
     )
 
     parser.add_argument(
