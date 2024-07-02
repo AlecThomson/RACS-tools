@@ -156,7 +156,7 @@ def convolve(
 
     if nanflag:
         # Create a mask for the NaNs
-        mask = np.isnan(image).astype(int)
+        mask = np.isnan(image).astype(np.int16)
         logger.warning(
             f"Image contains {mask.sum()} ({mask.sum()/ mask.size *100 :0.1f}%) NaNs"
         )
@@ -166,10 +166,9 @@ def convolve(
     ny = image.shape[1]
 
     # The coordinates in FT domain:
-    u_image = np.fft.fftfreq(nx, d=dx.to(units.rad).value)
-    v_image = np.fft.fftfreq(ny, d=dy.to(units.rad).value)
+    u_image = np.fft.fftfreq(nx, d=dx.to(units.rad).value).astype(np.complex64)
+    v_image = np.fft.fftfreq(ny, d=dy.to(units.rad).value).astype(np.complex64)
 
-    g_final = np.zeros((nx, ny), dtype=float)
     [g_final, g_ratio] = gaussft.gaussft(
         bmin_in=old_beam.minor.to(units.deg).value,
         bmaj_in=old_beam.major.to(units.deg).value,
@@ -180,22 +179,33 @@ def convolve(
         u=u_image,
         v=v_image,
     )
+    g_final = g_final.astype(np.complex64)
+    del u_image
+    del v_image
+
     # Perform the x-ing in the FT domain
-    im_f = np.fft.fft2(image)
+    im_f = np.fft.fft2(image).astype(np.complex64)
+    del image
 
     # Now convolve with the desired Gaussian:
-    M = np.multiply(im_f, g_final)
-    im_conv = np.fft.ifft2(M)
-    im_conv = np.real(im_conv)
+    M = np.multiply(im_f, g_final).astype(np.complex64)
+    del im_f
+    im_conv = np.fft.ifft2(M).astype(np.complex64)
+    im_conv = np.real(im_conv).astype(np.float32)
+    del M
 
     if nanflag:
         # Convert the mask to the FT domain
-        mask_f = np.fft.fft2(mask)
+        mask_f = np.fft.fft2(mask).astype(np.complex64)
+        del mask
         # Multiply the mask by the FT of the Gaussian
-        M = np.multiply(mask_f, g_final)
+        M = np.multiply(mask_f, g_final).astype(np.complex64)
+        del g_final
+        del mask_f
         # Invert the FT of the mask
-        mask_conv = np.fft.ifft2(M)
-        mask_conv = np.real(mask_conv)
+        mask_conv = np.fft.ifft2(M).astype(np.complex64)
+        mask_conv = np.real(mask_conv).astype(np.float32)
+        del M
         # Use approx values to find the NaNs
         # Need this to get around numerical issues
         mask_conv = ~(mask_conv + 1 < 2)
