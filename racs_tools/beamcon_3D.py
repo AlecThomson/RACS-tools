@@ -1312,6 +1312,7 @@ def cli():
         epsilon=args.epsilon,
         ncores=args.ncores,
         nsamps=args.nsamps,
+        executor_type=args.executor_type
     )
 
 
