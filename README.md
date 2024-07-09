@@ -164,6 +164,19 @@ options:
 
 If finding a common beam fails, try tweaking the `tolerance`, `epsilon`, and `nsamps` parameters. See [radio-beam](https://radio-beam.readthedocs.io/en/latest/) for more details.
 
+## Performance
+
+Profiling for `beamcon_3D` suggests this program requires a minimum of ~15X the memory of a data cube slice per process to perform convolution to a common beam. So for a 800 MB slice (e.g. typical POSSUM cube) you would want to allow 15 GB memory per worker (I use 20 GB). Choose `ncores` appropriately given your machine memory availability and this limit to ensure optimal performance with multiprocessing.
+
+An example slurm header for `beamcon_3D`:
+
+```
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=<ncores>
+#SBATCH --mem-per-cpu=20G
+```
+
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
