@@ -5,10 +5,12 @@ from typing import Dict, Literal, TypeVar
 
 from racs_tools.logging import logger
 
+# logger = setup_logger()
+
 try:
     from mpi4py.futures import MPIPoolExecutor
 except ImportError:
-    logger.warning("MPI not available")
+    logger.debug("MPI not available")
     MPIPoolExecutor = None
 
 Executor = TypeVar("Executor", ThreadPoolExecutor, ProcessPoolExecutor, MPIPoolExecutor)

@@ -2,8 +2,8 @@
 """ Convolve ASKAP images to common resolution """
 __author__ = "Alec Thomson"
 
-import gc
 import logging
+import sys
 from pathlib import Path
 from typing import List, Literal, NamedTuple, Optional, Tuple
 
@@ -25,8 +25,16 @@ from racs_tools.convolve_uv import (
     round_up,
     smooth,
 )
-from racs_tools.logging import logger, setup_logger
+from racs_tools.logging import (
+    init_worker,
+    log_listener,
+    log_queue,
+    logger,
+    set_verbosity,
+)
 from racs_tools.parallel import get_executor
+
+# logger = setup_logger()
 
 
 #############################################
@@ -263,7 +271,6 @@ def beamcon_2d_on_fits(
         new_beam=new_beam,
     )
     del new_image
-    gc.collect()
 
     return BeamLogInfo(
         filename=outfile,
@@ -432,6 +439,7 @@ def smooth_fits_files(
     epsilon: float = 0.0005,
     ncores: Optional[int] = None,
     executor_type: Literal["thread", "process", "mpi"] = "thread",
+    verbosity: int = 0,
 ) -> Beam:
     """Smooth a field of 2D images to a common resolution.
 
@@ -462,7 +470,8 @@ def smooth_fits_files(
     Returns:
         Beam: Common beam used.
     """
-
+    # Required for multiprocessing logging
+    log_listener.start()
     if dryrun:
         logger.info("Doing a dry run -- no files will be saved")
 
@@ -512,7 +521,7 @@ def smooth_fits_files(
 
     logger.info(f"Final beam is {common_beam!r}")
     with Executor(
-        max_workers=ncores,
+        max_workers=ncores, initializer=init_worker, initargs=(log_queue, verbosity)
     ) as executor:
         futures = []
         for file in files:
@@ -534,6 +543,7 @@ def smooth_fits_files(
         writelog(beam_log_list, log)
 
     logger.info("Done!")
+    log_listener.enqueue_sentinel()
     return common_beam
 
 
@@ -722,10 +732,11 @@ def cli():
     if not all(nonetest) and any(nonetest):
         parser.error("Please specify all target beam params!")
 
-    logger = setup_logger(
+    set_verbosity(
+        logger=logger,
         verbosity=args.verbosity,
-        filename=args.logfile,
     )
+
     _ = smooth_fits_files(
         infile_list=args.infile,
         prefix=args.prefix,
@@ -744,8 +755,9 @@ def cli():
         epsilon=args.epsilon,
         ncores=args.ncores,
         executor_type=args.executor,
+        verbosity=args.verbosity,
     )
 
 
 if __name__ == "__main__":
-    cli()
+    sys.exit(cli())

@@ -2,7 +2,6 @@
 """ Convolve ASKAP cubes to common resolution """
 __author__ = "Alec Thomson"
 
-import gc
 import logging
 import sys
 import warnings
@@ -25,7 +24,13 @@ from tqdm import tqdm, trange
 from racs_tools import au2
 from racs_tools.beamcon_2D import my_ceil, round_up
 from racs_tools.convolve_uv import parse_conv_mode, smooth
-from racs_tools.logging import logger, setup_logger
+from racs_tools.logging import (
+    init_worker,
+    log_listener,
+    log_queue,
+    logger,
+    set_verbosity,
+)
 from racs_tools.parallel import get_executor
 
 warnings.filterwarnings(action="ignore", category=SpectralCubeWarning, append=True)
@@ -252,7 +257,6 @@ def smooth_plane(
         conv_mode=conv_mode,
     )
     del plane
-    gc.collect()
     return newim
 
 
@@ -900,7 +904,6 @@ def smooth_and_write_plane(
         outfh[0].data[slicer] = newim.astype(np.float32)  # make sure data is 32-bit
         outfh.flush()
         del newim
-        gc.collect()
 
     logger.info(f"{outfile}  - channel {chan} - Done")
 
@@ -925,6 +928,7 @@ def smooth_fits_cube(
     nsamps: int = 200,
     ncores: Optional[int] = None,
     executor_type: Literal["thread", "process", "mpi"] = "thread",
+    verbosity: int = 0,
 ) -> Tuple[List[CubeData], List[CommonBeamData]]:
     """Convolve a set of FITS cubes to a common beam.
 
@@ -958,6 +962,8 @@ def smooth_fits_cube(
     Returns:
         Tuple[List[CubeData], List[CommonBeamData]]: Cube data and common beam data.
     """
+    # Required for multiprocessing logging
+    log_listener.start()
     if dryrun:
         logger.info("Doing a dry run -- no files will be saved")
 
@@ -1044,7 +1050,9 @@ def smooth_fits_cube(
     # Init the files in parallel
     logger.info("Initialising output files")
     # Init output files and retrieve file names
-    with Executor(max_workers=ncores) as executor:
+    with Executor(
+        max_workers=ncores, initializer=init_worker, initargs=(log_queue, verbosity)
+    ) as executor:
         futures = []
         for cube_data, common_beam_data in zip(cube_data_list, common_beam_data_list):
             future = executor.submit(
@@ -1060,7 +1068,9 @@ def smooth_fits_cube(
             futures.append(future)
     outfiles = [future.result() for future in futures]
 
-    with Executor(max_workers=ncores) as executor:
+    with Executor(
+        max_workers=ncores, initializer=init_worker, initargs=(log_queue, verbosity)
+    ) as executor:
         futures = []
         for cube_data, common_beam_data, outfile in zip(
             cube_data_list, common_beam_data_list, outfiles
@@ -1078,6 +1088,9 @@ def smooth_fits_cube(
         _ = [future.result() for future in futures]
 
     logger.info("Done!")
+
+    log_listener.enqueue_sentinel()
+
     return cube_data_list, common_beam_data_list
 
 
@@ -1288,9 +1301,9 @@ def cli():
     args = parser.parse_args()
 
     # Set up logging
-    logger = setup_logger(
+    set_verbosity(
+        logger=logger,
         verbosity=args.verbosity,
-        filename=args.logfile,
     )
 
     _ = smooth_fits_cube(
@@ -1313,6 +1326,7 @@ def cli():
         ncores=args.ncores,
         nsamps=args.nsamps,
         executor_type=args.executor_type,
+        verbosity=args.verbosity,
     )
 
 
