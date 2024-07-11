@@ -434,6 +434,7 @@ def smooth_fits_files(
     log: Optional[str] = None,
     circularise: bool = False,
     cutoff: Optional[float] = None,
+    listfile: bool = False,
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
@@ -479,6 +480,10 @@ def smooth_fits_files(
     Executor = get_executor(executor_type)
 
     # Get file list
+    if listfile:
+        assert len(infile_list) == 1, "Only one list file can be provided!"
+        with open(infile_list[0]) as f:
+            infile_list = [Path(l) for l in f.read().splitlines()]
     files = sorted(infile_list)
     if len(files) == 0:
         raise FileNotFoundError("No files found!")
@@ -575,6 +580,12 @@ def cli():
         type=Path,
         help="Input FITS image(s) to smooth (can be a wildcard) - beam info must be in header.",
         nargs="+",
+    )
+
+    parser.add_argument(
+        "--listfile",
+        action="store_true",
+        help="Switch to assume `infile` is a text file list of images.",
     )
 
     parser.add_argument(
