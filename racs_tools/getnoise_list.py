@@ -11,7 +11,7 @@ from astropy.stats import mad_std
 from spectral_cube import SpectralCube
 from spectral_cube.utils import SpectralCubeWarning
 
-from racs_tools.logging import logger, setup_logger
+from racs_tools.logging import logger, set_verbosity
 
 warnings.filterwarnings(action="ignore", category=SpectralCubeWarning, append=True)
 
@@ -30,7 +30,7 @@ def getcube(filename: str) -> SpectralCube:
         SpectralCube: Data cube
     """
     cube = SpectralCube.read(filename)
-    mask = ~(cube == 0 * u.jansky / u.beam)
+    mask = ~(cube == 0 * cube.unit)
     cube = cube.with_mask(mask)
     return cube
 
@@ -189,7 +189,7 @@ def main(
 
     if outfile:
         logger.info(f"Saving bad files to {outfile}")
-        np.savetxt(outfile, totalbad)
+        np.savetxt(outfile, totalbad.astype(int), fmt="%d")
 
 
 def cli() -> None:
@@ -256,9 +256,9 @@ def cli() -> None:
     args = parser.parse_args()
 
     # Set up logging
-    logger = setup_logger(
+    set_verbosity(
+        logger=logger,
         verbosity=args.verbosity,
-        filename=args.logfile,
     )
 
     main(

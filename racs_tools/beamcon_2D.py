@@ -483,7 +483,7 @@ def smooth_fits_files(
     if listfile:
         assert len(infile_list) == 1, "Only one list file can be provided!"
         with open(infile_list[0]) as f:
-            infile_list = [Path(l) for l in f.read().splitlines()]
+            infile_list = [Path(line) for line in f.read().splitlines()]
     files = sorted(infile_list)
     if len(files) == 0:
         raise FileNotFoundError("No files found!")
