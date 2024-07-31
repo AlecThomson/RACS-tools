@@ -141,3 +141,5 @@ mk_convolve
 beamlog.3d.astropy.txt
 beamlog.3d.robust.txt
 beamlog.3d.scipy.txt
+*.fits
+beamlog*
