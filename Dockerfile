@@ -4,7 +4,7 @@ RUN echo "Updating apt repositories"
 RUN apt update && apt upgrade -y && apt install -y git
 USER $MAMBA_USER
 ARG MAMBA_DOCKERFILE_ACTIVATE=1
-WORKDIR /src
+WORKDIR /home/mambauser
 RUN mkdir /tmp/numba_cache & chmod 777 /tmp/numba_cache & NUMBA_CACHE_DIR=/tmp/numba_cache
 ENV NUMBA_CACHE_DIR=/tmp/numba_cache
 COPY --chown=$MAMBA_USER:$MAMBA_USER . ./src
