@@ -1,17 +1,16 @@
-FROM continuumio/miniconda3
-
+FROM mambaorg/micromamba
+USER root
 RUN echo "Updating apt repositories"
-RUN apt update && apt upgrade -y
-RUN DEBIAN_FRONTEND="noninteractive" apt-get -y install tzdata
-RUN apt install -y build-essential gfortran
-RUN apt autoremove -y
-RUN apt clean -y
+RUN apt update && apt upgrade -y && apt install -y git
+USER $MAMBA_USER
+ARG MAMBA_DOCKERFILE_ACTIVATE=1
+WORKDIR /home/mambauser
 RUN mkdir /tmp/numba_cache & chmod 777 /tmp/numba_cache & NUMBA_CACHE_DIR=/tmp/numba_cache
-WORKDIR ./
 ENV NUMBA_CACHE_DIR=/tmp/numba_cache
-ADD . /tmp/
-RUN conda env create -f /tmp/environment.yml
-
-# Pull the environment name out of the environment.yml
-RUN echo "source activate racs-tools" > ~/.bashrc
-ENV PATH /opt/conda/envs/racs-tools/bin:$PATH
+COPY --chown=$MAMBA_USER:$MAMBA_USER . ./src
+RUN echo "Installing python and uv"
+RUN micromamba install python=3.8 uv -y -c conda-forge && \
+    micromamba clean --all --yes
+RUN echo "Installing RACS-tools"
+RUN micromamba run uv pip install ./src
+ENTRYPOINT ["/usr/local/bin/_entrypoint.sh"]
