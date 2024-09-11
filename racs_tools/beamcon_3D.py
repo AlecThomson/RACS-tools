@@ -1278,7 +1278,8 @@ def cli():
         dest="bmaj",
         type=float,
         default=None,
-        help="BMAJ to convolve to [max BMAJ from given image(s)].",
+        nargs="+",
+        help="BMAJ to convolve to [max BMAJ from given image(s)]. If multiple are give they will be matched to each channel image.",
     )
 
     parser.add_argument(
@@ -1286,11 +1287,12 @@ def cli():
         dest="bmin",
         type=float,
         default=None,
-        help="BMIN to convolve to [max BMAJ from given image(s)].",
+        nargs="+",
+        help="BMIN to convolve to [max BMAJ from given image(s)] .If multiple are give they will be matched to each channel image.",
     )
 
     parser.add_argument(
-        "--bpa", dest="bpa", type=float, default=None, help="BPA to convolve to [0]."
+        "--bpa", dest="bpa", type=float, default=None, nargs="+", help="BPA to convolve to [0]. If multiple are give they will be matched to each channel image."
     )
 
     parser.add_argument(
@@ -1372,6 +1374,10 @@ def cli():
         verbosity=args.verbosity,
     )
 
+    bmaj = args.bmaj if args.bmaj is None or len(args.bmaj) > 1 else args.bmaj[0]
+    bmin = args.bmin if args.bmin is None or len(args.bmin) > 1 else args.bmin[0]
+    bpa = args.bpa if args.bmpa is None or len(args.bmpa) > 1 else args.bpa[0]
+
     _ = smooth_fits_cube(
         infiles_list=args.infile,
         uselogs=args.uselogs,
@@ -1381,9 +1387,9 @@ def cli():
         prefix=args.prefix,
         suffix=args.suffix,
         outdir=args.outdir,
-        bmaj=args.bmaj,
-        bmin=args.bmin,
-        bpa=args.bpa,
+        bmaj=bmaj,
+        bmin=bmin,
+        bpa=bpa,
         cutoff=args.cutoff,
         circularise=args.circularise,
         ref_chan=args.ref_chan,
