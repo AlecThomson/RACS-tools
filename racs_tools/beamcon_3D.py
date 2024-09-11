@@ -305,6 +305,7 @@ def make_data(files: List[Path], outdir: List[Path]) -> List[CubeData]:
         cube_data_list.append(cube_data)
     return cube_data_list
 
+
 def _get_commonbeams(
     cube_data_list: List[CubeData],
     nchans: int,
@@ -314,10 +315,12 @@ def _get_commonbeams(
     circularise: bool = False,
     tolerance: float = 0.0001,
     nsamps: int = 200,
-    epsilon: float = 0.0005,    
+    epsilon: float = 0.0005,
 ) -> Beams:
-    assert isinstance(target_beam, Beam), f"Expected target_beam to be type Beam, got {type(target_beam)}"
-    
+    assert isinstance(
+        target_beam, Beam
+    ), f"Expected target_beam to be type Beam, got {type(target_beam)}"
+
     if mode == "natural":
         big_beams = []
         for n in trange(
@@ -475,7 +478,7 @@ def _get_commonbeams(
             commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
                 tolerance=tolerance * 0.1, nsamps=nsamps, epsilon=epsilon
             )
-        
+
         if target_beam is not None:
             commonbeam = target_beam
         else:
@@ -537,13 +540,14 @@ def _get_commonbeams(
 
     return commonbeams
 
+
 def commonbeamer(
     cube_data_list: List[CubeData],
     nchans: int,
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     mode: Literal["natural", "total"] = "natural",
     suffix: Optional[str] = None,
-    target_beam: Optional[Union[Beam,Beams]] = None,
+    target_beam: Optional[Union[Beam, Beams]] = None,
     circularise: bool = False,
     tolerance: float = 0.0001,
     nsamps: int = 200,
@@ -572,23 +576,23 @@ def commonbeamer(
     if suffix is None:
         suffix = mode
     ### Natural mode ###
-    
+
     if isinstance(target_beam, Beams):
-        logger.info(f"Setting the target beam for {len(target_beam)} channels") 
+        logger.info(f"Setting the target beam for {len(target_beam)} channels")
         commonbeams = target_beam
     else:
         commonbeams = _get_commonbeams(
             cube_data_list=cube_data_list,
             nchans=nchans,
             conv_mode=conv_mode,
-            mode=mode, 
+            mode=mode,
             target_beam=target_beam,
             circularise=circularise,
             tolerance=tolerance,
             nsamps=nsamps,
-            epsilon=epsilon
+            epsilon=epsilon,
         )
-        
+
     logger.info("Final beams are:")
     for i, commonbeam in enumerate(commonbeams):
         logger.info(f"Channel {i}: {commonbeam!r}")
@@ -939,8 +943,11 @@ def smooth_and_write_plane(
 
     logger.info(f"{outfile}  - channel {chan} - Done")
 
+
 def _get_target_beam(
-    bmaj: Optional[Union[float,List[float]]] = None, bmin: Optional[Union[float,List[float]]] = None, bpa: Optional[Union[float,List[float]]] = None
+    bmaj: Optional[Union[float, List[float]]] = None,
+    bmin: Optional[Union[float, List[float]]] = None,
+    bpa: Optional[Union[float, List[float]]] = None,
 ) -> Union[None, Beam, Beams]:
     """Appropriately handle the input target beam specification
 
@@ -948,7 +955,7 @@ def _get_target_beam(
         bmaj (Optional[Union[float,List[float]]], optional): Target beam major axis in arcsec. If a list, this should be the same length as the number of channels to smooth. Defaults to None.
         bmin (Optional[Union[float,List[float]]], optional): Target beam minor axis in arcsec. If a list, this should be the same length as the number of channels to smooth. Defaults to None.
         bpa (Optional[Union[float,List[float]]], optional): Target beam position angle in deg. If a list, this should be the same length as the number of channels to smooth. Defaults to None.
-        
+
     Raises:
         ValueError: Occurs if only subset of beam parameters specified
 
@@ -959,27 +966,32 @@ def _get_target_beam(
     nonetest = [param is None for param in (bmaj, bmin, bpa)]
     if all(nonetest):
         return None
-    
+
     if any(nonetest):
         raise ValueError("Please specify all target beam params!")
-    
+
     if all([isinstance(b, float) for b in (bmaj, bmin, bpa)]):
         target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
         logger.info(f"Target beam is {target_beam!r}")
         return target_beam
     else:
-        assert all([isinstance(b, list) for b in (bmaj, bmin, bpa)]), "Something is not a list"
+        assert all(
+            [isinstance(b, list) for b in (bmaj, bmin, bpa)]
+        ), "Something is not a list"
         assert len(bmaj) == len(bmin) == len(bpa), "Unequal target beam lengths"
 
         target_beams = Beams(
-            np.array(bmaj) * u.arcsec, np.array(bmin) * u.arcsec, np.array(bpa) * u.degree
+            np.array(bmaj) * u.arcsec,
+            np.array(bmin) * u.arcsec,
+            np.array(bpa) * u.degree,
         )
-        
+
         logger.info(f"{len(target_beams)} target beams have been constructed")
         return target_beams
-    
+
     raise ValueError("Beam parameters were not successfully processed")
-    
+
+
 def smooth_fits_cube(
     infiles_list: List[Path],
     uselogs: bool = False,
@@ -989,9 +1001,9 @@ def smooth_fits_cube(
     prefix: Optional[str] = None,
     suffix: Optional[str] = None,
     outdir: Optional[Path] = None,
-    bmaj: Optional[Union[float,List[float]]] = None,
-    bmin: Optional[Union[float,List[float]]] = None,
-    bpa: Optional[Union[float,List[float]]] = None,
+    bmaj: Optional[Union[float, List[float]]] = None,
+    bmin: Optional[Union[float, List[float]]] = None,
+    bpa: Optional[Union[float, List[float]]] = None,
     cutoff: Optional[float] = None,
     circularise: bool = False,
     ref_chan: Optional[int] = None,
@@ -1075,9 +1087,11 @@ def smooth_fits_cube(
     nchans = np.array([cube_data.nchan for cube_data in cube_data_list])
     if all(nchans == nchans[0]):
         raise ValueError(f"Unequal number of spectral channels! Got {nchans}")
-    
+
     if isinstance(target_beam, Beams) and any(nchans != len(target_beam)):
-        raise ValueError(f"Unequal length of target beams ({len(target_beam)}) to channels ({nchans})")
+        raise ValueError(
+            f"Unequal length of target beams ({len(target_beam)}) to channels ({nchans})"
+        )
 
     nchans = nchans[0]
 
@@ -1292,7 +1306,12 @@ def cli():
     )
 
     parser.add_argument(
-        "--bpa", dest="bpa", type=float, default=None, nargs="+", help="BPA to convolve to [0]. If multiple are give they will be matched to each channel image."
+        "--bpa",
+        dest="bpa",
+        type=float,
+        default=None,
+        nargs="+",
+        help="BPA to convolve to [0]. If multiple are give they will be matched to each channel image.",
     )
 
     parser.add_argument(
