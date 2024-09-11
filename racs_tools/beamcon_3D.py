@@ -6,7 +6,7 @@ import logging
 import sys
 import warnings
 from pathlib import Path
-from typing import List, Literal, NamedTuple, Optional, Tuple
+from typing import List, Literal, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 from astropy import units as u
@@ -305,42 +305,19 @@ def make_data(files: List[Path], outdir: List[Path]) -> List[CubeData]:
         cube_data_list.append(cube_data)
     return cube_data_list
 
-
-def commonbeamer(
+def _get_commonbeams(
     cube_data_list: List[CubeData],
     nchans: int,
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     mode: Literal["natural", "total"] = "natural",
-    suffix: Optional[str] = None,
     target_beam: Optional[Beam] = None,
     circularise: bool = False,
     tolerance: float = 0.0001,
     nsamps: int = 200,
-    epsilon: float = 0.0005,
-) -> List[CommonBeamData]:
-    """Find common beam for all channels.
-    Computed beams will be written to convolving beam logger.
-
-    Args:
-        cube_data_list (List[CubeData]): List of cube data.
-        nchans (int): Number of channels.
-        conv_mode (Literal["robust", "scipy", "astropy", "astropy_fft"], optional): Convolution mode. Defaults to "robust".
-        mode (Literal["natural", "total"], optional): Frequency mode. Defaults to "natural".
-        target_beam (Beam, optional): Target PSF. Defaults to None.
-        circularise (bool, optional): Circularise PSF. Defaults to False.
-        tolerance (float, optional): Common beam tolerance. Defaults to 0.0001.
-        nsamps (int, optional): Common beam samples. Defaults to 200.
-        epsilon (float, optional): Common beam epsilon. Defaults to 0.0005.
-
-    Raises:
-        Exception: If convolving beam will be undersampled on pixel grid.
-
-    Returns:
-        List[CommonBeamData]: Common beam data for each channel and cube.
-    """
-    if suffix is None:
-        suffix = mode
-    ### Natural mode ###
+    epsilon: float = 0.0005,    
+) -> Beams:
+    assert isinstance(target_beam, Beam), f"Expected target_beam to be type Beam, got {type(target_beam)}"
+    
     if mode == "natural":
         big_beams = []
         for n in trange(
@@ -445,8 +422,8 @@ def commonbeamer(
                             f"Smallest common Nyquist sampled beam is: {nyq_beam!r}"
                         )
 
-                        logger.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
-                        logger.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
+                        logger.warning("COMMON BEAM WILL BE UNDERSAMPLED!")
+                        logger.warning("SETTING COMMON BEAM TO NYQUIST BEAM")
                         commonbeam = nyq_beam
 
             bmaj_common.append(commonbeam.major.to(u.arcsec).value)
@@ -492,12 +469,13 @@ def commonbeamer(
                 tolerance=tolerance, nsamps=nsamps, epsilon=epsilon
             )
         except BeamError:
-            logger.warn("Couldn't find common beam with defaults")
-            logger.warn("Trying again with smaller tolerance")
+            logger.warning("Couldn't find common beam with defaults")
+            logger.warning("Trying again with smaller tolerance")
 
             commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
                 tolerance=tolerance * 0.1, nsamps=nsamps, epsilon=epsilon
             )
+        
         if target_beam is not None:
             commonbeam = target_beam
         else:
@@ -535,11 +513,11 @@ def commonbeamer(
                 if target_beam is not None:
                     commonbeam = target_beam
                     if target_beam < nyq_beam:
-                        logger.warn("TARGET BEAM WILL BE UNDERSAMPLED!")
+                        logger.warning("TARGET BEAM WILL BE UNDERSAMPLED!")
                         raise Exception("CAN'T UNDERSAMPLE BEAM - EXITING")
                 else:
-                    logger.warn("COMMON BEAM WILL BE UNDERSAMPLED!")
-                    logger.warn("SETTING COMMON BEAM TO NYQUIST BEAM")
+                    logger.warning("COMMON BEAM WILL BE UNDERSAMPLED!")
+                    logger.warning("SETTING COMMON BEAM TO NYQUIST BEAM")
                     commonbeam = nyq_beam
 
         # Make Beams object
@@ -557,6 +535,60 @@ def commonbeamer(
             pa=commonbeams.pa * 0,
         )
 
+    return commonbeams
+
+def commonbeamer(
+    cube_data_list: List[CubeData],
+    nchans: int,
+    conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
+    mode: Literal["natural", "total"] = "natural",
+    suffix: Optional[str] = None,
+    target_beam: Optional[Union[Beam,Beams]] = None,
+    circularise: bool = False,
+    tolerance: float = 0.0001,
+    nsamps: int = 200,
+    epsilon: float = 0.0005,
+) -> List[CommonBeamData]:
+    """Find common beam for all channels.
+    Computed beams will be written to convolving beam logger.
+
+    Args:
+        cube_data_list (List[CubeData]): List of cube data.
+        nchans (int): Number of channels.
+        conv_mode (Literal["robust", "scipy", "astropy", "astropy_fft"], optional): Convolution mode. Defaults to "robust".
+        mode (Literal["natural", "total"], optional): Frequency mode. Defaults to "natural".
+        target_beam (Optional[Union[Beam,List[Beam]]], optional): Target PSF. If list of beams, each corresponds to a channel resolution. Defaults to None.
+        circularise (bool, optional): Circularise PSF. Defaults to False.
+        tolerance (float, optional): Common beam tolerance. Defaults to 0.0001.
+        nsamps (int, optional): Common beam samples. Defaults to 200.
+        epsilon (float, optional): Common beam epsilon. Defaults to 0.0005.
+
+    Raises:
+        Exception: If convolving beam will be undersampled on pixel grid.
+
+    Returns:
+        List[CommonBeamData]: Common beam data for each channel and cube.
+    """
+    if suffix is None:
+        suffix = mode
+    ### Natural mode ###
+    
+    if isinstance(target_beam, Beams):
+        logger.info(f"Setting the target beam for {len(target_beam)} channels") 
+        commonbeams = target_beam
+    else:
+        commonbeams = _get_commonbeams(
+            cube_data_list=cube_data_list,
+            nchans=nchans,
+            conv_mode=conv_mode,
+            mode=mode, 
+            target_beam=target_beam,
+            circularise=circularise,
+            tolerance=tolerance,
+            nsamps=nsamps,
+            epsilon=epsilon
+        )
+        
     logger.info("Final beams are:")
     for i, commonbeam in enumerate(commonbeams):
         logger.info(f"Channel {i}: {commonbeam!r}")
@@ -907,19 +939,59 @@ def smooth_and_write_plane(
 
     logger.info(f"{outfile}  - channel {chan} - Done")
 
+def _get_target_beam(
+    bmaj: Optional[Union[float,List[float]]] = None, bmin: Optional[Union[float,List[float]]] = None, bpa: Optional[Union[float,List[float]]] = None
+) -> Union[None, Beam, Beams]:
+    """Appropriately handle the input target beam specification
 
+    Args:
+        bmaj (Optional[Union[float,List[float]]], optional): Target beam major axis in arcsec. If a list, this should be the same length as the number of channels to smooth. Defaults to None.
+        bmin (Optional[Union[float,List[float]]], optional): Target beam minor axis in arcsec. If a list, this should be the same length as the number of channels to smooth. Defaults to None.
+        bpa (Optional[Union[float,List[float]]], optional): Target beam position angle in deg. If a list, this should be the same length as the number of channels to smooth. Defaults to None.
+        
+    Raises:
+        ValueError: Occurs if only subset of beam parameters specified
+
+    Returns:
+        Union[None, Beam, Beams]: The appropriate set of processed beams
+    """
+
+    nonetest = [param is None for param in (bmaj, bmin, bpa)]
+    if all(nonetest):
+        return None
+    
+    if any(nonetest):
+        raise ValueError("Please specify all target beam params!")
+    
+    if all([isinstance(b, float) for b in (bmaj, bmin, bpa)]):
+        target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
+        logger.info(f"Target beam is {target_beam!r}")
+        return target_beam
+    else:
+        assert all([isinstance(b, list) for b in (bmaj, bmin, bpa)]), "Something is not a list"
+        assert len(bmaj) == len(bmin) == len(bpa), "Unequal target beam lengths"
+
+        target_beams = Beams(
+            np.array(bmaj) * u.arcsec, np.array(bmin) * u.arcsec, np.array(bpa) * u.degree
+        )
+        
+        logger.info(f"{len(target_beams)} target beams have been constructed")
+        return target_beams
+    
+    raise ValueError("Beam parameters were not successfully processed")
+    
 def smooth_fits_cube(
     infiles_list: List[Path],
     uselogs: bool = False,
     mode: Literal["natural", "total"] = "natural",
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     dryrun: bool = False,
-    prefix: str = None,
-    suffix: str = None,
+    prefix: Optional[str] = None,
+    suffix: Optional[str] = None,
     outdir: Optional[Path] = None,
-    bmaj: Optional[float] = None,
-    bmin: Optional[float] = None,
-    bpa: Optional[float] = None,
+    bmaj: Optional[Union[float,List[float]]] = None,
+    bmin: Optional[Union[float,List[float]]] = None,
+    bpa: Optional[Union[float,List[float]]] = None,
     cutoff: Optional[float] = None,
     circularise: bool = False,
     ref_chan: Optional[int] = None,
@@ -941,9 +1013,9 @@ def smooth_fits_cube(
         prefix (str, optional): Output filename prefix. Defaults to None.
         suffix (str, optional): Output filename suffix. Defaults to None.
         outdir (Optional[Path], optional): Output directory. Defaults to None.
-        bmaj (Optional[float], optional): Target beam major axis in arcsec. Defaults to None.
-        bmin (Optional[float], optional): Target beam minor axis in arcsec. Defaults to None.
-        bpa (Optional[float], optional): Target beam position angle in deg. Defaults to None.
+        bmaj (Optional[Union[float,List[float]]], optional): Target beam major axis in arcsec. If a list, this should be the same length as the number of channels to smooth. Defaults to None.
+        bmin (Optional[Union[float,List[float]]], optional): Target beam minor axis in arcsec. If a list, this should be the same length as the number of channels to smooth. Defaults to None.
+        bpa (Optional[Union[float,List[float]]], optional): Target beam position angle in deg. If a list, this should be the same length as the number of channels to smooth. Defaults to None.
         cutoff (Optional[float], optional): Beam cutoff in arcsec. Defaults to None.
         circularise (bool, optional): Set minor axis to major axis. Defaults to False.
         ref_chan (Optional[int], optional): Reference channel for PSF in header. Defaults to None.
@@ -987,14 +1059,7 @@ def smooth_fits_cube(
     # Check target
     conv_mode = parse_conv_mode(conv_mode)
 
-    nonetest = [param is None for param in (bmaj, bmin, bpa)]
-    if all(nonetest):
-        target_beam = None
-    elif any(nonetest):
-        raise ValueError("Please specify all target beam params!")
-    else:
-        target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
-        logger.info(f"Target beam is {target_beam!r}")
+    target_beam = _get_target_beam(bmaj=bmaj, bmin=bmin, bpa=bpa)
 
     files = sorted(infiles_list)
     if len(files) == 0:
@@ -1008,10 +1073,11 @@ def smooth_fits_cube(
 
     # Sanity check channel counts
     nchans = np.array([cube_data.nchan for cube_data in cube_data_list])
-    check = all(nchans == nchans[0])
-
-    if not check:
+    if all(nchans == nchans[0]):
         raise ValueError(f"Unequal number of spectral channels! Got {nchans}")
+    
+    if isinstance(target_beam, Beams) and any(nchans != len(target_beam)):
+        raise ValueError(f"Unequal length of target beams ({len(target_beam)}) to channels ({nchans})")
 
     nchans = nchans[0]
 
