@@ -181,6 +181,26 @@ def test_robust_3d(make_3d_image, mirsmooth_3d):
     ), "Beamcon does not match Miriad"
 
 
+def test_get_target_beam():
+    """Ensure that the processing of the target beam parameters behaves correctly"""
+
+    none_test = beamcon_3D._get_target_beam()
+    assert none_test is None
+    
+    with pytest.raises(ValueError):
+        _ = beamcon_3D._get_target_beam(bmaj=10.)
+     
+    single_beam = beamcon_3D._get_target_beam(bmaj=10., bmin=10., bpa=10.)
+    assert isinstance(single_beam, Beam)
+    assert not isinstance(single_beam, Beams)
+    
+    many_beam = beamcon_3D._get_target_beam(bmaj=[9, 8, 10.], bmin=[9, 8, 10.], bpa=[9, 8, 10.])
+    assert not isinstance(many_beam, Beam)
+    assert isinstance(many_beam, Beams)
+    assert len(many_beam) == 3
+    
+
+
 # def test_astropy(self):
 #     """Test the astropy mode."""
 #     beamcon_3D.main(
