@@ -186,19 +186,20 @@ def test_get_target_beam():
 
     none_test = beamcon_3D._get_target_beam()
     assert none_test is None
-    
+
     with pytest.raises(ValueError):
-        _ = beamcon_3D._get_target_beam(bmaj=10.)
-     
-    single_beam = beamcon_3D._get_target_beam(bmaj=10., bmin=10., bpa=10.)
+        _ = beamcon_3D._get_target_beam(bmaj=10.0)
+
+    single_beam = beamcon_3D._get_target_beam(bmaj=10.0, bmin=10.0, bpa=10.0)
     assert isinstance(single_beam, Beam)
     assert not isinstance(single_beam, Beams)
-    
-    many_beam = beamcon_3D._get_target_beam(bmaj=[9, 8, 10.], bmin=[9, 8, 10.], bpa=[9, 8, 10.])
+
+    many_beam = beamcon_3D._get_target_beam(
+        bmaj=[9, 8, 10.0], bmin=[9, 8, 10.0], bpa=[9, 8, 10.0]
+    )
     assert not isinstance(many_beam, Beam)
     assert isinstance(many_beam, Beams)
     assert len(many_beam) == 3
-    
 
 
 # def test_astropy(self):
