@@ -324,9 +324,9 @@ def _get_commonbeams(
     nsamps: int = 200,
     epsilon: float = 0.0005,
 ) -> Beams:
-    assert isinstance(
-        target_beam, Beam
-    ) or target_beam is None, f"Expected target_beam to be type Beam or None, got {type(target_beam)}"
+    assert (
+        isinstance(target_beam, Beam) or target_beam is None
+    ), f"Expected target_beam to be type Beam or None, got {type(target_beam)}"
 
     if mode == "natural":
         big_beams = []
