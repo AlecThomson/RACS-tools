@@ -221,6 +221,7 @@ def smooth_plane(
     dx: u.Quantity,
     dy: u.Quantity,
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
+    mask: bool = False,
 ) -> np.ndarray:
     """Smooth a single plane of a cube.
 
@@ -232,6 +233,7 @@ def smooth_plane(
         dx (u.Quantity): Pixel size in x direction.
         dy (u.Quantity): Pixel size in y direction.
         conv_mode (Literal["robust", "scipy", "astropy", "astropy_fft"], optional): Convolution mode. Defaults to "robust".
+        mask (bool, optional): Mask the channel. Defaults to False.
 
     Returns:
         np.ndarray: Convolved plane.
@@ -248,14 +250,19 @@ def smooth_plane(
 
     plane = cube.unmasked_data[slicer].value.astype(np.float32)
     logger.debug(f"Size of plane is {(plane.nbytes*u.byte).to(u.MB)}")
-    newim = smooth(
-        image=plane,
-        old_beam=old_beam,
-        new_beam=new_beam,
-        dx=dx,
-        dy=dy,
-        conv_mode=conv_mode,
-    )
+
+    if mask:
+        logger.info(f"Masking channel {idx}")
+        newim = plane * np.nan
+    else:
+        newim = smooth(
+            image=plane,
+            old_beam=old_beam,
+            new_beam=new_beam,
+            dx=dx,
+            dy=dy,
+            conv_mode=conv_mode,
+        )
     del plane
     return newim
 
@@ -923,6 +930,7 @@ def smooth_and_write_plane(
         dx=cube_data.dx,
         dy=cube_data.dy,
         conv_mode=conv_mode,
+        mask=cube_data.mask[chan],
     )
 
     with fits.open(outfile, mode="update", memmap=True) as outfh:
