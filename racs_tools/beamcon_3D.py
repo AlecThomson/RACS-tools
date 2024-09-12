@@ -1085,7 +1085,7 @@ def smooth_fits_cube(
 
     # Sanity check channel counts
     nchans = np.array([cube_data.nchan for cube_data in cube_data_list])
-    if all(nchans == nchans[0]):
+    if not all(nchans == nchans[0]):
         raise ValueError(f"Unequal number of spectral channels! Got {nchans}")
 
     if isinstance(target_beam, Beams) and any(nchans != len(target_beam)):
