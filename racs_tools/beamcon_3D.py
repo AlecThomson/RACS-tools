@@ -326,7 +326,7 @@ def _get_commonbeams(
 ) -> Beams:
     assert isinstance(
         target_beam, Beam
-    ), f"Expected target_beam to be type Beam, got {type(target_beam)}"
+    ) or target_beam is None, f"Expected target_beam to be type Beam or None, got {type(target_beam)}"
 
     if mode == "natural":
         big_beams = []
@@ -1403,7 +1403,7 @@ def cli():
 
     bmaj = args.bmaj if args.bmaj is None or len(args.bmaj) > 1 else args.bmaj[0]
     bmin = args.bmin if args.bmin is None or len(args.bmin) > 1 else args.bmin[0]
-    bpa = args.bpa if args.bmpa is None or len(args.bmpa) > 1 else args.bpa[0]
+    bpa = args.bpa if args.bpa is None or len(args.bpa) > 1 else args.bpa[0]
 
     _ = smooth_fits_cube(
         infiles_list=args.infile,
