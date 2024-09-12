@@ -152,6 +152,29 @@ def convolve(
         ConvolutionResult: convolved image, scaling factor
     """
 
+    ### These values aren't used in convolution, but are needed for santiy checks
+    conbeam, sfactor = get_convolving_beam(
+        old_beam=old_beam,
+        new_beam=new_beam,
+        dx=dx,
+        dy=dy,
+        cutoff=cutoff,
+    )
+    if np.isnan(sfactor):
+        logger.warning("Beam larger than cutoff -- blanking")
+        newim = np.ones_like(image) * np.nan
+        return ConvolutionResult(newim, sfactor)
+    if conbeam is None:
+        conbeam = new_beam.deconvolve(old_beam)
+    if np.isnan(conbeam):
+        return ConvolutionResult(image * np.nan, sfactor)
+    if np.isnan(image).all():
+        return ConvolutionResult(image, sfactor)
+    if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
+        return ConvolutionResult(image, sfactor)
+    ###
+
+    # Now we do the convolution
     nanflag = np.isnan(image).any()
 
     if nanflag:
