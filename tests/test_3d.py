@@ -197,7 +197,12 @@ def test_get_target_beam():
     single_nan_beam = beamcon_3D._get_target_beam(bmaj=np.nan, bmin=10.0, bpa=10.0)
     assert isinstance(single_nan_beam, Beam)
     assert not isinstance(single_nan_beam, Beams)
-    assert all((np.isnan(i) for i in (single_nan_beam.major, single_nan_beam.minor, single_nan_beam.pa)))
+    assert all(
+        (
+            np.isnan(i)
+            for i in (single_nan_beam.major, single_nan_beam.minor, single_nan_beam.pa)
+        )
+    )
 
     many_beam = beamcon_3D._get_target_beam(
         bmaj=[9, 8, 10.0], bmin=[9, 8, 10.0], bpa=[9, 8, 10.0]
@@ -213,9 +218,12 @@ def test_get_target_beam():
     assert isinstance(many_nan_beam, Beams)
     assert len(many_nan_beam) == 3
     single_nan_beam = many_nan_beam[0]
-    assert all((np.isnan(i) for i in (single_nan_beam.major, single_nan_beam.minor, single_nan_beam.pa)))
-
-
+    assert all(
+        (
+            np.isnan(i)
+            for i in (single_nan_beam.major, single_nan_beam.minor, single_nan_beam.pa)
+        )
+    )
 
 
 # def test_astropy(self):

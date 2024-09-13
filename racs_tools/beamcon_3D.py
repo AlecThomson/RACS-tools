@@ -980,9 +980,11 @@ def _get_target_beam(
 
     if all([isinstance(b, float) for b in (bmaj, bmin, bpa)]):
         if any(~np.isfinite((bmaj, bmin, bpa))):
-            logger.debug(f"Non-finite value detected in beam ({bmaj, bmin, bpa}). Setting all to nan.")
+            logger.debug(
+                f"Non-finite value detected in beam ({bmaj, bmin, bpa}). Setting all to nan."
+            )
             bmaj = bmin = bpa = float("nan")
-            
+
         target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
         logger.info(f"Target beam is {target_beam!r}")
         return target_beam
@@ -992,11 +994,13 @@ def _get_target_beam(
         ), "Something is not a list"
         assert len(bmaj) == len(bmin) == len(bpa), "Unequal target beam lengths"
 
-        # Deal with moments where, potentially, a beam has a NaN but not all NaN. 
-        # Maybe unnecessary. 
+        # Deal with moments where, potentially, a beam has a NaN but not all NaN.
+        # Maybe unnecessary.
         for idx, beam_props in enumerate(zip(bmaj, bmin, bpa)):
             if any(~np.isfinite(beam_props)):
-                logger.debug(f"Non-finite beam property detected in {beam_props=} at {idx=}. Setting all to nan. ")
+                logger.debug(
+                    f"Non-finite beam property detected in {beam_props=} at {idx=}. Setting all to nan. "
+                )
                 bmaj[idx] = float("nan")
                 bmin[idx] = float("nan")
                 bpa[idx] = float("nan")
