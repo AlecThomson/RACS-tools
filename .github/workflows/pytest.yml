@@ -63,4 +63,4 @@ jobs:
         echo "/opt/miriad/linux64/bin" >> $GITHUB_PATH
     - name: Test with pytest
       run: |
-        pytest --cov=racs_tools
+        source $HOME/.bashrc &&  pytest --cov=racs_tools
