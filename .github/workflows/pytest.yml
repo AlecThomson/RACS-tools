@@ -49,7 +49,7 @@ jobs:
         python3 -m pip install -U .
     - name: Install miriad
       run: |
-        cd /opt
+        cd /opt && \
         wget ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-common.tar.bz2 ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-linux64.tar.bz2 && \
           tar xf miriad-common.tar.bz2 && \
           tar xf miriad-linux64.tar.bz2 && \
@@ -61,6 +61,7 @@ jobs:
           echo export PATH=${MIRBIN}:${PATH} >> $HOME/.bashrc && \
         source $HOME/.bashrc && \
         echo "/opt/miriad/linux64/bin" >> $GITHUB_PATH
+        echo Installed miriad
     - name: Test with pytest
       run: |
         pytest --cov=racs_tools
