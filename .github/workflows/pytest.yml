@@ -51,7 +51,7 @@ jobs:
       run: |
         cd /opt
         echo "Downloading miriad"
-        wget ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-common.tar.bz2 ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-linux64.tar.bz2
+        wget ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-common.tar.bz2 ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-linux64.tar.bz2 ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-linux64-prev.tar.bz2
         echo "Installing miriad"
           tar xvf miriad-common.tar.bz2
           tar xvf miriad-linux64.tar.bz2
@@ -66,7 +66,7 @@ jobs:
         echo Installed miriad
         echo Testing installation
         echo GITHUB_PATH=$GITHUB_PATH
-        ls -lh /opt/miriad/linux64/bin
+        ls -lh /opt/miriad/
         which fits
     - name: Test with pytest
       run: |
