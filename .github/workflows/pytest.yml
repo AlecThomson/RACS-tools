@@ -51,11 +51,10 @@ jobs:
       run: |
         cd /opt
         echo "Downloading miriad"
-        wget ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-common.tar.bz2 ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-linux64.tar.bz2 ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-linux64-prev.tar.bz2
+        wget ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-common.tar.bz2 ftp://ftp.atnf.csiro.au/pub/software/miriad/miriad-linux64.tar.bz2
         echo "Installing miriad"
           tar xvf miriad-common.tar.bz2
           tar xvf miriad-linux64.tar.bz2
-          tar xvf miriad-linux64-prev.tar.bz2
           rm -rf *tar.bz2
         cd /opt/miriad
         sed -e "s,@MIRROOT@,/opt/miriad," scripts/MIRRC.sh.in > MIRRC.sh
