@@ -20,6 +20,9 @@ import racs_tools.gaussft as gaussft
 from racs_tools import au2
 from racs_tools.logging import logger
 
+ZERO_BEAM = Beam(0 * u.deg)
+NAN_BEAM = Beam(np.nan * u.deg)
+
 
 class ConvolutionResult(NamedTuple):
     """Result of convolution"""
@@ -170,7 +173,7 @@ def convolve(
         return ConvolutionResult(image * np.nan, sfactor)
     if np.isnan(image).all():
         return ConvolutionResult(image, sfactor)
-    if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
+    if conbeam == ZERO_BEAM and sfactor == 1:
         return ConvolutionResult(image, sfactor)
     ###
 
@@ -278,7 +281,7 @@ def convolve_scipy(
         return ConvolutionResult(image * np.nan, sfactor)
     if np.isnan(image).all():
         return ConvolutionResult(image, sfactor)
-    if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
+    if conbeam == ZERO_BEAM and sfactor == 1:
         return ConvolutionResult(image, sfactor)
 
     gauss_kern = conbeam.as_kernel(dy)
@@ -326,7 +329,7 @@ def convolve_astropy(
         return ConvolutionResult(image * np.nan, sfactor)
     if np.isnan(image).all():
         return ConvolutionResult(image, sfactor)
-    if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
+    if conbeam == ZERO_BEAM and sfactor == 1:
         return ConvolutionResult(image, sfactor)
     gauss_kern = conbeam.as_kernel(dy)
     conbm1 = gauss_kern.array / gauss_kern.array.max()
@@ -377,7 +380,7 @@ def convolve_astropy_fft(
         return ConvolutionResult(image * np.nan, sfactor)
     if np.isnan(image).all():
         return ConvolutionResult(image, sfactor)
-    if conbeam == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg) and sfactor == 1:
+    if conbeam == ZERO_BEAM and sfactor == 1:
         return ConvolutionResult(image, sfactor)
     gauss_kern = conbeam.as_kernel(dy)
     conbm1 = gauss_kern.array / gauss_kern.array.max()
@@ -453,20 +456,12 @@ def get_convolving_beam(
 
     if cutoff is not None and old_beam.major.to(u.arcsec) > cutoff * u.arcsec:
         return (
-            Beam(
-                major=np.nan * u.deg,
-                minor=np.nan * u.deg,
-                pa=np.nan * u.deg,
-            ),
+            NAN_BEAM,
             np.nan,
         )
 
     if new_beam == old_beam:
-        conbm = Beam(
-            major=0 * u.deg,
-            minor=0 * u.deg,
-            pa=0 * u.deg,
-        )
+        conbm = ZERO_BEAM
         fac = 1.0
         logger.warning(
             f"New beam {new_beam!r} and old beam {old_beam!r} are the same. Won't attempt convolution."

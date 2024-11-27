@@ -23,7 +23,7 @@ from tqdm import tqdm, trange
 
 from racs_tools import au2
 from racs_tools.beamcon_2D import my_ceil, round_up
-from racs_tools.convolve_uv import parse_conv_mode, smooth
+from racs_tools.convolve_uv import NAN_BEAM, ZERO_BEAM, parse_conv_mode, smooth
 from racs_tools.logging import (
     init_worker,
     log_listener,
@@ -191,7 +191,7 @@ def getfacs(
     """
     facs_list = []
     for conbm, old_beam in zip(convbeams, beams):
-        if conbm == Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg):
+        if conbm == ZERO_BEAM:
             fac = 1.0
         else:
             fac, _, _, _, _ = au2.gauss_factor(
@@ -390,9 +390,7 @@ def commonbeamer(
             total=nchans,
         ):
             if all(np.isnan(beams)):
-                commonbeam = Beam(
-                    major=np.nan * u.deg, minor=np.nan * u.deg, pa=np.nan * u.deg
-                )
+                commonbeam = NAN_BEAM
             else:
                 try:
                     commonbeam = beams[~np.isnan(beams)].common_beam(
@@ -582,9 +580,7 @@ def commonbeamer(
         masks = cube_data.mask
         for commonbeam, old_beam, mask in zip(commonbeams, old_beams, masks):
             if mask:
-                convbeam = Beam(
-                    major=np.nan * u.deg, minor=np.nan * u.deg, pa=np.nan * u.deg
-                )
+                convbeam = NAN_BEAM
             else:
                 old_beam_check = Beam(
                     major=my_ceil(old_beam.major.to(u.arcsec).value, precision=1)
@@ -594,12 +590,8 @@ def commonbeamer(
                     pa=round_up(old_beam.pa.to(u.deg), decimals=2),
                 )
                 if commonbeam == old_beam_check:
-                    convbeam = Beam(
-                        major=0 * u.deg,
-                        minor=0 * u.deg,
-                        pa=0 * u.deg,
-                    )
-                    logger.warn(
+                    convbeam = ZERO_BEAM
+                    logger.warning(
                         f"New beam {commonbeam!r} and old beam {old_beam_check!r} are the same. Won't attempt convolution."
                     )
 
@@ -679,7 +671,7 @@ def masking(
         List[CubeData]: List of masked cube data.
     """
     # Check for pipeline masking
-    nullbeam = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
+    nullbeam = ZERO_BEAM
     tiny = np.finfo(np.float32).tiny  # Smallest positive number - used to mask
     smallbeam = Beam(major=tiny * u.deg, minor=tiny * u.deg, pa=tiny * u.deg)
     masked_cube_data_list: List[CubeData] = []
@@ -772,7 +764,7 @@ def initfiles(
         )
     ):
         logger.warning("Reference PSF is NaN - replacing with 0 in the header")
-        ref_psf = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
+        ref_psf = ZERO_BEAM
         header["COMMENT"] = "Reference PSF is NaN"
         header["COMMENT"] = "- This is likely because the reference channel is masked."
         header["COMMENT"] = "- It has been replaced with 0 to keep FITS happy."
