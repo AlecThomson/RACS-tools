@@ -192,7 +192,7 @@ def test_smooth(make_2d_image: TestImage, mirsmooth: TestImage):
     for conv_mode in ("robust", "astropy", "scipy"):
         if conv_mode != "robust":
             conbm = target_beam.deconvolve(old_beam)
-            fac, _, _, _, _ = au2.gauss_factor(
+            _, _, _, _, _ = au2.gauss_factor(
                 beamConv=[
                     conbm.major.to(u.arcsec).value,
                     conbm.minor.to(u.arcsec).value,
@@ -207,7 +207,7 @@ def test_smooth(make_2d_image: TestImage, mirsmooth: TestImage):
                 dy1=dy.to(u.arcsec).value,
             )
         else:
-            fac = 1
+            pass
         smooth_data = smooth(
             image=make_2d_image.data,
             old_beam=old_beam,
