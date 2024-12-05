@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 """ Convolve ASKAP images to common resolution """
+from __future__ import annotations
+
 __author__ = "Alec Thomson"
+
 
 import logging
 import sys
 from pathlib import Path
-from typing import List, Literal, NamedTuple, Optional, Tuple
+from typing import Literal, NamedTuple, Optional
 
 import numpy as np
 from astropy import units as u
@@ -79,16 +82,16 @@ class BeamLogInfo(NamedTuple):
 def check_target_beam(
     target_beam: Beam,
     all_beams: Beams,
-    files: List[Path],
-    cutoff: Optional[float] = None,
+    files: list[Path],
+    cutoff: float | None = None,
 ) -> bool:
     """Check that target beam will deconvolve
 
     Args:
         target_beam (Beam): Target beam.
         all_beams (Beams): All the beams to check.
-        files (List[Path]): All the FITS files to check.
-        cutoff (Optional[float], optional): Cutoff of beam in arcsec. Defaults to None.
+        files (list[Path]): All the FITS files to check.
+        cutoff (float | None, optional): Cutoff of beam in arcsec. Defaults to None.
 
     Raises:
         BeamError: If beam deconvolution fails.
@@ -200,8 +203,8 @@ def beamcon_2d_on_fits(
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"],
     suffix: str = "",
     prefix: str = "",
-    outdir: Optional[Path] = None,
-    cutoff: Optional[float] = None,
+    outdir: Path | None = None,
+    cutoff: float | None = None,
     dryrun: bool = False,
 ) -> BeamLogInfo:
     """Run beamcon_2d on a FITS file
@@ -212,8 +215,8 @@ def beamcon_2d_on_fits(
         conv_mode (str): Convolution mode.
         suffix (str, optional): Filename suffix. Defaults to "".
         prefix (str, optional): Filename prefix. Defaults to "".
-        outdir (Optional[Path], optional): Ouput directory. Defaults to None (will be same as input).
-        cutoff (Optional[float], optional): Cutoff for beamsize in arcsec. Defaults to None.
+        outdir (Path | None, optional): Ouput directory. Defaults to None (will be same as input).
+        cutoff (float | None, optional): Cutoff for beamsize in arcsec. Defaults to None.
         dryrun (bool, optional): Don't save any images. Defaults to False.
 
     Returns:
@@ -281,27 +284,27 @@ def beamcon_2d_on_fits(
 
 
 def get_common_beam(
-    files: List[Path],
+    files: list[Path],
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     target_beam: Optional[Beam] = None,
-    cutoff: Optional[float] = None,
+    cutoff: float | None = None,
     tolerance: float = 0.0001,
     nsamps: float = 200,
     epsilon: float = 0.0005,
-) -> Tuple[Beam, Beams]:
+) -> tuple[Beam, Beams]:
     """Get the smallest common beam.
 
     Args:
-        files (List[Path]): FITS files to convolve.
+        files (list[Path]): FITS files to convolve.
         conv_mode (Literal["robust", "scipy", "astropy", "astropy_fft"], optional): _description_. Defaults to "robust".
         target_beam (Optional[Beam], optional): Target beam. Defaults to None.
-        cutoff (Optional[float], optional): Cutoff for beamsize in arcse. Defaults to None.
+        cutoff (float | None, optional): Cutoff for beamsize in arcse. Defaults to None.
         tolerance (float, optional): Radio beam tolerance. Defaults to 0.0001.
         nsamps (float, optional): Radio beam nsamps. Defaults to 200.
         epsilon (float, optional): Radio beam epsilon. Defaults to 0.0005.
 
     Returns:
-        Tuple[Beam, Beams]: Common beam and all beams.
+        tuple[Beam, Beams]: Common beam and all beams.
     """
     beams_list = []
     for file in files:
@@ -359,52 +362,52 @@ def get_common_beam(
     return target_beam, beams
 
 
-def writelog(output: List[BeamLogInfo], commonbeam_log: Path):
+def writelog(output: list[BeamLogInfo], commonbeam_log: Path):
     """Write beamlog file.
 
     Args:
-        output (List[BeamLogInfo]): List of beamlog information.
+        output (list[BeamLogInfo]): list of beamlog information.
         commonbeam_log (Path): Name of log file.
     """
     commonbeam_tab = Table()
-    commonbeam_tab.add_column([out["filename"] for out in output], name="FileName")
+    commonbeam_tab.add_column([out.filename for out in output], name="FileName")
     # Origina
     commonbeam_tab.add_column(
-        [out["old_beam"].major.to(u.deg).value for out in output] * u.deg,
+        [out.old_beam.major.to(u.deg).value for out in output] * u.deg,
         name="Original BMAJ",
     )
     commonbeam_tab.add_column(
-        [out["old_beam"].minor.to(u.deg).value for out in output] * u.deg,
+        [out.old_beam.minor.to(u.deg).value for out in output] * u.deg,
         name="Original BMIN",
     )
     commonbeam_tab.add_column(
-        [out["old_beam"].pa.to(u.deg).value for out in output] * u.deg,
+        [out.old_beam.pa.to(u.deg).value for out in output] * u.deg,
         name="Original BPA",
     )
     # Target
     commonbeam_tab.add_column(
-        [out["new_beam"].major.to(u.deg).value for out in output] * u.deg,
+        [out.new_beam.major.to(u.deg).value for out in output] * u.deg,
         name="Target BMAJ",
     )
     commonbeam_tab.add_column(
-        [out["new_beam"].minor.to(u.deg).value for out in output] * u.deg,
+        [out.new_beam.minor.to(u.deg).value for out in output] * u.deg,
         name="Target BMIN",
     )
     commonbeam_tab.add_column(
-        [out["new_beam"].pa.to(u.deg).value for out in output] * u.deg,
+        [out.new_beam.pa.to(u.deg).value for out in output] * u.deg,
         name="Target BPA",
     )
     # Convolving
     commonbeam_tab.add_column(
-        [out["conv_beam"].major.to(u.deg).value for out in output] * u.deg,
+        [out.conv_beam.major.to(u.deg).value for out in output] * u.deg,
         name="Convolving BMAJ",
     )
     commonbeam_tab.add_column(
-        [out["conv_beam"].minor.to(u.deg).value for out in output] * u.deg,
+        [out.conv_beam.minor.to(u.deg).value for out in output] * u.deg,
         name="Convolving BMIN",
     )
     commonbeam_tab.add_column(
-        [out["conv_beam"].pa.to(u.deg).value for out in output] * u.deg,
+        [out.conv_beam.pa.to(u.deg).value for out in output] * u.deg,
         name="Convolving BPA",
     )
 
@@ -422,45 +425,45 @@ def writelog(output: List[BeamLogInfo], commonbeam_log: Path):
 
 
 def smooth_fits_files(
-    infile_list: List[Path] = [],
-    prefix: Optional[str] = None,
-    suffix: Optional[str] = None,
-    outdir: Optional[Path] = None,
+    infile_list: list[Path] = [],
+    prefix: str | None = None,
+    suffix: str | None = None,
+    outdir: Path | None = None,
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     dryrun: bool = False,
-    bmaj: Optional[float] = None,
-    bmin: Optional[float] = None,
-    bpa: Optional[float] = None,
-    log: Optional[str] = None,
+    bmaj: float | None = None,
+    bmin: float | None = None,
+    bpa: float | None = None,
+    log: Path | None = None,
     circularise: bool = False,
-    cutoff: Optional[float] = None,
+    cutoff: float | None = None,
     listfile: bool = False,
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
-    ncores: Optional[int] = None,
+    ncores: int | None = None,
     executor_type: Literal["thread", "process", "mpi"] = "thread",
     verbosity: int = 0,
 ) -> Beam:
     """Smooth a field of 2D images to a common resolution.
 
     Args:
-        infile_list (List[Path], optional): List of FITS files to convolve. Defaults to [].
-        prefix (Optional[str], optional): Output filename prefix. Defaults to None.
-        suffix (Optional[str], optional): Output filename suffix. Defaults to None.
-        outdir (Optional[Path], optional): Output directory. Defaults to None - same as input.
+        infile_list (list[Path], optional): list of FITS files to convolve. Defaults to [].
+        prefix (str | None, optional): Output filename prefix. Defaults to None.
+        suffix (str | None, optional): Output filename suffix. Defaults to None.
+        outdir (Path | None, optional): Output directory. Defaults to None - same as input.
         conv_mode (Literal["robust", "scipy", "astropy", "astropy_fft"], optional): Convolution mode. Defaults to "robust".
         dryrun (bool, optional): Don't save any images. Defaults to False.
-        bmaj (Optional[float], optional): Target beam major axis in arcsec. Defaults to None.
-        bmin (Optional[float], optional): Target beam minor axis in arcsec. Defaults to None.
-        bpa (Optional[float], optional): Target beam poistion angle in deg. Defaults to None.
-        log (Optional[str], optional): Ouput logfile. Defaults to None.
+        bmaj (float | None, optional): Target beam major axis in arcsec. Defaults to None.
+        bmin (float | None, optional): Target beam minor axis in arcsec. Defaults to None.
+        bpa (float | None, optional): Target beam poistion angle in deg. Defaults to None.
+        log (str | None, optional): Ouput logfile. Defaults to None.
         circularise (bool, optional): Set minor axis to same as major. Defaults to False.
-        cutoff (Optional[float], optional): Cutoff for beamsize in arcse. Defaults to None.
+        cutoff (float | None, optional): Cutoff for beamsize in arcse. Defaults to None.
         tolerance (float, optional): Radio beam tolerance. Defaults to 0.0001.
         nsamps (int, optional): Radio beam nsamp. Defaults to 200.
         epsilon (float, optional): Radio beam epsilon. Defaults to 0.0005.
-        ncores (Optional[int], optional): Maximum number of cores to use. Defaults to None.
+        ncores (int | None, optional): Maximum number of cores to use. Defaults to None.
         executor_type (Literal["thread", "process", "mpi"], optional): Executor to use. Defaults to "thread".
 
     Raises:
@@ -676,7 +679,7 @@ def cli():
     parser.add_argument(
         "--logfile",
         default=None,
-        type=str,
+        type=Path,
         help="Save logging output to file",
     )
 
