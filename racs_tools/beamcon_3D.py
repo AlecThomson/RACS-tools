@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """ Convolve ASKAP cubes to common resolution """
+from __future__ import annotations
+
 __author__ = "Alec Thomson"
+
 
 import logging
 import sys
 import warnings
 from pathlib import Path
-from typing import List, Literal, NamedTuple, Optional, Tuple
+from typing import Literal, NamedTuple
 
 import numpy as np
 from astropy import units as u
@@ -267,20 +270,20 @@ def smooth_plane(
     return newim
 
 
-def make_data(files: List[Path], outdir: List[Path]) -> List[CubeData]:
+def make_data(files: list[Path], outdir: list[Path]) -> list[CubeData]:
     """Create data dictionary.
 
     Args:
-        files (List[Path]): List of filenames.
-        outdir (List[Path]): Output directories.
+        files (list[Path]): list of filenames.
+        outdir (list[Path]): Output directories.
 
     Raises:
         Exception: If pixel grid in X and Y is not the same.
 
     Returns:
-        List[CubeData]: Data and metadata for each channel and image.
+        list[CubeData]: Data and metadata for each channel and image.
     """
-    cube_data_list: List[CubeData] = []
+    cube_data_list: list[CubeData] = []
     for _, (file, out) in enumerate(zip(files, outdir)):
         # Get metadata
         header = fits.getheader(file)
@@ -314,22 +317,22 @@ def make_data(files: List[Path], outdir: List[Path]) -> List[CubeData]:
 
 
 def commonbeamer(
-    cube_data_list: List[CubeData],
+    cube_data_list: list[CubeData],
     nchans: int,
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     mode: Literal["natural", "total"] = "natural",
-    suffix: Optional[str] = None,
-    target_beam: Optional[Beam] = None,
+    suffix: str | None = None,
+    target_beam: Beam | None = None,
     circularise: bool = False,
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
-) -> List[CommonBeamData]:
+) -> list[CommonBeamData]:
     """Find common beam for all channels.
     Computed beams will be written to convolving beam logger.
 
     Args:
-        cube_data_list (List[CubeData]): List of cube data.
+        cube_data_list (list[CubeData]): list of cube data.
         nchans (int): Number of channels.
         conv_mode (Literal["robust", "scipy", "astropy", "astropy_fft"], optional): Convolution mode. Defaults to "robust".
         mode (Literal["natural", "total"], optional): Frequency mode. Defaults to "natural".
@@ -343,7 +346,7 @@ def commonbeamer(
         Exception: If convolving beam will be undersampled on pixel grid.
 
     Returns:
-        List[CommonBeamData]: Common beam data for each channel and cube.
+        list[CommonBeamData]: Common beam data for each channel and cube.
     """
     if suffix is None:
         suffix = mode
@@ -568,7 +571,7 @@ def commonbeamer(
     for i, commonbeam in enumerate(commonbeams):
         logger.info(f"Channel {i}: {commonbeam!r}")
 
-    common_beam_data_list: List[CommonBeamData] = []
+    common_beam_data_list: list[CommonBeamData] = []
     for cube_data in tqdm(
         cube_data_list,
         desc="Getting convolution data",
@@ -667,22 +670,22 @@ def commonbeamer(
 
 
 def masking(
-    cube_data_list: List[CubeData], cutoff: Optional[u.Quantity] = None
-) -> List[CubeData]:
+    cube_data_list: list[CubeData], cutoff: u.Quantity | None = None
+) -> list[CubeData]:
     """Apply masking to cubes
 
     Args:
-        cube_data_list (List[CubeData]): List of cube data.
-        cutoff (Optional[u.Quantity], optional): Cutoff for PSF. Defaults to None.
+        cube_data_list (list[CubeData]): list of cube data.
+        cutoff (u.Quantity | None, optional): Cutoff for PSF. Defaults to None.
 
     Returns:
-        List[CubeData]: List of masked cube data.
+        list[CubeData]: list of masked cube data.
     """
     # Check for pipeline masking
     nullbeam = Beam(major=0 * u.deg, minor=0 * u.deg, pa=0 * u.deg)
     tiny = np.finfo(np.float32).tiny  # Smallest positive number - used to mask
     smallbeam = Beam(major=tiny * u.deg, minor=tiny * u.deg, pa=tiny * u.deg)
-    masked_cube_data_list: List[CubeData] = []
+    masked_cube_data_list: list[CubeData] = []
     for cube_data in cube_data_list:
         mask = cube_data.mask
         if cutoff is not None:
@@ -706,7 +709,7 @@ def initfiles(
     mode: Literal["natural", "total"],
     suffix="",
     prefix="",
-    ref_chan: Optional[int] = None,
+    ref_chan: int | None = None,
 ) -> Path:
     """Initialise output files
 
@@ -717,7 +720,7 @@ def initfiles(
         mode (Literal["natural", "total"]): Frequency mode - natural or total
         suffix (str, optional): Output suffix. Defaults to "".
         prefix (str, optional): Output prefix. Defaults to "".
-        ref_chan (Optional[int], optional): Reference channel index. Defaults to None.
+        ref_chan (int | None, optional): Reference channel index. Defaults to None.
 
     Raises:
         ValueError: If no Stokes axis is found in the header
@@ -917,48 +920,48 @@ def smooth_and_write_plane(
 
 
 def smooth_fits_cube(
-    infiles_list: List[Path],
+    infiles_list: list[Path],
     uselogs: bool = False,
     mode: Literal["natural", "total"] = "natural",
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     dryrun: bool = False,
-    prefix: str = None,
-    suffix: str = None,
-    outdir: Optional[Path] = None,
-    bmaj: Optional[float] = None,
-    bmin: Optional[float] = None,
-    bpa: Optional[float] = None,
-    cutoff: Optional[float] = None,
+    prefix: str | None = None,
+    suffix: str | None = None,
+    outdir: Path | None = None,
+    bmaj: float | None = None,
+    bmin: float | None = None,
+    bpa: float | None = None,
+    cutoff: float | None = None,
     circularise: bool = False,
-    ref_chan: Optional[int] = None,
+    ref_chan: int | None = None,
     tolerance: float = 0.0001,
     epsilon: float = 0.0005,
     nsamps: int = 200,
-    ncores: Optional[int] = None,
+    ncores: int | None = None,
     executor_type: Literal["thread", "process", "mpi"] = "thread",
     verbosity: int = 0,
-) -> Tuple[List[CubeData], List[CommonBeamData]]:
+) -> tuple[list[CubeData], list[CommonBeamData], list[Path]]:
     """Convolve a set of FITS cubes to a common beam.
 
     Args:
-        infiles_list (List[Path]): FITS files to convolve.
+        infiles_list (list[Path]): FITS files to convolve.
         uselogs (bool, optional): Use beamlogs. Defaults to False.
         mode (Literal["natural", "total"], optional): Frequency mode. Defaults to "natural".
         conv_mode (Literal["robust", "scipy", "astropy", "astropy_fft"], optional): Convolution mode. Defaults to "robust".
         dryrun (bool, optional): Do not write any images. Defaults to False.
         prefix (str, optional): Output filename prefix. Defaults to None.
         suffix (str, optional): Output filename suffix. Defaults to None.
-        outdir (Optional[Path], optional): Output directory. Defaults to None.
-        bmaj (Optional[float], optional): Target beam major axis in arcsec. Defaults to None.
-        bmin (Optional[float], optional): Target beam minor axis in arcsec. Defaults to None.
-        bpa (Optional[float], optional): Target beam position angle in deg. Defaults to None.
-        cutoff (Optional[float], optional): Beam cutoff in arcsec. Defaults to None.
+        outdir (Path | None, optional): Output directory. Defaults to None.
+        bmaj (float | None, optional): Target beam major axis in arcsec. Defaults to None.
+        bmin (float | None, optional): Target beam minor axis in arcsec. Defaults to None.
+        bpa (float | None, optional): Target beam position angle in deg. Defaults to None.
+        cutoff (float | None, optional): Beam cutoff in arcsec. Defaults to None.
         circularise (bool, optional): Set minor axis to major axis. Defaults to False.
-        ref_chan (Optional[int], optional): Reference channel for PSF in header. Defaults to None.
+        ref_chan (int | None, optional): Reference channel for PSF in header. Defaults to None.
         tolerance (float, optional): Radio beam tolerance. Defaults to 0.0001.
         epsilon (float, optional): Radio beam epsilon. Defaults to 0.0005.
         nsamps (int, optional): Radio beam nsamps. Defaults to 200.
-        ncores (Optional[int], optional): Radio beam ncores. Defaults to None.
+        ncores (int | None, optional): Radio beam ncores. Defaults to None.
         executor_type (Literal["thread", "process", "mpi"], optional): Executor type. Defaults to "thread".
 
     Raises:
@@ -968,7 +971,7 @@ def smooth_fits_cube(
         ValueError: If number of channels are not equal.
 
     Returns:
-        Tuple[List[CubeData], List[CommonBeamData]]: Cube data and common beam data.
+        tuple[list[CubeData], list[CommonBeamData], list[Path]]: Cube data and common beam data, and output filenames.
     """
     # Required for multiprocessing logging
     log_listener.start()
@@ -1008,7 +1011,7 @@ def smooth_fits_cube(
     if len(files) == 0:
         raise FileNotFoundError("No files found!")
 
-    outdir_list: List[Path] = (
+    outdir_list: list[Path] = (
         [outdir] * len(files) if outdir is not None else [f.parent for f in files]
     )
 
@@ -1045,7 +1048,7 @@ def smooth_fits_cube(
         )
     else:
         logger.info("Reading from convolve beamlog files")
-        common_beam_data_list: List[CommonBeamData] = []
+        common_beam_data_list: list[CommonBeamData] = []
         for cube_data in cube_data_list:
             commonbeam_log = cube_data.beamlog.with_suffix(f".{suffix}.txt")
             common_beam_data = readlogs(commonbeam_log)
@@ -1074,7 +1077,7 @@ def smooth_fits_cube(
                 ref_chan=ref_chan,
             )
             futures.append(future)
-    outfiles = [future.result() for future in futures]
+    outfiles: list[Path] = [future.result() for future in futures]
 
     with Executor(
         max_workers=ncores, initializer=init_worker, initargs=(log_queue, verbosity)
@@ -1099,7 +1102,7 @@ def smooth_fits_cube(
 
     log_listener.enqueue_sentinel()
 
-    return cube_data_list, common_beam_data_list
+    return cube_data_list, common_beam_data_list, outfiles
 
 
 def cli():
