@@ -21,6 +21,8 @@ from radio_beam.utils import BeamError
 from tqdm import tqdm
 
 from racs_tools.convolve_uv import (
+    NAN_BEAM,
+    ZERO_BEAM,
     get_convolving_beam,
     get_nyquist_beam,
     my_ceil,
@@ -36,8 +38,6 @@ from racs_tools.logging import (
     set_verbosity,
 )
 from racs_tools.parallel import get_executor
-
-# logger = setup_logger()
 
 
 #############################################
@@ -188,6 +188,9 @@ def savefile(
     """
     logger.info(f"Saving to {outfile.absolute()}")
     beam = new_beam
+    if np.isnan(beam):
+        logger.warning("Beam is NaN, setting to 0 in header")
+        beam = ZERO_BEAM
     header = beam.attach_to_header(header)
     fits.writeto(
         outfile.absolute(), newimage.astype(np.float32), header=header, overwrite=True
@@ -312,26 +315,23 @@ def get_common_beam(
         beam = Beam.from_fits_header(header)
         beams_list.append(beam)
 
-    beams = Beams(
-        [beam.major.to(u.deg).value for beam in beams_list] * u.deg,
-        [beam.minor.to(u.deg).value for beam in beams_list] * u.deg,
-        [beam.pa.to(u.deg).value for beam in beams_list] * u.deg,
-    )
+    beams = Beams(beams=beams_list)
+
+    # Init flags - False is good, True is bad
+    flags = np.array([False for beam in beams])
+
+    # Flag zero beams
+    flags = np.array([beam == ZERO_BEAM for beam in beams]) | flags
+
     if cutoff is not None:
-        flags = beams.major > cutoff * u.arcsec
+        flags = beams.major > cutoff * u.arcsec | flags
         if np.all(flags):
             logger.critical(
                 "All beams are larger than cutoff. All outputs will be blanked!"
             )
-            nan_beam = Beam(np.nan * u.deg, np.nan * u.deg, np.nan * u.deg)
-            nan_beams = Beams(
-                [np.nan for beam in beams_list] * u.deg,
-                [np.nan for beam in beams_list] * u.deg,
-                [np.nan for beam in beams_list] * u.deg,
-            )
-            return nan_beam, nan_beams
-    else:
-        flags = np.array([False for beam in beams])
+
+            nan_beams = Beams(beams=[NAN_BEAM for beam in beams_list])
+            return NAN_BEAM, nan_beams
 
     if target_beam is None:
         # Find the common beam
