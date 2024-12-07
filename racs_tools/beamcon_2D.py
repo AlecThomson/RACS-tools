@@ -324,7 +324,7 @@ def get_common_beam(
     flags = np.array([beam == ZERO_BEAM for beam in beams]) | flags
 
     if cutoff is not None:
-        flags = beams.major > cutoff * u.arcsec | flags
+        flags = beams.major.to(u.arcsec).value > cutoff | flags
         if np.all(flags):
             logger.critical(
                 "All beams are larger than cutoff. All outputs will be blanked!"

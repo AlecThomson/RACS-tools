@@ -536,7 +536,7 @@ def smooth(
     if np.any(np.isnan(new_image)):
         logger.warning(f"{np.isnan(new_image).sum()} NaNs present in smoothed output")
 
-    new_image *= fac
+    new_image = fac * new_image
 
     # Ensure the output data-type is the same as the input
     return new_image.astype(out_dtype)

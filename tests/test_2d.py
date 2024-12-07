@@ -77,6 +77,55 @@ def make_2d_image(tmpdir) -> TestImage:
 
 
 @pytest.fixture
+def make_2d_image_smaller(tmpdir) -> TestImage:
+    """Make a fake 2D image from with a Gaussian beam.
+
+    Args:
+        beam (Beam): Gaussian beam.
+
+    Returns:
+        str: Name of the output FITS file.
+    """
+    pix_scale = 2.5 * u.arcsec
+
+    beam = Beam(10 * u.arcsec, 10 * u.arcsec, 10 * u.deg)
+
+    data = beam.as_kernel(pixscale=pix_scale, x_size=100, y_size=100).array
+    data /= data.max()
+
+    hdu = fits.PrimaryHDU(data=data)
+
+    hdu.header = beam.attach_to_header(hdu.header)
+    hdu.header["BUNIT"] = "Jy/beam"
+    hdu.header["CDELT1"] = -pix_scale.to(u.deg).value
+    hdu.header["CDELT2"] = pix_scale.to(u.deg).value
+    hdu.header["CRPIX1"] = 50
+    hdu.header["CRPIX2"] = 50
+    hdu.header["CRVAL1"] = 0
+    hdu.header["CRVAL2"] = 0
+    hdu.header["CTYPE1"] = "RA---SIN"
+    hdu.header["CTYPE2"] = "DEC--SIN"
+    hdu.header["CUNIT1"] = "deg"
+    hdu.header["CUNIT2"] = "deg"
+    hdu.header["EQUINOX"] = 2000.0
+    hdu.header["RADESYS"] = "FK5"
+    hdu.header["LONPOLE"] = 180.0
+    hdu.header["LATPOLE"] = 0.0
+
+    outf = Path(tmpdir) / "2d_smaller.fits"
+    hdu.writeto(outf, overwrite=True)
+
+    yield TestImage(
+        path=outf,
+        beam=beam,
+        data=data,
+        pix_scale=pix_scale,
+    )
+
+    outf.unlink()
+
+
+@pytest.fixture
 def mirsmooth(make_2d_image: TestImage) -> TestImage:
     """Smooth a FITS image to a target beam using MIRIAD.
 
@@ -219,3 +268,14 @@ def test_smooth(make_2d_image: TestImage, mirsmooth: TestImage):
         assert np.allclose(
             smooth_data, mirsmooth.data, atol=1e-5
         ), f"Smooth with {conv_mode} does not match miriad"
+
+
+def test_get_common_beam(make_2d_image, make_2d_image_smaller):
+    common_beam = beamcon_2D.smooth_fits_files(
+        infile_list=[make_2d_image.path, make_2d_image_smaller.path],
+        cutoff=10,
+    )
+    assert (
+        common_beam.major.to(u.arcsec).value
+        == make_2d_image_smaller.beam.major.to(u.arcsec).value
+    )
