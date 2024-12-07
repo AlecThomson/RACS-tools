@@ -328,7 +328,14 @@ def get_common_beam(
             cutoff = cutoff.to(u.arcsec).value
         major_values = beams.major.to(u.arcsec).value
 
-        flags = major_values > cutoff | flags
+        try:
+            flags = major_values > cutoff | flags
+        except TypeError as e:
+            logger.error(f"{type(flags)=}")
+            logger.error(f"{type(major_values)=}")
+            logger.error(f"{type(cutoff)=}")
+            raise e
+
         if np.all(flags):
             logger.critical(
                 "All beams are larger than cutoff. All outputs will be blanked!"
