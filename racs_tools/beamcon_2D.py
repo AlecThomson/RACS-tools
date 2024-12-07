@@ -324,7 +324,10 @@ def get_common_beam(
     flags = np.array([beam == ZERO_BEAM for beam in beams]) | flags
 
     if cutoff is not None:
+        if isinstance(cutoff, u.Quantity):
+            cutoff = cutoff.to(u.arcsec).value
         major_values = beams.major.to(u.arcsec).value
+
         flags = major_values > cutoff | flags
         if np.all(flags):
             logger.critical(
