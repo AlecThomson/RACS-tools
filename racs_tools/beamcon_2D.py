@@ -318,13 +318,14 @@ def get_common_beam(
     beams = Beams(beams=beams_list)
 
     # Init flags - False is good, True is bad
-    flags = np.array([False for beam in beams])
+    flags = np.array([False for _ in beams])
 
     # Flag zero beams
     flags = np.array([beam == ZERO_BEAM for beam in beams]) | flags
 
     if cutoff is not None:
-        flags = beams.major.to(u.arcsec).value > cutoff | flags
+        major_values = beams.major.to(u.arcsec).value
+        flags = major_values > cutoff | flags
         if np.all(flags):
             logger.critical(
                 "All beams are larger than cutoff. All outputs will be blanked!"
