@@ -7,6 +7,7 @@ __author__ = "Alec Thomson"
 
 import logging
 import sys
+import traceback
 from pathlib import Path
 from typing import Literal, NamedTuple, Optional
 
@@ -324,17 +325,12 @@ def get_common_beam(
     flags = np.array([beam == ZERO_BEAM for beam in beams]) | flags
 
     if cutoff is not None:
-        if isinstance(cutoff, u.Quantity):
-            cutoff = cutoff.to(u.arcsec).value
-        major_values = beams.major.to(u.arcsec).value
-
-        try:
-            flags = major_values > cutoff | flags
-        except TypeError as e:
-            logger.error(f"{type(flags)=}")
-            logger.error(f"{type(major_values)=}")
-            logger.error(f"{type(cutoff)=}")
-            raise e
+        # Make an uncessary copy to in case we're using with Dask
+        # Whacky errors abound...
+        _majors = beams.major.to(u.arcsec).value
+        major_values = np.copy(_majors).astype(float)
+        major_flags = np.array(major_values > cutoff).astype(bool)
+        flags = major_flags | flags
 
         if np.all(flags):
             logger.critical(
