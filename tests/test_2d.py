@@ -11,7 +11,7 @@ import astropy.units as u
 import numpy as np
 import pytest
 from astropy.io import fits
-from radio_beam import Beam
+from radio_beam import Beam, Beams
 
 from racs_tools import au2, beamcon_2D
 from racs_tools.convolve_uv import smooth
@@ -279,3 +279,14 @@ def test_get_common_beam(make_2d_image, make_2d_image_smaller):
         common_beam.major.to(u.arcsec).value
         == make_2d_image_smaller.beam.major.to(u.arcsec).value
     )
+
+
+def test_flags():
+    beams = Beams([1, 1, 1, 1])
+    flags = np.array([False for beam in beams])
+    cutoff = 1
+
+    with pytest.raises(TypeError) as e_info:
+        flags = beams.major.to(u.arcsec) > cutoff * u.arcsec | flags
+
+    flags = beams.major.to(u.arcsec).value > cutoff | flags

@@ -7,6 +7,7 @@ __author__ = "Alec Thomson"
 
 import logging
 import sys
+import traceback
 from pathlib import Path
 from typing import Literal, NamedTuple, Optional
 
@@ -318,13 +319,19 @@ def get_common_beam(
     beams = Beams(beams=beams_list)
 
     # Init flags - False is good, True is bad
-    flags = np.array([False for beam in beams])
+    flags = np.array([False for _ in beams])
 
     # Flag zero beams
     flags = np.array([beam == ZERO_BEAM for beam in beams]) | flags
 
     if cutoff is not None:
-        flags = beams.major.to(u.arcsec).value > cutoff | flags
+        # Make an uncessary copy to in case we're using with Dask
+        # Whacky errors abound...
+        _majors = beams.major.to(u.arcsec).value
+        major_values = np.copy(_majors).astype(float)
+        major_flags = np.array(major_values > cutoff).astype(bool)
+        flags = major_flags | flags
+
         if np.all(flags):
             logger.critical(
                 "All beams are larger than cutoff. All outputs will be blanked!"
