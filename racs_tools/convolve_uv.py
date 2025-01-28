@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-""" Fast convolution in the UV domain """
+"""Fast convolution in the UV domain"""
+
 __author__ = "Wasim Raja"
 
 import gc
-from typing import Literal, NamedTuple, Optional, Tuple
+from typing import Literal, NamedTuple, Optional
 
-import astropy.units as units
 import numpy as np
 import scipy.signal
-from astropy import convolution
+from astropy import convolution, units
 from astropy import units as u
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -16,8 +16,7 @@ from astropy.wcs.utils import proj_plane_pixel_scales
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 
-import racs_tools.gaussft as gaussft
-from racs_tools import au2
+from racs_tools import au2, gaussft
 from racs_tools.logging import logger
 
 ZERO_BEAM = Beam(0 * u.deg)
@@ -184,7 +183,7 @@ def convolve(
         # Create a mask for the NaNs
         mask = np.isnan(image).astype(np.int16)
         logger.warning(
-            f"Image contains {mask.sum()} ({mask.sum()/ mask.size *100 :0.1f}%) NaNs"
+            f"Image contains {mask.sum()} ({mask.sum() / mask.size * 100:0.1f}%) NaNs"
         )
         image = np.nan_to_num(image)
 
@@ -236,7 +235,7 @@ def convolve(
         # Need this to get around numerical issues
         mask_conv = ~(mask_conv + 1 < 2)
         logger.warning(
-            f"Convolved image contains {mask_conv.sum()} ({mask_conv.sum()/ mask_conv.size *100 :0.1f}%) NaNs"
+            f"Convolved image contains {mask_conv.sum()} ({mask_conv.sum() / mask_conv.size * 100:0.1f}%) NaNs"
         )
         im_conv[mask_conv > 0] = np.nan
 
@@ -414,7 +413,7 @@ def parse_conv_mode(
         str: Convolution mode.
     """
     logger.info(f"Convolution mode: {conv_mode}")
-    if conv_mode not in CONVOLUTION_FUNCTIONS.keys():
+    if conv_mode not in CONVOLUTION_FUNCTIONS:
         raise ValueError(
             f"Please select valid convolution method! Expected one of {list(CONVOLUTION_FUNCTIONS.keys())}, got {conv_mode}"
         )
@@ -436,7 +435,7 @@ def get_convolving_beam(
     dx: u.Quantity,
     dy: u.Quantity,
     cutoff: Optional[float] = None,
-) -> Tuple[Beam, float]:
+) -> tuple[Beam, float]:
     """Get the beam to use for smoothing
 
     Args:

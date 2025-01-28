@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import logging
 import multiprocessing as mp
 from logging.handlers import QueueHandler, QueueListener
-from typing import Optional, Tuple
+from typing import Optional
 
 logging.captureWarnings(True)
 
@@ -14,7 +13,7 @@ logging.captureWarnings(True)
 
 def setup_logger(
     filename: Optional[str] = None,
-) -> Tuple[logging.Logger, QueueListener, mp.Queue]:
+) -> tuple[logging.Logger, QueueListener, mp.Queue]:
     """Setup a logger
 
     Args:

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-""" Find bad channels by checking statistics of each channel image. """
+"""Find bad channels by checking statistics of each channel image."""
 
 import argparse
 import warnings
-from typing import Tuple, Union
+from typing import Union
 
 import astropy.units as u
 import numpy as np
@@ -39,7 +39,7 @@ def getbadchans(
     qcube: SpectralCube,
     ucube: SpectralCube,
     cliplev: float = 5,
-) -> Tuple[np.ndarray, u.Quantity, u.Quantity]:
+) -> tuple[np.ndarray, u.Quantity, u.Quantity]:
     """Find bad channels in Stokes Q and U cubes
 
     Args:
@@ -96,7 +96,7 @@ def getbadchans(
 
 def blankchans(
     qcube: SpectralCube, ucube: SpectralCube, totalbad: np.ndarray, blank: bool = False
-) -> Tuple[SpectralCube, SpectralCube]:
+) -> tuple[SpectralCube, SpectralCube]:
     """Mask out bad channels
 
     Args:
@@ -162,13 +162,13 @@ def main(
     qcube = getcube(qfile)
     ucube = getcube(ufile)
 
-    assert len(ucube.spectral_axis) == len(
-        qcube.spectral_axis
-    ), "Cubes have different number of channels"
+    assert len(ucube.spectral_axis) == len(qcube.spectral_axis), (
+        "Cubes have different number of channels"
+    )
 
     # Iterate
     for i in range(iterate):
-        logger.info(f"Flagging iteration {i+1} of {iterate}")
+        logger.info(f"Flagging iteration {i + 1} of {iterate}")
         totalbad, qnoisevals, unoisevals = getbadchans(
             qcube,
             ucube,

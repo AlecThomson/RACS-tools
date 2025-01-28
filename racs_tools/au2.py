@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-""" For getting fluxes right in Jy/beam """
+"""For getting fluxes right in Jy/beam"""
+
 __author__ = "Tessa Vernstrom"
 
 import math
-from typing import List, Tuple
 
 import numpy as np
 
@@ -75,8 +75,8 @@ def gaussianDeconvolve(smaj, smin, spa, bmaj, bmin, bpa):
 
 
 def gauss_factor(
-    beamConv: List[float], beamOrig: List[float], dx1: float = 1, dy1: float = 1
-) -> Tuple[float, float, float, float, float]:
+    beamConv: list[float], beamOrig: list[float], dx1: float = 1, dy1: float = 1
+) -> tuple[float, float, float, float, float]:
     """
     Calculates the scaling factor to be applied after convolving
     a map in Jy/beam with a gaussian to get fluxes in Jy/beam again.

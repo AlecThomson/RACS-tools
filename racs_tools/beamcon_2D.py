@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-""" Convolve ASKAP images to common resolution """
+"""Convolve ASKAP images to common resolution"""
+
 from __future__ import annotations
 
 __author__ = "Alec Thomson"
@@ -7,9 +8,8 @@ __author__ = "Alec Thomson"
 
 import logging
 import sys
-import traceback
 from pathlib import Path
-from typing import Literal, NamedTuple, Optional
+from typing import Literal, NamedTuple
 
 import numpy as np
 from astropy import units as u
@@ -290,7 +290,7 @@ def beamcon_2d_on_fits(
 def get_common_beam(
     files: list[Path],
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
-    target_beam: Optional[Beam] = None,
+    target_beam: Beam | None = None,
     cutoff: float | None = None,
     tolerance: float = 0.0001,
     nsamps: float = 200,

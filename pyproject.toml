@@ -19,8 +19,7 @@ numba = "*"
 mpi4py = {version = ">=3", optional = true}
 
 [tool.poetry.dev-dependencies]
-black = "*"
-isort = "*"
+ruff = {version = "*", optional = true}
 
 [tool.poetry.extras]
 mpi = ["mpi4py"]
@@ -38,3 +37,32 @@ vcs = "git"
 [build-system]
 requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
 build-backend = "poetry_dynamic_versioning.backend"
+
+[tool.ruff]
+src = ["racs_tools"]
+
+[tool.ruff.lint]
+extend-select = [
+    # "B",   # flake8-bugbear
+    "I",   # isort
+    "ARG", # flake8-unused-arguments
+    # "C4",  # flake8-comprehensions
+    # "EM",  # flake8-errmsg
+    "ICN", # flake8-import-conventions
+    # "G",   # flake8-logging-format
+    # "PGH", # pygrep-hooks
+    # "PIE", # flake8-pie
+    # "PL",  # pylint
+    # "PT",  # flake8-pytest-style
+    # "PTH", # flake8-use-pathlib
+    # "RET", # flake8-return
+    # "RUF", # Ruff-specific
+    # "SIM", # flake8-simplify
+    # "T20", # flake8-print
+    "UP",  # pyupgrade
+    # "YTT", # flake8-2020
+    # "EXE", # flake8-executable
+    # "NPY", # NumPy specific rules
+    # "PD",  # pandas-vet,
+    # "RET", # flake8-return
+]

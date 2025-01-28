@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-""" Utilities for parallelism """
+"""Utilities for parallelism"""
+
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from typing import Dict, Literal, TypeVar
+from typing import Literal, TypeVar
 
 from racs_tools.logging import logger
 
@@ -15,7 +16,7 @@ except ImportError:
 
 Executor = TypeVar("Executor", ThreadPoolExecutor, ProcessPoolExecutor, MPIPoolExecutor)
 
-EXECUTORS: Dict[Literal["thread", "process", "mpi"], Executor] = {
+EXECUTORS: dict[Literal["thread", "process", "mpi"], Executor] = {
     "thread": ThreadPoolExecutor,
     "process": ProcessPoolExecutor,
     "mpi": MPIPoolExecutor,
