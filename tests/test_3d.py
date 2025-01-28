@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import shutil
 import subprocess as sp
@@ -10,14 +9,13 @@ import numpy as np
 import pytest
 from astropy.io import fits
 from astropy.table import Table
-from radio_beam import Beam, Beams
-
 from racs_tools import beamcon_3D
+from radio_beam import Beam, Beams
 
 from .test_2d import TestImage, check_images
 
 
-@pytest.fixture
+@pytest.fixture()
 def make_3d_image(
     tmpdir: str,
     beams: Beams = Beams(
@@ -125,7 +123,7 @@ def make_3d_image(
     outf.unlink()
 
 
-@pytest.fixture
+@pytest.fixture()
 def mirsmooth_3d(make_3d_image: TestImage) -> TestImage:
     """Smooth a FITS image to a target beam using MIRIAD.
 
@@ -139,15 +137,15 @@ def mirsmooth_3d(make_3d_image: TestImage) -> TestImage:
     target_beam = Beam(60 * u.arcsec, 60 * u.arcsec, 0 * u.deg)
     outim = make_3d_image.path.with_suffix(".im")
     cmd = f"fits op=xyin in={make_3d_image.path.as_posix()} out={outim.as_posix()}"
-    sp.run(cmd.split())
+    sp.run(cmd.split(), check=False)
 
     smoothim = make_3d_image.path.with_suffix(".smooth.im")
     cmd = f"convol map={outim} fwhm={target_beam.major.to(u.arcsec).value},{target_beam.minor.to(u.arcsec).value} pa={target_beam.pa.to(u.deg).value} options=cube out={smoothim}"
-    sp.run(cmd.split())
+    sp.run(cmd.split(), check=False)
 
     smoothfits = outim.with_suffix(".mirsmooth_3d.fits")
     cmd = f"fits op=xyout in={smoothim} out={smoothfits}"
-    sp.run(cmd.split())
+    sp.run(cmd.split(), check=False)
 
     yield TestImage(
         path=smoothfits,
@@ -176,9 +174,9 @@ def test_robust_3d(make_3d_image, mirsmooth_3d):
     )
 
     fname_beamcon = make_3d_image.path.with_suffix(".robust.fits")
-    assert check_images(
-        mirsmooth_3d.path, fname_beamcon
-    ), "Beamcon does not match Miriad"
+    assert check_images(mirsmooth_3d.path, fname_beamcon), (
+        "Beamcon does not match Miriad"
+    )
 
 
 def test_get_target_beam():
@@ -198,10 +196,8 @@ def test_get_target_beam():
     assert isinstance(single_nan_beam, Beam)
     assert not isinstance(single_nan_beam, Beams)
     assert all(
-        (
-            np.isnan(i)
-            for i in (single_nan_beam.major, single_nan_beam.minor, single_nan_beam.pa)
-        )
+        np.isnan(i)
+        for i in (single_nan_beam.major, single_nan_beam.minor, single_nan_beam.pa)
     )
 
     many_beam = beamcon_3D._get_target_beam(
@@ -219,10 +215,8 @@ def test_get_target_beam():
     assert len(many_nan_beam) == 3
     single_nan_beam = many_nan_beam[0]
     assert all(
-        (
-            np.isnan(i)
-            for i in (single_nan_beam.major, single_nan_beam.minor, single_nan_beam.pa)
-        )
+        np.isnan(i)
+        for i in (single_nan_beam.major, single_nan_beam.minor, single_nan_beam.pa)
     )
 
 

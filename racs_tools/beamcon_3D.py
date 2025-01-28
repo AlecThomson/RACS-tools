@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-""" Convolve ASKAP cubes to common resolution """
+"""Convolve ASKAP cubes to common resolution"""
+
 from __future__ import annotations
 
 __author__ = "Alec Thomson"
@@ -9,7 +10,7 @@ import logging
 import sys
 import warnings
 from pathlib import Path
-from typing import List, Literal, NamedTuple, Optional, Union
+from typing import Literal, NamedTuple
 
 import numpy as np
 from astropy import units as u
@@ -134,45 +135,44 @@ def get_beams(file: Path, header: fits.Header) -> CubeBeams:
             beams = Table.read(hdu)
 
     # Otherwise use beamlog file
+    elif beamlog.exists():
+        logger.info("No CASA beamtable found in header - looking for beamlogs")
+        logger.info(f"Getting beams from {beamlog}")
+
+        beams = Table.read(beamlog, format="ascii.commented_header")
+        # Header looks like:
+        # colnames=['Channel', 'BMAJarcsec', 'BMINarcsec', 'BPAdeg']
+        # But needs some fix up - astropy can't read the header properly
+        for col in beams.colnames:
+            idx = col.find("[")
+            if idx == -1:
+                new_col = col
+                unit = u.Unit("")
+            else:
+                new_col = col[:idx]
+                unit = u.Unit(col[idx + 1 : -1])
+            beams[col].unit = unit
+            beams[col].name = new_col
     else:
-        if beamlog.exists():
-            logger.info("No CASA beamtable found in header - looking for beamlogs")
-            logger.info(f"Getting beams from {beamlog}")
+        logger.warning("No beamlog found")
+        logger.warning("Using header beam - assuming a constant beam")
+        try:
+            beam: Beam = Beam.from_fits_header(header)
+            wcs = WCS(header)
+            spec_axis = wcs.spectral
+            _nchan = spec_axis.array_shape[0]
+            beams = Table()
+            beams.add_column(np.arange(_nchan), name="Channel")
+            beams.add_column([beam.major.to(u.arcsec)] * _nchan, name="BMAJ")
+            beams.add_column(
+                [beam.minor.to(u.arcsec)] * _nchan,
+                name="BMIN",
+            )
+            beams.add_column([beam.pa.to(u.deg)] * _nchan, name="BPA")
 
-            beams = Table.read(beamlog, format="ascii.commented_header")
-            # Header looks like:
-            # colnames=['Channel', 'BMAJarcsec', 'BMINarcsec', 'BPAdeg']
-            # But needs some fix up - astropy can't read the header properly
-            for col in beams.colnames:
-                idx = col.find("[")
-                if idx == -1:
-                    new_col = col
-                    unit = u.Unit("")
-                else:
-                    new_col = col[:idx]
-                    unit = u.Unit(col[idx + 1 : -1])
-                beams[col].unit = unit
-                beams[col].name = new_col
-        else:
-            logger.warning("No beamlog found")
-            logger.warning("Using header beam - assuming a constant beam")
-            try:
-                beam: Beam = Beam.from_fits_header(header)
-                wcs = WCS(header)
-                spec_axis = wcs.spectral
-                _nchan = spec_axis.array_shape[0]
-                beams = Table()
-                beams.add_column(np.arange(_nchan), name="Channel")
-                beams.add_column([beam.major.to(u.arcsec)] * _nchan, name="BMAJ")
-                beams.add_column(
-                    [beam.minor.to(u.arcsec)] * _nchan,
-                    name="BMIN",
-                )
-                beams.add_column([beam.pa.to(u.deg)] * _nchan, name="BPA")
-
-            except Exception as e:
-                logger.error("Couldn't get beam from header")
-                raise e
+        except Exception as e:
+            logger.error("Couldn't get beam from header")
+            raise e
 
     nchan = len(beams)
     return CubeBeams(beams, nchan, beamlog)
@@ -252,7 +252,7 @@ def smooth_plane(
     slicer = tuple(slicer)
 
     plane = cube.unmasked_data[slicer].value.astype(np.float32)
-    logger.debug(f"Size of plane is {(plane.nbytes*u.byte).to(u.MB)}")
+    logger.debug(f"Size of plane is {(plane.nbytes * u.byte).to(u.MB)}")
 
     if mask:
         logger.info(f"Masking channel {idx}")
@@ -317,19 +317,19 @@ def make_data(files: list[Path], outdir: list[Path]) -> list[CubeData]:
 
 
 def _get_commonbeams(
-    cube_data_list: List[CubeData],
+    cube_data_list: list[CubeData],
     nchans: int,
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     mode: Literal["natural", "total"] = "natural",
-    target_beam: Optional[Beam] = None,
+    target_beam: Beam | None = None,
     circularise: bool = False,
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
 ) -> Beams:
-    assert (
-        isinstance(target_beam, Beam) or target_beam is None
-    ), f"Expected target_beam to be type Beam or None, got {type(target_beam)}"
+    assert isinstance(target_beam, Beam) or target_beam is None, (
+        f"Expected target_beam to be type Beam or None, got {type(target_beam)}"
+    )
 
     if mode == "natural":
         big_beams = []
@@ -550,17 +550,17 @@ def _get_commonbeams(
 
 
 def commonbeamer(
-    cube_data_list: List[CubeData],
+    cube_data_list: list[CubeData],
     nchans: int,
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     mode: Literal["natural", "total"] = "natural",
-    suffix: Optional[str] = None,
-    target_beam: Optional[Union[Beam, Beams]] = None,
+    suffix: str | None = None,
+    target_beam: Beam | Beams | None = None,
     circularise: bool = False,
     tolerance: float = 0.0001,
     nsamps: int = 200,
     epsilon: float = 0.0005,
-) -> List[CommonBeamData]:
+) -> list[CommonBeamData]:
     """Find common beam for all channels.
     Computed beams will be written to convolving beam logger.
 
@@ -767,9 +767,9 @@ def initfiles(
     spec_axis = wcs.spectral
     crpix = int(spec_axis.wcs.crpix)
     nchans = spec_axis.array_shape[0]
-    assert nchans == len(
-        commonbeams
-    ), "Number of channels in header and commonbeams do not match"
+    assert nchans == len(commonbeams), (
+        "Number of channels in header and commonbeams do not match"
+    )
     chans = np.arange(nchans)
     if ref_chan is None:
         # Get reference channel, and attach PSF there
@@ -948,10 +948,10 @@ def smooth_and_write_plane(
 
 
 def _get_target_beam(
-    bmaj: Optional[Union[float, List[float]]] = None,
-    bmin: Optional[Union[float, List[float]]] = None,
-    bpa: Optional[Union[float, List[float]]] = None,
-) -> Union[None, Beam, Beams]:
+    bmaj: float | list[float] | None = None,
+    bmin: float | list[float] | None = None,
+    bpa: float | list[float] | None = None,
+) -> None | Beam | Beams:
     """Appropriately handle the input target beam specification
 
     Args:
@@ -984,9 +984,9 @@ def _get_target_beam(
         logger.info(f"Target beam is {target_beam!r}")
         return target_beam
     else:
-        assert all(
-            [isinstance(b, list) for b in (bmaj, bmin, bpa)]
-        ), "Something is not a list"
+        assert all([isinstance(b, list) for b in (bmaj, bmin, bpa)]), (
+            "Something is not a list"
+        )
         assert len(bmaj) == len(bmin) == len(bpa), "Unequal target beam lengths"
 
         # Deal with moments where, potentially, a beam has a NaN but not all NaN.
@@ -1018,13 +1018,13 @@ def smooth_fits_cube(
     mode: Literal["natural", "total"] = "natural",
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
     dryrun: bool = False,
-    prefix: Optional[str] = None,
-    suffix: Optional[str] = None,
-    outdir: Optional[Path] = None,
-    bmaj: Optional[Union[float, List[float]]] = None,
-    bmin: Optional[Union[float, List[float]]] = None,
-    bpa: Optional[Union[float, List[float]]] = None,
-    cutoff: Optional[float] = None,
+    prefix: str | None = None,
+    suffix: str | None = None,
+    outdir: Path | None = None,
+    bmaj: float | list[float] | None = None,
+    bmin: float | list[float] | None = None,
+    bpa: float | list[float] | None = None,
+    cutoff: float | None = None,
     circularise: bool = False,
     ref_chan: int | None = None,
     tolerance: float = 0.0001,

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import logging
 import shutil
@@ -11,11 +10,10 @@ import astropy.units as u
 import numpy as np
 import pytest
 from astropy.io import fits
-from radio_beam import Beam, Beams
-
 from racs_tools import au2, beamcon_2D
 from racs_tools.convolve_uv import smooth
 from racs_tools.logging import logger
+from radio_beam import Beam, Beams
 
 logger.setLevel(logging.DEBUG)
 
@@ -27,7 +25,7 @@ class TestImage(NamedTuple):
     pix_scale: u.Quantity
 
 
-@pytest.fixture
+@pytest.fixture()
 def make_2d_image(tmpdir) -> TestImage:
     """Make a fake 2D image from with a Gaussian beam.
 
@@ -76,7 +74,7 @@ def make_2d_image(tmpdir) -> TestImage:
     outf.unlink()
 
 
-@pytest.fixture
+@pytest.fixture()
 def make_2d_image_smaller(tmpdir) -> TestImage:
     """Make a fake 2D image from with a Gaussian beam.
 
@@ -125,7 +123,7 @@ def make_2d_image_smaller(tmpdir) -> TestImage:
     outf.unlink()
 
 
-@pytest.fixture
+@pytest.fixture()
 def mirsmooth(make_2d_image: TestImage) -> TestImage:
     """Smooth a FITS image to a target beam using MIRIAD.
 
@@ -139,15 +137,15 @@ def mirsmooth(make_2d_image: TestImage) -> TestImage:
     target_beam = Beam(40 * u.arcsec, 40 * u.arcsec, 0 * u.deg)
     outim = make_2d_image.path.with_suffix(".im")
     cmd = f"fits op=xyin in={make_2d_image.path.as_posix()} out={outim.as_posix()}"
-    sp.run(cmd.split())
+    sp.run(cmd.split(), check=False)
 
     smoothim = make_2d_image.path.with_suffix(".smooth.im")
     cmd = f"convol map={outim} fwhm={target_beam.major.to(u.arcsec).value},{target_beam.minor.to(u.arcsec).value} pa={target_beam.pa.to(u.deg).value} options=final out={smoothim}"
-    sp.run(cmd.split())
+    sp.run(cmd.split(), check=False)
 
     smoothfits = outim.with_suffix(".mirsmooth.fits")
     cmd = f"fits op=xyout in={smoothim} out={smoothfits}"
-    sp.run(cmd.split())
+    sp.run(cmd.split(), check=False)
 
     yield TestImage(
         path=smoothfits,
@@ -265,9 +263,9 @@ def test_smooth(make_2d_image: TestImage, mirsmooth: TestImage):
             dy=make_2d_image.pix_scale,
             conv_mode=conv_mode,
         )
-        assert np.allclose(
-            smooth_data, mirsmooth.data, atol=1e-5
-        ), f"Smooth with {conv_mode} does not match miriad"
+        assert np.allclose(smooth_data, mirsmooth.data, atol=1e-5), (
+            f"Smooth with {conv_mode} does not match miriad"
+        )
 
 
 def test_get_common_beam(make_2d_image, make_2d_image_smaller):

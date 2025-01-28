@@ -6,7 +6,6 @@ psf. The intrinsic psf must be specified.
 
 Python version of gaussft.f by Wasim Raja
 """
-from typing import Tuple
 
 import numba as nb
 import numpy as np
@@ -22,7 +21,7 @@ def gaussft(
     bpa: float,
     u: np.ndarray,
     v: np.ndarray,
-) -> Tuple[np.ndarray, float]:
+) -> tuple[np.ndarray, float]:
     """
     Compute the Fourier transform of a 2D Gaussian for convolution.
 
