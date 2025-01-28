@@ -286,7 +286,7 @@ def test_flags():
     flags = np.array([False for beam in beams])
     cutoff = 1
 
-    with pytest.raises(TypeError) as e_info:
+    with pytest.raises(TypeError):
         flags = beams.major.to(u.arcsec) > cutoff * u.arcsec | flags
 
     flags = beams.major.to(u.arcsec).value > cutoff | flags

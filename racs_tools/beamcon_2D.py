@@ -7,7 +7,6 @@ __author__ = "Alec Thomson"
 
 import logging
 import sys
-import traceback
 from pathlib import Path
 from typing import Literal, NamedTuple, Optional
 

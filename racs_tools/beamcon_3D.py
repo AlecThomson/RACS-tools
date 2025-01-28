@@ -9,7 +9,7 @@ import logging
 import sys
 import warnings
 from pathlib import Path
-from typing import List, Literal, NamedTuple, Optional, Tuple, Union
+from typing import List, Literal, NamedTuple, Optional, Union
 
 import numpy as np
 from astropy import units as u
