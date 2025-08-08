@@ -1,0 +1,36 @@
+FROM ubuntu:24.04
+
+# Install required dependencies
+RUN apt-get update && \
+    apt-get install -y curl git unzip ca-certificates && \
+    update-ca-certificates
+
+
+# Download the latest installer
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+# Run the installer then remove it
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+# Ensure the installed binary is on the `PATH`
+ENV PATH="/root/.local/bin/:$PATH"
+
+RUN uv venv /opt/venv
+# Use the virtual environment automatically
+ENV VIRTUAL_ENV=/opt/venv
+# Place entry points in the environment at the front of the path
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Deal with numba
+RUN mkdir /tmp/numba_cache & chmod 777 /tmp/numba_cache & NUMBA_CACHE_DIR=/tmp/numba_cache
+ENV NUMBA_CACHE_DIR=/tmp/numba_cache
+
+
+
+# Install package
+# Copy your source code into the image
+ADD . /app
+WORKDIR /app
+RUN uv pip install .
+
+# Check install was successful
+RUN beamcon_3D -h
+CMD ["bash"]
