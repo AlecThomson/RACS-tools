@@ -49,7 +49,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ env.REGISTRY }}/$REPO/${{ matrix.name }}
+            ${{ env.REGISTRY }}/${{ env.REPO }}/${{ matrix.name }}
           tags: |
             type=raw,value=${{ env.TAG_SUFFIX }}
 
@@ -62,18 +62,18 @@ jobs:
           context: .
           file: Dockerfile-${{ matrix.name }}  # Builds the correct Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/$REPO/${{ matrix.name }}:${{ env.TAG_SUFFIX }}  # Explicitly set tag
+          tags: ${{ env.REGISTRY }}/${{ env.REPO }}/${{ matrix.name }}:${{ env.TAG_SUFFIX }}  # Explicitly set tag
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       # - name: Debug build output
       #   run: |
-      #     docker images ${{ env.REGISTRY }}/$REPO/${{ matrix.name }}
+      #     docker images ${{ env.REGISTRY }}/${{ env.REPO }}/${{ matrix.name }}
 
       # - name: Debug attestation input
       #   run: |
-      #     echo "Subject name: ${{ env.REGISTRY }}/$REPO/${{ matrix.name }}:${{ env.TAG_SUFFIX }}"
+      #     echo "Subject name: ${{ env.REGISTRY }}/${{ env.REPO }}/${{ matrix.name }}:${{ env.TAG_SUFFIX }}"
       #     echo "Subject digest: ${{ steps.push.outputs.digest }}"
 
       # - name: Generate artifact attestation
