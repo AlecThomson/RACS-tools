@@ -61,7 +61,7 @@ jobs:
           context: .
           file: Dockerfile-${{ matrix.name }}  # Builds the correct Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }}:${{ env.TAG_SUFFIX }}  # Explicitly set tag
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }}:${{ env.TAG_SUFFIX }}  # Explicitly set tag
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
