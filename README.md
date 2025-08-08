@@ -15,13 +15,16 @@ conda activate racs-tools
 ```
 
 ### Docker / Singularity
-A Dockerfile is provided if you wish to build your own container. Otherwise, images are provided on [DockerHub](https://hub.docker.com/r/alecthomson/racstools). You can pull these by running e.g.
+NOTE: The DockerHub builds are no longer supported.
+
+A Dockerfile is provided if you wish to build your own container. Otherwise, images are provided here on GitHub. You can pull these by running e.g.
 ```bash
-docker pull alecthomson/racstools
+docker pull ghcr.io/alecthomson/racstools
 ```
 or
+
 ```bash
-singularity pull docker://alecthomson/racstools
+apptainer pull docker://ghcr.io/alecthomson/racstools
 ```
 
 NOTE: These builds are still experimental, and have not been widely tested. In particular, parallelisation may not work as expected.
