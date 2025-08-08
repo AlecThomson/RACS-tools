@@ -19,7 +19,7 @@ jobs:
       id-token: write
     strategy:
       matrix:
-        name: ["base","ubuntu","mpich"]
+        name: ["base","ubuntu","mpich","ompi"]
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
