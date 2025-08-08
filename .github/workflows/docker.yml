@@ -30,11 +30,11 @@ jobs:
         id: tag_suffix
         run: |
           if [[ "${{ github.event_name }}" == "release" ]]; then
-            echo "TAG_SUFFIX=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+            echo "TAG_SUFFIX=${{ github.event.release.tag_name }}-${{ matrix.name }}" >> $GITHUB_ENV
           else
             SHORT_HASH=$(git rev-parse --short HEAD)
             LATEST_RELEASE=$(git describe --tags --abbrev=0 || echo "latest")
-            echo "TAG_SUFFIX=${LATEST_RELEASE}-${SHORT_HASH}" >> $GITHUB_ENV
+            echo "TAG_SUFFIX=${LATEST_RELEASE}-${{ matrix.name }}"" >> $GITHUB_ENV
           fi
 
       - name: Log in to the Container registry
@@ -49,7 +49,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ env.REGISTRY }}/${{ env.REPO }}/${{ matrix.name }}
+            ${{ env.REGISTRY }}/${{ env.REPO }}
           tags: |
             type=raw,value=${{ env.TAG_SUFFIX }}
 
@@ -62,7 +62,7 @@ jobs:
           context: .
           file: Dockerfile-${{ matrix.name }}  # Builds the correct Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.REPO }}/${{ matrix.name }}:${{ env.TAG_SUFFIX }}  # Explicitly set tag
+          tags: ${{ env.REGISTRY }}/${{ env.REPO }}:${{ env.TAG_SUFFIX }}  # Explicitly set tag
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
