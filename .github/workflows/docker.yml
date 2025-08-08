@@ -53,7 +53,7 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        
+
       - name: Build and push Docker image
         id: push
         uses: docker/build-push-action@v6
@@ -65,7 +65,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          
+
       # - name: Debug build output
       #   run: |
       #     docker images ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }}
