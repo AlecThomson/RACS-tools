@@ -331,6 +331,9 @@ def _get_commonbeams(
         f"Expected target_beam to be type Beam or None, got {type(target_beam)}"
     )
 
+    logger.info("Finding common beam for all channels and cubes")
+    logger.info(f"Number of channels {nchans=}")
+
     if mode == "natural":
         big_beams = []
         for n in trange(
@@ -546,6 +549,7 @@ def _get_commonbeams(
             pa=commonbeams.pa * 0,
         )
 
+    logger.info(f"Number of common beams: {len(commonbeams)}")
     return commonbeams
 
 
@@ -765,10 +769,15 @@ def initfiles(
 
     ## Header
     spec_axis = wcs.spectral
-    crpix = int(spec_axis.wcs.crpix)
+    # account for either an float or array of single float. Anything else should fail!
+    crpix = (
+        int(np.squeeze(spec_axis.wcs.crpix))
+        if isinstance(spec_axis.wcs.crpix, np.ndarray)
+        else int(spec_axis.wcs.crpix)
+    )
     nchans = spec_axis.array_shape[0]
     assert nchans == len(commonbeams), (
-        "Number of channels in header and commonbeams do not match"
+        f"Number of channels {nchans=} in header and commonbeams {len(commonbeams)=} do not match"
     )
     chans = np.arange(nchans)
     if ref_chan is None:
