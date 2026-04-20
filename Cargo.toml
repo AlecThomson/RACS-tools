@@ -1,0 +1,13 @@
+[package]
+name = "racs_tools"        # must match your Python package name
+edition = "2021"
+
+[lib]
+name = "racs_tools"        # must also match package name
+crate-type = ["cdylib"]
+
+[dependencies]
+ndarray = "0.16.1"
+num-complex = "0.4.6"
+numpy = "0.26.0"
+pyo3 = "0.26.0"

@@ -1,68 +1,46 @@
-[tool.poetry]
+[project]
 name = "racs-tools"
-version = "0.0.0" # A placeholder
+version = "0.0.0"  # maturin can also use git/dynamic versions if needed
 description = "Useful scripts for RACS."
-authors = ["Alec Thomson"]
-license = "BSD"
+authors = [{ name = "Alec Thomson" }]
+license = { text = "BSD" }
 readme = "README.md"
-packages = [{include = "racs_tools"}]
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=2",
+  "astropy>=6",
+  "radio_beam>=0.3.8",
+  "scipy",
+  "spectral_cube>=0.6.3",
+  "tqdm",
+  "numba",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.10"
-numpy = ">=2"
-astropy = ">=6"
-radio_beam = ">=0.3.8"
-scipy = "*"
-spectral_cube = ">=0.6.3"
-tqdm = "*"
-numba = "*"
-mpi4py = {version = ">=3", optional = true}
+[project.optional-dependencies]
+mpi = ["mpi4py>=3"]
 
-[tool.poetry.dev-dependencies]
-ruff = {version = "*", optional = true}
-
-[tool.poetry.extras]
-mpi = ["mpi4py"]
-
-[tool.poetry.scripts]
+[project.scripts]
 beamcon_2D = "racs_tools.beamcon_2D:cli"
 beamcon_3D = "racs_tools.beamcon_3D:cli"
 getnoise_list = "racs_tools.getnoise_list:cli"
 
-
-[tool.poetry-dynamic-versioning]
-enable = true
-vcs = "git"
-
 [build-system]
-requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
-build-backend = "poetry_dynamic_versioning.backend"
+requires = ["maturin>=1,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+bindings = "pyo3"
+# If your Rust crate lives inside racs_tools/
+manifest-path = "Cargo.toml"
+module-name = "racs_tools.gaussft_rs"
 
 [tool.ruff]
 src = ["racs_tools"]
 
 [tool.ruff.lint]
 extend-select = [
-    # "B",   # flake8-bugbear
-    "I",   # isort
-    "ARG", # flake8-unused-arguments
-    # "C4",  # flake8-comprehensions
-    # "EM",  # flake8-errmsg
-    "ICN", # flake8-import-conventions
-    # "G",   # flake8-logging-format
-    # "PGH", # pygrep-hooks
-    # "PIE", # flake8-pie
-    # "PL",  # pylint
-    # "PT",  # flake8-pytest-style
-    # "PTH", # flake8-use-pathlib
-    # "RET", # flake8-return
-    # "RUF", # Ruff-specific
-    # "SIM", # flake8-simplify
-    # "T20", # flake8-print
-    "UP",  # pyupgrade
-    # "YTT", # flake8-2020
-    # "EXE", # flake8-executable
-    # "NPY", # NumPy specific rules
-    # "PD",  # pandas-vet,
-    # "RET", # flake8-return
+  "I",   # isort
+  "ARG", # flake8-unused-arguments
+  "ICN", # flake8-import-conventions
+  "UP",  # pyupgrade
 ]

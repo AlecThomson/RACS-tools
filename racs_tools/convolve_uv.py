@@ -16,7 +16,8 @@ from astropy.wcs.utils import proj_plane_pixel_scales
 from radio_beam import Beam, Beams
 from radio_beam.utils import BeamError
 
-from racs_tools import au2, gaussft
+from racs_tools import au2#, gaussft
+import racs_tools.gaussft_rs as gaussft
 from racs_tools.logging import logger
 
 ZERO_BEAM = Beam(0 * u.deg)

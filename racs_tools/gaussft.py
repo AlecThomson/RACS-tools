@@ -11,7 +11,13 @@ import numba as nb
 import numpy as np
 
 
-@nb.njit(cache=True)
+# @nb.njit(cache=True)
+# @nb.njit(
+#     "Tuple((complex64[:,:], float64))(float64, float64, float64, float64, float64, float64, complex64[:], complex64[:])",
+#     cache=True,
+#     fastmath=True,
+#     nogil=True
+# )
 def gaussft(
     bmin_in: float,
     bmaj_in: float,
@@ -82,4 +88,4 @@ def gaussft(
     # Vectorized calculation of g_final
     g_final = g_ratio * np.exp(g_arg - dg_arg)
 
-    return g_final, g_ratio
+    return g_final.astype(np.complex64), g_ratio
