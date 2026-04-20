@@ -4,7 +4,7 @@
 __author__ = "Wasim Raja"
 
 import gc
-from typing import Literal, NamedTuple, Optional
+from typing import Literal, NamedTuple
 
 import numpy as np
 import scipy.signal
@@ -134,7 +134,7 @@ def convolve(
     new_beam: Beam,
     dx: u.Quantity,
     dy: u.Quantity,
-    cutoff: Optional[float] = None,
+    cutoff: float | None = None,
 ) -> ConvolutionResult:
     """Convolve by X-ing in the Fourier domain.
         - convolution with Gaussian kernels only
@@ -248,7 +248,7 @@ def convolve_scipy(
     new_beam: Beam,
     dx: u.Quantity,
     dy: u.Quantity,
-    cutoff: Optional[float] = None,
+    cutoff: float | None = None,
 ) -> ConvolutionResult:
     """Convolve using scipy's convolution
 
@@ -296,7 +296,7 @@ def convolve_astropy(
     new_beam: Beam,
     dx: u.Quantity,
     dy: u.Quantity,
-    cutoff: Optional[float] = None,
+    cutoff: float | None = None,
 ) -> ConvolutionResult:
     """Convolve using astropy's convolution
 
@@ -347,7 +347,7 @@ def convolve_astropy_fft(
     new_beam: Beam,
     dx: u.Quantity,
     dy: u.Quantity,
-    cutoff: Optional[float] = None,
+    cutoff: float | None = None,
 ) -> ConvolutionResult:
     """Convolve using astropy's FFT convolution
 
@@ -434,7 +434,7 @@ def get_convolving_beam(
     new_beam: Beam,
     dx: u.Quantity,
     dy: u.Quantity,
-    cutoff: Optional[float] = None,
+    cutoff: float | None = None,
 ) -> tuple[Beam, float]:
     """Get the beam to use for smoothing
 
@@ -502,7 +502,7 @@ def smooth(
     dx: u.Quantity,
     dy: u.Quantity,
     conv_mode: Literal["robust", "scipy", "astropy", "astropy_fft"] = "robust",
-    cutoff: Optional[float] = None,
+    cutoff: float | None = None,
 ) -> np.ndarray:
     """Apply smoothing to image in Jy/beam
 

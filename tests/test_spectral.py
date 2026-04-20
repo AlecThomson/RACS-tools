@@ -1,8 +1,8 @@
-from astropy.wcs import WCS
-from astropy.io import fits
 import numpy as np
-
 import pytest
+from astropy.io import fits
+from astropy.wcs import WCS
+
 
 @pytest.fixture
 def spec_axis() -> WCS:
@@ -13,7 +13,8 @@ def spec_axis() -> WCS:
     header["CRVAL1"] = 800e6
     header["CRPIX1"] = 1
     header["CDELT1"] = 1e6
-    return  WCS(header).spectral
+    return WCS(header).spectral
+
 
 def test_crpix(spec_axis: WCS) -> None:
     crpix = (
@@ -22,6 +23,7 @@ def test_crpix(spec_axis: WCS) -> None:
         else int(spec_axis.wcs.crpix)
     )
     assert crpix == 1
+
 
 def test_nchan(spec_axis: WCS) -> None:
     nchans = spec_axis.array_shape[0]

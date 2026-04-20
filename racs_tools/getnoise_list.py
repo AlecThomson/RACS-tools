@@ -3,7 +3,6 @@
 
 import argparse
 import warnings
-from typing import Union
 
 import astropy.units as u
 import numpy as np
@@ -146,7 +145,7 @@ def main(
     blank: bool = False,
     cliplev: float = 5,
     iterate: int = 1,
-    outfile: Union[str, None] = None,
+    outfile: str | None = None,
     save_noise: bool = False,
 ) -> None:
     """Flag bad channels in Stokes Q and U cubes
