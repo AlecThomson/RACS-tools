@@ -772,7 +772,7 @@ def initfiles(
     # account for either an float or array of single float. Anything else should fail!
     crpix = (
         int(np.squeeze(spec_axis.wcs.crpix))
-        if isinstance(spec_axis.wcs.crpix, np.ndarray)
+        if not np.isscalar(spec_axis.wcs.crpix)
         else int(spec_axis.wcs.crpix)
     )
     nchans = spec_axis.array_shape[0]
