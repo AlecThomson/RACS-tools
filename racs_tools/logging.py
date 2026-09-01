@@ -2,6 +2,8 @@
 
 import logging
 import multiprocessing as mp
+from collections.abc import Iterator
+from contextlib import contextmanager
 from logging.handlers import QueueHandler, QueueListener
 
 logging.captureWarnings(True)
@@ -76,3 +78,21 @@ def init_worker(log_queue: mp.Queue, verbosity: int = 0) -> None:
 
 
 logger, log_listener, log_queue = setup_logger()
+
+
+@contextmanager
+def running_log_listener() -> Iterator[None]:
+    """Run the module-level log listener for the duration of the block.
+
+    On Python 3.13, ``QueueListener.start()`` raises ``RuntimeError`` if the
+    listener's monitor thread is still set from a previous run. Calling
+    ``enqueue_sentinel()`` alone (without ``stop()``) leaves the thread
+    reference set even after the monitor has exited, so the listener must
+    always be stopped -- on every exit path -- before it can be started
+    again.
+    """
+    log_listener.start()
+    try:
+        yield
+    finally:
+        log_listener.stop()

@@ -30,9 +30,9 @@ from racs_tools.beamcon_2D import my_ceil, round_up
 from racs_tools.convolve_uv import NAN_BEAM, ZERO_BEAM, parse_conv_mode, smooth
 from racs_tools.logging import (
     init_worker,
-    log_listener,
     log_queue,
     logger,
+    running_log_listener,
     set_verbosity,
 )
 from racs_tools.parallel import get_executor
@@ -1076,131 +1076,131 @@ def smooth_fits_cube(
         tuple[list[CubeData], list[CommonBeamData], list[Path]]: Cube data and common beam data, and output filenames.
     """
     # Required for multiprocessing logging
-    log_listener.start()
-    if dryrun:
-        logger.info("Doing a dry run -- no files will be saved")
+    with running_log_listener():
+        if dryrun:
+            logger.info("Doing a dry run -- no files will be saved")
 
-    # Check early as can fail
-    Executor = get_executor(executor_type)
+        # Check early as can fail
+        Executor = get_executor(executor_type)
 
-    # Check mode
-    logger.info(f"Mode is {mode}")
-    if mode == "natural":
-        logger.info("Smoothing each channel to a common resolution")
-    elif mode == "total":
-        logger.info("Smoothing all channels to a common resolution")
-    else:
-        raise ValueError(f"Mode must be 'natural' or 'total', not '{mode}'")
+        # Check mode
+        logger.info(f"Mode is {mode}")
+        if mode == "natural":
+            logger.info("Smoothing each channel to a common resolution")
+        elif mode == "total":
+            logger.info("Smoothing all channels to a common resolution")
+        else:
+            raise ValueError(f"Mode must be 'natural' or 'total', not '{mode}'")
 
-    # Check cutoff
-    if cutoff is not None:
-        cutoff *= u.arcsec
-        logger.info(f"Cutoff is: {cutoff}")
+        # Check cutoff
+        if cutoff is not None:
+            cutoff *= u.arcsec
+            logger.info(f"Cutoff is: {cutoff}")
 
-    # Check target
-    conv_mode = parse_conv_mode(conv_mode)
+        # Check target
+        conv_mode = parse_conv_mode(conv_mode)
 
-    target_beam = _get_target_beam(bmaj=bmaj, bmin=bmin, bpa=bpa)
+        target_beam = _get_target_beam(bmaj=bmaj, bmin=bmin, bpa=bpa)
 
-    files = sorted(infiles_list)
-    if len(files) == 0:
-        raise FileNotFoundError("No files found!")
+        files = sorted(infiles_list)
+        if len(files) == 0:
+            raise FileNotFoundError("No files found!")
 
-    outdir_list: list[Path] = (
-        [outdir] * len(files) if outdir is not None else [f.parent for f in files]
-    )
-
-    cube_data_list = make_data(files, outdir_list)
-
-    # Sanity check channel counts
-    nchans = np.array([cube_data.nchan for cube_data in cube_data_list])
-    if not all(nchans == nchans[0]):
-        raise ValueError(f"Unequal number of spectral channels! Got {nchans}")
-
-    if isinstance(target_beam, Beams) and any(nchans != len(target_beam)):
-        raise ValueError(
-            f"Unequal length of target beams ({len(target_beam)}) to channels ({nchans})"
+        outdir_list: list[Path] = (
+            [outdir] * len(files) if outdir is not None else [f.parent for f in files]
         )
 
-    nchans = nchans[0]
+        cube_data_list = make_data(files, outdir_list)
 
-    # Check suffix
-    if suffix is None:
-        suffix = mode
+        # Sanity check channel counts
+        nchans = np.array([cube_data.nchan for cube_data in cube_data_list])
+        if not all(nchans == nchans[0]):
+            raise ValueError(f"Unequal number of spectral channels! Got {nchans}")
 
-    # Apply some masking
-    cube_data_list = masking(cube_data_list, cutoff=cutoff)
+        if isinstance(target_beam, Beams) and any(nchans != len(target_beam)):
+            raise ValueError(
+                f"Unequal length of target beams ({len(target_beam)}) to channels ({nchans})"
+            )
 
-    if not uselogs:
-        common_beam_data_list = commonbeamer(
-            cube_data_list=cube_data_list,
-            nchans=nchans,
-            conv_mode=conv_mode,
-            target_beam=target_beam,
-            mode=mode,
-            suffix=suffix,
-            circularise=circularise,
-            tolerance=tolerance,
-            nsamps=nsamps,
-            epsilon=epsilon,
-        )
-    else:
-        logger.info("Reading from convolve beamlog files")
-        common_beam_data_list: list[CommonBeamData] = []
-        for cube_data in cube_data_list:
-            commonbeam_log = cube_data.beamlog.with_suffix(f".{suffix}.txt")
-            common_beam_data = readlogs(commonbeam_log)
-            common_beam_data_list.append(common_beam_data)
+        nchans = nchans[0]
 
-    if dryrun:
-        logger.info("Doing a dryrun so all done!")
-        return cube_data_list, common_beam_data_list
+        # Check suffix
+        if suffix is None:
+            suffix = mode
 
-    # Init the files in parallel
-    logger.info("Initialising output files")
-    # Init output files and retrieve file names
-    with Executor(
-        max_workers=ncores, initializer=init_worker, initargs=(log_queue, verbosity)
-    ) as executor:
-        futures = []
-        for cube_data, common_beam_data in zip(cube_data_list, common_beam_data_list):
-            future = executor.submit(
-                initfiles,
-                filename=cube_data.filename,
-                commonbeams=common_beam_data.commonbeams,
-                outdir=cube_data.outdir,
+        # Apply some masking
+        cube_data_list = masking(cube_data_list, cutoff=cutoff)
+
+        if not uselogs:
+            common_beam_data_list = commonbeamer(
+                cube_data_list=cube_data_list,
+                nchans=nchans,
+                conv_mode=conv_mode,
+                target_beam=target_beam,
                 mode=mode,
                 suffix=suffix,
-                prefix=prefix,
-                ref_chan=ref_chan,
+                circularise=circularise,
+                tolerance=tolerance,
+                nsamps=nsamps,
+                epsilon=epsilon,
             )
-            futures.append(future)
-    outfiles: list[Path] = [future.result() for future in futures]
+        else:
+            logger.info("Reading from convolve beamlog files")
+            common_beam_data_list: list[CommonBeamData] = []
+            for cube_data in cube_data_list:
+                commonbeam_log = cube_data.beamlog.with_suffix(f".{suffix}.txt")
+                common_beam_data = readlogs(commonbeam_log)
+                common_beam_data_list.append(common_beam_data)
 
-    with Executor(
-        max_workers=ncores, initializer=init_worker, initargs=(log_queue, verbosity)
-    ) as executor:
-        futures = []
-        for cube_data, common_beam_data, outfile in zip(
-            cube_data_list, common_beam_data_list, outfiles
-        ):
-            for chan in range(nchans):
+        if dryrun:
+            logger.info("Doing a dryrun so all done!")
+            return cube_data_list, common_beam_data_list
+
+        # Init the files in parallel
+        logger.info("Initialising output files")
+        # Init output files and retrieve file names
+        with Executor(
+            max_workers=ncores, initializer=init_worker, initargs=(log_queue, verbosity)
+        ) as executor:
+            futures = []
+            for cube_data, common_beam_data in zip(
+                cube_data_list, common_beam_data_list
+            ):
                 future = executor.submit(
-                    smooth_and_write_plane,
-                    chan=chan,
-                    cube_data=cube_data,
-                    common_beam_data=common_beam_data,
-                    outfile=outfile,
-                    conv_mode=conv_mode,
+                    initfiles,
+                    filename=cube_data.filename,
+                    commonbeams=common_beam_data.commonbeams,
+                    outdir=cube_data.outdir,
+                    mode=mode,
+                    suffix=suffix,
+                    prefix=prefix,
+                    ref_chan=ref_chan,
                 )
                 futures.append(future)
-        _ = [future.result() for future in futures]
+        outfiles: list[Path] = [future.result() for future in futures]
 
-    logger.info("Done!")
+        with Executor(
+            max_workers=ncores, initializer=init_worker, initargs=(log_queue, verbosity)
+        ) as executor:
+            futures = []
+            for cube_data, common_beam_data, outfile in zip(
+                cube_data_list, common_beam_data_list, outfiles
+            ):
+                for chan in range(nchans):
+                    future = executor.submit(
+                        smooth_and_write_plane,
+                        chan=chan,
+                        cube_data=cube_data,
+                        common_beam_data=common_beam_data,
+                        outfile=outfile,
+                        conv_mode=conv_mode,
+                    )
+                    futures.append(future)
+            _ = [future.result() for future in futures]
 
-    log_listener.enqueue_sentinel()
+        logger.info("Done!")
 
-    return cube_data_list, common_beam_data_list, outfiles
+        return cube_data_list, common_beam_data_list, outfiles
 
 
 def cli():
