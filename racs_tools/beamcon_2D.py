@@ -33,9 +33,9 @@ from racs_tools.convolve_uv import (
 )
 from racs_tools.logging import (
     init_worker,
-    log_listener,
     log_queue,
     logger,
+    running_log_listener,
     set_verbosity,
 )
 from racs_tools.parallel import get_executor
@@ -482,84 +482,83 @@ def smooth_fits_files(
         Beam: Common beam used.
     """
     # Required for multiprocessing logging
-    log_listener.start()
-    if dryrun:
-        logger.info("Doing a dry run -- no files will be saved")
+    with running_log_listener():
+        if dryrun:
+            logger.info("Doing a dry run -- no files will be saved")
 
-    # Check early as can fail
-    Executor = get_executor(executor_type)
+        # Check early as can fail
+        Executor = get_executor(executor_type)
 
-    # Get file list
-    if listfile:
-        assert len(infile_list) == 1, "Only one list file can be provided!"
-        with open(infile_list[0]) as f:
-            infile_list = [Path(line) for line in f.read().splitlines()]
-    files = sorted(infile_list)
-    if len(files) == 0:
-        raise FileNotFoundError("No files found!")
+        # Get file list
+        if listfile:
+            assert len(infile_list) == 1, "Only one list file can be provided!"
+            with open(infile_list[0]) as f:
+                infile_list = [Path(line) for line in f.read().splitlines()]
+        files = sorted(infile_list)
+        if len(files) == 0:
+            raise FileNotFoundError("No files found!")
 
-    conv_mode = parse_conv_mode(conv_mode)
+        conv_mode = parse_conv_mode(conv_mode)
 
-    nonetest = [param is None for param in (bmaj, bmin, bpa)]
-    if all(nonetest):
-        target_beam = None
-    elif any(nonetest):
-        raise ValueError("Please specify all target beam params!")
-    else:
-        target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
-        logger.info(f"Target beam is {target_beam!r}")
+        nonetest = [param is None for param in (bmaj, bmin, bpa)]
+        if all(nonetest):
+            target_beam = None
+        elif any(nonetest):
+            raise ValueError("Please specify all target beam params!")
+        else:
+            target_beam = Beam(bmaj * u.arcsec, bmin * u.arcsec, bpa * u.deg)
+            logger.info(f"Target beam is {target_beam!r}")
 
-    # Find smallest common beam
-    common_beam, all_beams = get_common_beam(
-        files,
-        conv_mode=conv_mode,
-        target_beam=target_beam,
-        cutoff=cutoff,
-        tolerance=tolerance,
-        nsamps=nsamps,
-        epsilon=epsilon,
-    )
-
-    if target_beam is not None:
-        if not check_target_beam(target_beam, all_beams, files, cutoff):
-            raise BeamError("Please choose a larger target beam!")
-
-        common_beam = target_beam
-
-    if circularise:
-        logger.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
-        common_beam = Beam(
-            major=common_beam.major,
-            minor=common_beam.major,
-            pa=0 * u.deg,
+        # Find smallest common beam
+        common_beam, all_beams = get_common_beam(
+            files,
+            conv_mode=conv_mode,
+            target_beam=target_beam,
+            cutoff=cutoff,
+            tolerance=tolerance,
+            nsamps=nsamps,
+            epsilon=epsilon,
         )
 
-    logger.info(f"Final beam is {common_beam!r}")
-    with Executor(
-        max_workers=ncores, initializer=init_worker, initargs=(log_queue, verbosity)
-    ) as executor:
-        futures = []
-        for file in files:
-            future = executor.submit(
-                beamcon_2d_on_fits,
-                file=file,
-                outdir=outdir,
-                new_beam=common_beam,
-                conv_mode=conv_mode,
-                suffix=suffix,
-                prefix=prefix,
-                cutoff=cutoff,
-                dryrun=dryrun,
+        if target_beam is not None:
+            if not check_target_beam(target_beam, all_beams, files, cutoff):
+                raise BeamError("Please choose a larger target beam!")
+
+            common_beam = target_beam
+
+        if circularise:
+            logger.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
+            common_beam = Beam(
+                major=common_beam.major,
+                minor=common_beam.major,
+                pa=0 * u.deg,
             )
-            futures.append(future)
 
-    beam_log_list = [future.result() for future in futures]
-    if log is not None:
-        writelog(beam_log_list, log)
+        logger.info(f"Final beam is {common_beam!r}")
+        with Executor(
+            max_workers=ncores, initializer=init_worker, initargs=(log_queue, verbosity)
+        ) as executor:
+            futures = []
+            for file in files:
+                future = executor.submit(
+                    beamcon_2d_on_fits,
+                    file=file,
+                    outdir=outdir,
+                    new_beam=common_beam,
+                    conv_mode=conv_mode,
+                    suffix=suffix,
+                    prefix=prefix,
+                    cutoff=cutoff,
+                    dryrun=dryrun,
+                )
+                futures.append(future)
 
-    logger.info("Done!")
-    log_listener.enqueue_sentinel()
-    return common_beam
+        beam_log_list = [future.result() for future in futures]
+        if log is not None:
+            writelog(beam_log_list, log)
+
+        logger.info("Done!")
+        return common_beam
 
 
 def cli():
