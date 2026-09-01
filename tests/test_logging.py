@@ -12,7 +12,8 @@ happen to tolerate that state, which is why this only showed up on 3.13.
 
 import logging
 import multiprocessing as mp
-from logging.handlers import QueueListener
+import threading
+from logging.handlers import QueueHandler, QueueListener
 
 import pytest
 from racs_tools import beamcon_3D
@@ -139,9 +140,8 @@ def test_running_log_listener_relays_records_across_calls(monkeypatch):
     """
     list_handler = _ListHandler()
     monkeypatch.setattr(log_listener, "handlers", (list_handler,))
-    # Isolate from QueueHandlers left behind by other tests' worker threads
-    # (a pre-existing, unrelated accumulation) so each forked child starts
-    # from a clean handler list and adds exactly one via init_worker.
+    # Start from a clean handler list so the assertion counts one record per
+    # message regardless of what earlier tests left attached to the logger.
     monkeypatch.setattr(logger, "handlers", [])
 
     for i in range(3):
@@ -153,3 +153,66 @@ def test_running_log_listener_relays_records_across_calls(monkeypatch):
 
     messages = [record.getMessage() for record in list_handler.records]
     assert messages == ["message 0", "message 1", "message 2"]
+
+
+@pytest.mark.usefixtures("guard_queue_listener_start")
+def test_running_log_listener_nests():
+    """Nested blocks share one listener run rather than deadlocking.
+
+    The listener is a process-wide singleton, so an inner ``stop()`` used to
+    enqueue a sentinel that the outer block's monitor thread consumed, leaving
+    the inner ``join()`` waiting forever.
+    """
+    with running_log_listener():
+        assert log_listener._thread is not None
+        with running_log_listener():
+            assert log_listener._thread is not None
+        # The inner block must not have torn down the shared listener.
+        assert log_listener._thread is not None
+    _assert_listener_reset()
+
+
+@pytest.mark.usefixtures("guard_queue_listener_start")
+def test_running_log_listener_concurrent():
+    """Concurrent blocks in different threads must not hang or crash."""
+    barrier = threading.Barrier(2)
+    errors: list[BaseException] = []
+
+    def worker() -> None:
+        try:
+            with running_log_listener():
+                barrier.wait(timeout=10)
+        except BaseException as exc:  # noqa: BLE001 - reported via `errors`
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=15)
+        assert not thread.is_alive(), "running_log_listener deadlocked"
+
+    assert errors == []
+    _assert_listener_reset()
+
+
+def test_init_worker_keeps_one_queue_handler():
+    """``init_worker`` must not stack a queue handler per worker.
+
+    With a thread executor every worker shares this process's logger, so
+    adding unconditionally fanned each record out once per worker and left the
+    handlers attached -- still filling the queue once the listener had stopped
+    consuming it.
+    """
+    original_handlers = list(logger.handlers)
+    try:
+        for _ in range(3):
+            init_worker(log_queue, verbosity=0)
+            queue_handlers = [
+                handler
+                for handler in logger.handlers
+                if isinstance(handler, QueueHandler)
+            ]
+            assert len(queue_handlers) == 1
+    finally:
+        logger.handlers = original_handlers
