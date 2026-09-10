@@ -7,6 +7,7 @@ import gc
 from typing import Literal, NamedTuple
 
 import numpy as np
+import scipy.fft
 import scipy.signal
 from astropy import convolution, units
 from astropy import units as u
@@ -177,22 +178,39 @@ def convolve(
     ###
 
     # Now we do the convolution
-    nanflag = np.isnan(image).any()
+    nan_mask = np.isnan(image)
+    nanflag = nan_mask.any()
 
     if nanflag:
-        # Create a mask for the NaNs
-        mask = np.isnan(image).astype(np.int16)
         logger.warning(
-            f"Image contains {mask.sum()} ({mask.sum() / mask.size * 100:0.1f}%) NaNs"
+            f"Image contains {nan_mask.sum()} "
+            f"({nan_mask.sum() / nan_mask.size * 100:0.1f}%) NaNs"
         )
         image = np.nan_to_num(image)
+    else:
+        del nan_mask
 
     nx = image.shape[0]
     ny = image.shape[1]
 
-    # The coordinates in FT domain:
-    u_image = np.fft.fftfreq(nx, d=dx.to(units.rad).value).astype(np.complex64)
-    v_image = np.fft.fftfreq(ny, d=dy.to(units.rad).value).astype(np.complex64)
+    # The image is real, so half of its spectrum is redundant. Transforming in
+    # the image's own precision and keeping only that half is what makes this
+    # affordable on a wide image: a single-precision plane never gets promoted
+    # to complex128, and the last axis is stored once rather than twice.
+    #
+    # Matched on kind and width rather than identity, because FITS data arrives
+    # big-endian (">f4") and `np.dtype(">f4") == np.float32` is False, which
+    # would send every real image down the double-precision path.
+    real_dtype = (
+        np.float32
+        if image.dtype.kind == "f" and image.dtype.itemsize <= 4
+        else np.float64
+    )
+
+    # The coordinates in FT domain. Only the non-redundant v are needed, to
+    # match the output of the real-input transform below.
+    u_image = np.fft.fftfreq(nx, d=dx.to(units.rad).value).astype(real_dtype)
+    v_image = np.fft.rfftfreq(ny, d=dy.to(units.rad).value).astype(real_dtype)
 
     [g_final, g_ratio] = gaussft.gaussft(
         bmin_in=old_beam.minor.to(units.deg).value,
@@ -204,40 +222,34 @@ def convolve(
         u=u_image,
         v=v_image,
     )
-    g_final = g_final.astype(np.complex64)
     del u_image
     del v_image
 
-    # Perform the x-ing in the FT domain
-    im_f = np.fft.fft2(image).astype(np.complex64)
+    # Perform the x-ing in the FT domain. The taper is applied in place, and
+    # the spectrum is consumed by its own inverse, so neither is duplicated.
+    im_f = scipy.fft.rfft2(image.astype(real_dtype, copy=False))
     del image
-
-    # Now convolve with the desired Gaussian:
-    M = np.multiply(im_f, g_final).astype(np.complex64)
+    im_f *= g_final
+    im_conv = scipy.fft.irfft2(im_f, s=(nx, ny), overwrite_x=True).astype(
+        np.float32, copy=False
+    )
     del im_f
-    im_conv = np.fft.ifft2(M).astype(np.complex64)
-    im_conv = np.real(im_conv).astype(np.float32)
-    del M
 
     if nanflag:
-        # Convert the mask to the FT domain
-        mask_f = np.fft.fft2(mask).astype(np.complex64)
-        del mask
-        # Multiply the mask by the FT of the Gaussian
-        M = np.multiply(mask_f, g_final).astype(np.complex64)
+        # Convolve the NaN mask the same way, to find where the NaNs spread to
+        mask_f = scipy.fft.rfft2(nan_mask.astype(real_dtype))
+        del nan_mask
+        mask_f *= g_final
         del g_final
+        mask_conv = scipy.fft.irfft2(mask_f, s=(nx, ny), overwrite_x=True)
         del mask_f
-        # Invert the FT of the mask
-        mask_conv = np.fft.ifft2(M).astype(np.complex64)
-        mask_conv = np.real(mask_conv).astype(np.float32)
-        del M
         # Use approx values to find the NaNs
         # Need this to get around numerical issues
         mask_conv = ~(mask_conv + 1 < 2)
         logger.warning(
             f"Convolved image contains {mask_conv.sum()} ({mask_conv.sum() / mask_conv.size * 100:0.1f}%) NaNs"
         )
-        im_conv[mask_conv > 0] = np.nan
+        im_conv[mask_conv] = np.nan
 
     return ConvolutionResult(image=im_conv, scaling_factor=g_ratio)
 
