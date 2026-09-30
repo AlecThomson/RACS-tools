@@ -755,7 +755,7 @@ def initfiles(
         ref_chan (int | None, optional): Reference channel index. Defaults to None.
 
     Raises:
-        ValueError: If no Stokes axis is found in the header
+        ValueError: If no spectral or no Stokes axis is found in the header
 
     Returns:
         Path: Output filename
@@ -769,6 +769,12 @@ def initfiles(
 
     ## Header
     spec_axis = wcs.spectral
+    # Checked on `naxis` because a missing axis does not give a scalar or a
+    # (1,) array: `crpix` comes back empty (shape (0,)), which `int` rejects
+    # with an unhelpful TypeError.
+    if spec_axis.naxis == 0:
+        msg = f"No spectral axis found in {filename}"
+        raise ValueError(msg)
     # account for either an float or array of single float. Anything else should fail!
     crpix = (
         int(np.squeeze(spec_axis.wcs.crpix))
@@ -796,8 +802,10 @@ def initfiles(
     ref_psf = commonbeams[crindex]
     # Check the Stokes
     stokes_axis = wcs.sub(["stokes"])
-    if stokes_axis.array_shape == ():
-        raise ValueError("No Stokes axis found")
+    # A missing axis has `array_shape` None, not (), so test `naxis` instead
+    if stokes_axis.naxis == 0:
+        msg = f"No Stokes axis found in {filename}"
+        raise ValueError(msg)
     nstokes = stokes_axis.array_shape[0]
     if nstokes > 1:
         logger.critical(
