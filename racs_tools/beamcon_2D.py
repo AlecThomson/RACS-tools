@@ -24,6 +24,7 @@ from tqdm import tqdm
 from racs_tools.convolve_uv import (
     NAN_BEAM,
     ZERO_BEAM,
+    beam_contains,
     check_square_pixels,
     get_convolving_beam,
     get_nyquist_beam,
@@ -94,9 +95,6 @@ def check_target_beam(
         files (list[Path]): All the FITS files to check.
         cutoff (float | None, optional): Cutoff of beam in arcsec. Defaults to None.
 
-    Raises:
-        BeamError: If beam deconvolution fails.
-
     Returns:
         bool: If the target beam will deconvolve.
     """
@@ -113,15 +111,10 @@ def check_target_beam(
     ):
         if cutoff is not None and beam.major.to(u.arcsec) > cutoff * u.arcsec:
             continue
-        try:
-            target_beam.deconvolve(beam)
-        except ValueError:
+        # Same test the convolution applies
+        if not beam_contains(target_beam, beam):
             mask_count += 1
             failed.append(file)
-        except BeamError as be:
-            # BeamError should not be raised if beams are equal
-            if target_beam != beam:
-                raise BeamError(be)
     is_good = mask_count == 0
     if not is_good:
         logger.error("The following images could not reach target resolution:")

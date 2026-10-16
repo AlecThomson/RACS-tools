@@ -322,3 +322,14 @@ def test_non_square_pixels_rejected_up_front(make_2d_image):
             bpa=0.0,
         )
     assert not make_2d_image.path.with_suffix(".rect_test.fits").exists()
+
+
+def test_check_target_beam_reports_failures():
+    """A target that cannot be reached is reported, not raised from radio_beam."""
+    beams = Beams(
+        major=[20, 10] * u.arcsec, minor=[10, 10] * u.arcsec, pa=[0, 0] * u.deg
+    )
+    files = [Path("big.fits"), Path("small.fits")]
+    target = Beam(15 * u.arcsec, 15 * u.arcsec, 0 * u.deg)
+    assert not beamcon_2D.check_target_beam(target, beams, files)
+    assert beamcon_2D.check_target_beam(target, beams, files, cutoff=15)
