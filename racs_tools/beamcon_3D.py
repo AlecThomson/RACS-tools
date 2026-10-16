@@ -26,8 +26,15 @@ from spectral_cube.utils import SpectralCubeWarning
 from tqdm import tqdm, trange
 
 from racs_tools import au2
-from racs_tools.beamcon_2D import my_ceil, round_up
-from racs_tools.convolve_uv import NAN_BEAM, ZERO_BEAM, parse_conv_mode, smooth
+from racs_tools.convolve_uv import (
+    NAN_BEAM,
+    ZERO_BEAM,
+    my_ceil,
+    parse_conv_mode,
+    round_common_beam,
+    round_up,
+    smooth,
+)
 from racs_tools.logging import (
     init_worker,
     log_queue,
@@ -394,13 +401,7 @@ def _get_commonbeams(
                         epsilon=epsilon,
                     )
                 # Round up values
-                commonbeam = Beam(
-                    major=my_ceil(commonbeam.major.to(u.arcsec).value, precision=1)
-                    * u.arcsec,
-                    minor=my_ceil(commonbeam.minor.to(u.arcsec).value, precision=1)
-                    * u.arcsec,
-                    pa=round_up(commonbeam.pa.to(u.deg), decimals=2),
-                )
+                commonbeam = round_common_beam(commonbeam, beams[~np.isnan(beams)])
 
                 grid = cube_data.dy
                 if conv_mode != "robust":
@@ -494,13 +495,7 @@ def _get_commonbeams(
             commonbeam = target_beam
         else:
             # Round up values
-            commonbeam = Beam(
-                major=my_ceil(commonbeam.major.to(u.arcsec).value, precision=1)
-                * u.arcsec,
-                minor=my_ceil(commonbeam.minor.to(u.arcsec).value, precision=1)
-                * u.arcsec,
-                pa=round_up(commonbeam.pa.to(u.deg), decimals=2),
-            )
+            commonbeam = round_common_beam(commonbeam, big_beams[~np.isnan(big_beams)])
         if conv_mode != "robust":
             # Get the minor axis of the convolving beams
             grid = cube_data.dy

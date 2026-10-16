@@ -26,9 +26,8 @@ from racs_tools.convolve_uv import (
     ZERO_BEAM,
     get_convolving_beam,
     get_nyquist_beam,
-    my_ceil,
     parse_conv_mode,
-    round_up,
+    round_common_beam,
     smooth,
 )
 from racs_tools.logging import (
@@ -355,11 +354,7 @@ def get_common_beam(
             )
 
         # Round up values
-        target_beam = Beam(
-            major=my_ceil(target_beam.major.to(u.arcsec).value, precision=1) * u.arcsec,
-            minor=my_ceil(target_beam.minor.to(u.arcsec).value, precision=1) * u.arcsec,
-            pa=round_up(target_beam.pa.to(u.deg), decimals=2),
-        )
+        target_beam = round_common_beam(target_beam, beams[~flags])
 
     if conv_mode != "robust":
         target_beam = get_nyquist_beam(

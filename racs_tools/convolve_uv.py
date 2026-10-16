@@ -44,7 +44,9 @@ def round_up(n: float, decimals: int = 0) -> float:
         float: Rounded number.
     """
     multiplier = 10**decimals
-    return np.ceil(n * multiplier) / multiplier
+    # Ignore round-off below 1e-9 of the last place
+    eps = 1e-9 * getattr(n, "unit", 1)
+    return np.ceil(n * multiplier - eps) / multiplier
 
 
 def my_ceil(a: float, precision: float = 0.0) -> float:
@@ -57,7 +59,63 @@ def my_ceil(a: float, precision: float = 0.0) -> float:
     Returns:
         float: Rounded number.
     """
-    return np.round(a + 0.5 * 10 ** (-precision), precision)
+    # Ignore round-off below 1e-9 of the last place (30.500000000000004 -> 30.5)
+    multiplier = 10**precision
+    return np.ceil(a * multiplier - 1e-9) / multiplier
+
+
+def beam_contains(big_beam: Beam, small_beam: Beam) -> bool:
+    """Check if small_beam can be convolved up to big_beam
+
+    Unlike Beam.deconvolve, this allows a kernel that is a line or a point.
+
+    Args:
+        big_beam (Beam): Target beam.
+        small_beam (Beam): Input beam.
+
+    Returns:
+        bool: True if small_beam fits inside big_beam.
+    """
+
+    def cov(beam: Beam) -> np.ndarray:
+        major = beam.major.to(u.arcsec).value
+        minor = beam.minor.to(u.arcsec).value
+        pa = beam.pa.to(u.rad).value
+        rot = np.array([[np.cos(pa), -np.sin(pa)], [np.sin(pa), np.cos(pa)]])
+        return rot @ np.diag([major**2, minor**2]) @ rot.T
+
+    big = cov(big_beam)
+    residual = big - cov(small_beam)
+    if not np.isfinite(residual).all():
+        return False
+    # Round-off is relative to the beam size
+    tol = 1e-12 * np.trace(big)
+    return bool(np.linalg.eigvalsh(residual)[0] >= -tol)
+
+
+def round_common_beam(common_beam: Beam, beams: Beams | list[Beam]) -> Beam:
+    """Round a computed common beam up to 0.1 arcsec and 0.01 deg
+
+    If rounding the PA leaves an input outside, step the axes up by 0.1 arcsec.
+
+    Args:
+        common_beam (Beam): Common beam.
+        beams (Beams | list[Beam]): Beams it must contain.
+
+    Returns:
+        Beam: Rounded beam.
+    """
+    for step in (0.0, 0.1):
+        rounded = Beam(
+            major=my_ceil(common_beam.major.to(u.arcsec).value + step, precision=1)
+            * u.arcsec,
+            minor=my_ceil(common_beam.minor.to(u.arcsec).value + step, precision=1)
+            * u.arcsec,
+            pa=round_up(common_beam.pa.to(u.deg), decimals=2),
+        )
+        if all(beam_contains(rounded, beam) for beam in beams):
+            break
+    return rounded
 
 
 def get_nyquist_beam(

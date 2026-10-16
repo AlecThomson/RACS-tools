@@ -13,7 +13,14 @@ import scipy.fft
 from astropy import units as u
 from astropy.io import fits
 from racs_tools import gaussft
-from racs_tools.convolve_uv import convolve, smooth
+from racs_tools.convolve_uv import (
+    beam_contains,
+    convolve,
+    my_ceil,
+    round_common_beam,
+    round_up,
+    smooth,
+)
 from radio_beam import Beam
 
 OLD_BEAM = Beam(12 * u.arcsec, 10 * u.arcsec, 20 * u.deg)
@@ -160,6 +167,30 @@ def test_convolve_leaves_the_input_alone():
         before = image.copy()
         convolve(image=image, old_beam=OLD_BEAM, new_beam=NEW_BEAM, dx=PIX, dy=PIX)
         assert np.array_equal(image, before, equal_nan=True)
+
+
+def test_rounding_keeps_exact_values():
+    """Round-off from unit conversion does not bump a value up a step."""
+    for k in range(100, 400):
+        arcsec = (k / 10 * u.arcsec).to(u.deg).to(u.arcsec).value
+        assert np.isclose(my_ceil(arcsec, precision=1), k / 10)
+    assert np.isclose(my_ceil(30.51, precision=1), 30.6)
+    assert np.isclose(round_up(10.01 * u.deg, decimals=2).value, 10.01)
+    assert np.isclose(round_up(10.011 * u.deg, decimals=2).value, 10.02)
+
+
+def test_round_common_beam_contains_inputs():
+    """Rounding the PA must not leave an input outside the common beam."""
+    beam = Beam(20 * u.arcsec, 10 * u.arcsec, 10.005 * u.deg)
+    rounded = round_common_beam(beam, [beam])
+    assert beam_contains(rounded, beam)
+
+
+def test_beam_contains_one_dimensional_kernel():
+    target = Beam(20 * u.arcsec, 20 * u.arcsec, 0 * u.deg)
+    for pa in (0, 37, 90, -45):
+        assert beam_contains(target, Beam(20 * u.arcsec, 10 * u.arcsec, pa * u.deg))
+    assert not beam_contains(target, Beam(21 * u.arcsec, 10 * u.arcsec, 0 * u.deg))
 
 
 @pytest.mark.parametrize("sign", [(-1, 1), (1, -1), (-1, -1)])
