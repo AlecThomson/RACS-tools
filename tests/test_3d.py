@@ -302,3 +302,39 @@ def test_circularise_per_channel_targets(make_3d_image):
     commonbeams = common_beam_data_list[0].commonbeams
     assert np.allclose(commonbeams.minor.to(u.arcsec).value, 60)
     assert np.allclose(commonbeams.pa.to(u.deg).value, 0)
+
+
+def test_total_mode_target_skips_common_beam(make_3d_image, monkeypatch):
+    """With a target in total mode, no common beam is computed."""
+
+    def fail(*_args, **_kwargs):
+        raise AssertionError("common beam computed")
+
+    monkeypatch.setattr(Beams, "common_beam", fail)
+    _, common_beam_data_list = beamcon_3D.smooth_fits_cube(
+        infiles_list=[make_3d_image.path],
+        mode="total",
+        dryrun=True,
+        bmaj=60.0,
+        bmin=60.0,
+        bpa=0.0,
+    )
+    assert np.allclose(
+        common_beam_data_list[0].commonbeams.major.to(u.arcsec).value, 60
+    )
+
+
+@pytest.mark.parametrize("target", [None, 60.0])
+def test_total_mode_all_masked_is_blanked(make_3d_image, target):
+    """With every channel over the cutoff, total mode blanks the cube."""
+    beamcon_3D.smooth_fits_cube(
+        infiles_list=[make_3d_image.path],
+        mode="total",
+        suffix="masked",
+        cutoff=40.0,
+        bmaj=target,
+        bmin=target,
+        bpa=None if target is None else 0.0,
+    )
+    out = fits.getdata(make_3d_image.path.with_suffix(".masked.fits"))
+    assert np.isnan(out).all()

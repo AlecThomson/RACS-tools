@@ -492,24 +492,27 @@ def _get_commonbeams(
         pas *= u.deg
         big_beams = Beams(major=majors, minor=minors, pa=pas)
 
-        logger.info("Finding common beam across all channels")
-        logger.info("This may take some time...")
-
-        try:
-            commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
-                tolerance=tolerance, nsamps=nsamps, epsilon=epsilon
-            )
-        except BeamError:
-            logger.warning("Couldn't find common beam with defaults")
-            logger.warning("Trying again with smaller tolerance")
-
-            commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
-                tolerance=tolerance * 0.1, nsamps=nsamps, epsilon=epsilon
-            )
-
         if target_beam is not None:
             commonbeam = target_beam
+        elif all(np.isnan(big_beams)):
+            logger.critical("All channels are masked. All outputs will be blanked!")
+            commonbeam = NAN_BEAM
         else:
+            logger.info("Finding common beam across all channels")
+            logger.info("This may take some time...")
+
+            try:
+                commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
+                    tolerance=tolerance, nsamps=nsamps, epsilon=epsilon
+                )
+            except BeamError:
+                logger.warning("Couldn't find common beam with defaults")
+                logger.warning("Trying again with smaller tolerance")
+
+                commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
+                    tolerance=tolerance * 0.1, nsamps=nsamps, epsilon=epsilon
+                )
+
             # Round up values
             commonbeam = round_common_beam(commonbeam, big_beams[~np.isnan(big_beams)])
         if conv_mode != "robust":
