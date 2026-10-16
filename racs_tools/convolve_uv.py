@@ -44,7 +44,9 @@ def round_up(n: float, decimals: int = 0) -> float:
         float: Rounded number.
     """
     multiplier = 10**decimals
-    return np.ceil(n * multiplier) / multiplier
+    # Ignore round-off below 1e-9 of the last place
+    eps = 1e-9 * getattr(n, "unit", 1)
+    return np.ceil(n * multiplier - eps) / multiplier
 
 
 def my_ceil(a: float, precision: float = 0.0) -> float:
@@ -57,7 +59,80 @@ def my_ceil(a: float, precision: float = 0.0) -> float:
     Returns:
         float: Rounded number.
     """
-    return np.round(a + 0.5 * 10 ** (-precision), precision)
+    # Ignore round-off below 1e-9 of the last place (30.500000000000004 -> 30.5)
+    multiplier = 10**precision
+    return np.ceil(a * multiplier - 1e-9) / multiplier
+
+
+def beam_contains(big_beam: Beam, small_beam: Beam) -> bool:
+    """Check if small_beam can be convolved up to big_beam
+
+    Unlike Beam.deconvolve, this allows a kernel that is a line or a point.
+
+    Args:
+        big_beam (Beam): Target beam.
+        small_beam (Beam): Input beam.
+
+    Returns:
+        bool: True if small_beam fits inside big_beam.
+    """
+
+    def cov(beam: Beam) -> np.ndarray:
+        major = beam.major.to(u.arcsec).value
+        minor = beam.minor.to(u.arcsec).value
+        pa = beam.pa.to(u.rad).value
+        rot = np.array([[np.cos(pa), -np.sin(pa)], [np.sin(pa), np.cos(pa)]])
+        return rot @ np.diag([major**2, minor**2]) @ rot.T
+
+    big = cov(big_beam)
+    residual = big - cov(small_beam)
+    if not np.isfinite(residual).all():
+        return False
+    # Round-off is relative to the beam size
+    tol = 1e-12 * np.trace(big)
+    return bool(np.linalg.eigvalsh(residual)[0] >= -tol)
+
+
+def round_common_beam(common_beam: Beam, beams: Beams | list[Beam]) -> Beam:
+    """Round a computed common beam up to 0.1 arcsec and 0.01 deg
+
+    If rounding the PA leaves an input outside, step the axes up by 0.1 arcsec.
+
+    Args:
+        common_beam (Beam): Common beam.
+        beams (Beams | list[Beam]): Beams it must contain.
+
+    Returns:
+        Beam: Rounded beam.
+    """
+    for step in (0.0, 0.1):
+        rounded = Beam(
+            major=my_ceil(common_beam.major.to(u.arcsec).value + step, precision=1)
+            * u.arcsec,
+            minor=my_ceil(common_beam.minor.to(u.arcsec).value + step, precision=1)
+            * u.arcsec,
+            pa=round_up(common_beam.pa.to(u.deg), decimals=2),
+        )
+        if all(beam_contains(rounded, beam) for beam in beams):
+            break
+    return rounded
+
+
+def check_square_pixels(dx: u.Quantity, dy: u.Quantity) -> None:
+    """Check that pixels are square, as the image-plane kernel modes assume
+
+    Args:
+        dx (u.Quantity): Pixel size in x.
+        dy (u.Quantity): Pixel size in y.
+
+    Raises:
+        ValueError: If |dx| != |dy|.
+    """
+    if not np.isclose(abs(dx), abs(dy)):
+        raise ValueError(
+            f"Pixels must be square for this convolution mode, got {dx=} and {dy=}. "
+            "Use conv_mode='robust'."
+        )
 
 
 def get_nyquist_beam(
@@ -172,7 +247,13 @@ def convolve(
     if np.isnan(conbeam):
         return ConvolutionResult(image * np.nan, sfactor)
     if np.isnan(image).all():
-        return ConvolutionResult(image, sfactor)
+        # Same factor gaussft gives a finite image
+        g_ratio = np.sqrt(
+            (new_beam.major * new_beam.minor / (old_beam.major * old_beam.minor))
+            .decompose()
+            .value
+        )
+        return ConvolutionResult(image, g_ratio)
     if conbeam == ZERO_BEAM and sfactor == 1:
         return ConvolutionResult(image, sfactor)
     ###
@@ -209,8 +290,9 @@ def convolve(
 
     # The coordinates in FT domain. Only the non-redundant v are needed, to
     # match the output of the real-input transform below.
-    u_image = np.fft.fftfreq(nx, d=dx.to(units.rad).value).astype(real_dtype)
-    v_image = np.fft.rfftfreq(ny, d=dy.to(units.rad).value).astype(real_dtype)
+    # Rows run along y and columns along x. A negative CDELT would mirror the PA.
+    u_image = np.fft.fftfreq(nx, d=abs(dy.to(units.rad).value)).astype(real_dtype)
+    v_image = np.fft.rfftfreq(ny, d=abs(dx.to(units.rad).value)).astype(real_dtype)
 
     [g_final, g_ratio] = gaussft.gaussft(
         bmin_in=old_beam.minor.to(units.deg).value,
@@ -243,9 +325,9 @@ def convolve(
         del g_final
         mask_conv = scipy.fft.irfft2(mask_f, s=(nx, ny), overwrite_x=True)
         del mask_f
-        # Use approx values to find the NaNs
-        # Need this to get around numerical issues
-        mask_conv = ~(mask_conv + 1 < 2)
+        # Blank at 0.99 rather than 1. With nearly equal beams a solid NaN
+        # region sits at 1 minus round-off and must stay blank.
+        mask_conv = mask_conv >= 0.99
         logger.warning(
             f"Convolved image contains {mask_conv.sum()} ({mask_conv.sum() / mask_conv.size * 100:0.1f}%) NaNs"
         )
@@ -275,6 +357,7 @@ def convolve_scipy(
     Returns:
         ConvolutionResult: Convolved image, scaling factor.
     """
+    check_square_pixels(dx, dy)
     conbeam, sfactor = get_convolving_beam(
         old_beam=old_beam,
         new_beam=new_beam,
@@ -323,6 +406,7 @@ def convolve_astropy(
     Returns:
         ConvolutionResult: Convolved image, scaling factor.
     """
+    check_square_pixels(dx, dy)
     conbeam, sfactor = get_convolving_beam(
         old_beam=old_beam,
         new_beam=new_beam,
@@ -374,6 +458,7 @@ def convolve_astropy_fft(
     Returns:
         ConvolutionResult: Convolved image, scaling factor.
     """
+    check_square_pixels(dx, dy)
     conbeam, sfactor = get_convolving_beam(
         old_beam=old_beam,
         new_beam=new_beam,
@@ -458,7 +543,7 @@ def get_convolving_beam(
         cutoff (float, optional): Cutoff for beamsize in arcsec. Defaults to None.
 
     Raises:
-        err: If beam deconvolution fails.
+        ValueError: If the input beam has zero size or is larger than the target.
 
     Returns:
         Tuple[Beam, float]: Convolving beam and scaling factor.
@@ -471,6 +556,14 @@ def get_convolving_beam(
             np.nan,
         )
 
+    for beam in (old_beam, new_beam):
+        if not np.isfinite([beam.major.value, beam.minor.value, beam.pa.value]).all():
+            logger.warning(f"Beam {beam!r} is not finite -- blanking")
+            return NAN_BEAM, np.nan
+
+    if not (old_beam.major > 0 and old_beam.minor > 0):
+        raise ValueError(f"Input beam {old_beam!r} has zero size")
+
     if new_beam == old_beam:
         conbm = ZERO_BEAM
         fac = 1.0
@@ -478,6 +571,10 @@ def get_convolving_beam(
             f"New beam {new_beam!r} and old beam {old_beam!r} are the same. Won't attempt convolution."
         )
         return conbm, fac
+    if not beam_contains(new_beam, old_beam):
+        raise ValueError(
+            f"Target beam {new_beam!r} cannot be reached by convolving {old_beam!r}"
+        )
     try:
         conbm = new_beam.deconvolve(old_beam)
     except BeamError as err:

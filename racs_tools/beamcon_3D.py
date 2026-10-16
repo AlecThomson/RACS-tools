@@ -26,8 +26,15 @@ from spectral_cube.utils import SpectralCubeWarning
 from tqdm import tqdm, trange
 
 from racs_tools import au2
-from racs_tools.beamcon_2D import my_ceil, round_up
-from racs_tools.convolve_uv import NAN_BEAM, ZERO_BEAM, parse_conv_mode, smooth
+from racs_tools.convolve_uv import (
+    NAN_BEAM,
+    ZERO_BEAM,
+    my_ceil,
+    parse_conv_mode,
+    round_common_beam,
+    round_up,
+    smooth,
+)
 from racs_tools.logging import (
     init_worker,
     log_queue,
@@ -300,6 +307,15 @@ def make_data(files: list[Path], outdir: list[Path]) -> list[CubeData]:
         bmaj = np.array(beam_table["BMAJ"]) * beam_table["BMAJ"].unit
         bmin = np.array(beam_table["BMIN"]) * beam_table["BMIN"].unit
         bpa = np.array(beam_table["BPA"]) * beam_table["BPA"].unit
+        swapped = bmin > bmaj
+        if swapped.any():
+            logger.warning(
+                f"{file}: channels {np.where(swapped)[0]} have BMIN > BMAJ; swapping the axes"
+            )
+            bmaj, bmin = np.where(swapped, bmin, bmaj), np.where(swapped, bmaj, bmin)
+            bpa = np.where(
+                swapped, np.where(bpa > 0, bpa - 90 * u.deg, bpa + 90 * u.deg), bpa
+            )
         beams = Beams(major=bmaj, minor=bmin, pa=bpa)
         cube_data = CubeData(
             filename=file,
@@ -334,7 +350,14 @@ def _get_commonbeams(
     logger.info("Finding common beam for all channels and cubes")
     logger.info(f"Number of channels {nchans=}")
 
-    if mode == "natural":
+    if mode == "natural" and target_beam is not None:
+        commonbeams = Beams(
+            major=[target_beam.major.to(u.arcsec).value] * nchans * u.arcsec,
+            minor=[target_beam.minor.to(u.arcsec).value] * nchans * u.arcsec,
+            pa=[target_beam.pa.to(u.deg).value] * nchans * u.deg,
+        )
+
+    elif mode == "natural":
         big_beams = []
         for n in trange(
             nchans,
@@ -394,13 +417,7 @@ def _get_commonbeams(
                         epsilon=epsilon,
                     )
                 # Round up values
-                commonbeam = Beam(
-                    major=my_ceil(commonbeam.major.to(u.arcsec).value, precision=1)
-                    * u.arcsec,
-                    minor=my_ceil(commonbeam.minor.to(u.arcsec).value, precision=1)
-                    * u.arcsec,
-                    pa=round_up(commonbeam.pa.to(u.deg), decimals=2),
-                )
+                commonbeam = round_common_beam(commonbeam, beams[~np.isnan(beams)])
 
                 grid = cube_data.dy
                 if conv_mode != "robust":
@@ -475,32 +492,29 @@ def _get_commonbeams(
         pas *= u.deg
         big_beams = Beams(major=majors, minor=minors, pa=pas)
 
-        logger.info("Finding common beam across all channels")
-        logger.info("This may take some time...")
-
-        try:
-            commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
-                tolerance=tolerance, nsamps=nsamps, epsilon=epsilon
-            )
-        except BeamError:
-            logger.warning("Couldn't find common beam with defaults")
-            logger.warning("Trying again with smaller tolerance")
-
-            commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
-                tolerance=tolerance * 0.1, nsamps=nsamps, epsilon=epsilon
-            )
-
         if target_beam is not None:
             commonbeam = target_beam
+        elif all(np.isnan(big_beams)):
+            logger.critical("All channels are masked. All outputs will be blanked!")
+            commonbeam = NAN_BEAM
         else:
+            logger.info("Finding common beam across all channels")
+            logger.info("This may take some time...")
+
+            try:
+                commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
+                    tolerance=tolerance, nsamps=nsamps, epsilon=epsilon
+                )
+            except BeamError:
+                logger.warning("Couldn't find common beam with defaults")
+                logger.warning("Trying again with smaller tolerance")
+
+                commonbeam = big_beams[~np.isnan(big_beams)].common_beam(
+                    tolerance=tolerance * 0.1, nsamps=nsamps, epsilon=epsilon
+                )
+
             # Round up values
-            commonbeam = Beam(
-                major=my_ceil(commonbeam.major.to(u.arcsec).value, precision=1)
-                * u.arcsec,
-                minor=my_ceil(commonbeam.minor.to(u.arcsec).value, precision=1)
-                * u.arcsec,
-                pa=round_up(commonbeam.pa.to(u.deg), decimals=2),
-            )
+            commonbeam = round_common_beam(commonbeam, big_beams[~np.isnan(big_beams)])
         if conv_mode != "robust":
             # Get the minor axis of the convolving beams
             grid = cube_data.dy
@@ -592,6 +606,13 @@ def commonbeamer(
     if isinstance(target_beam, Beams):
         logger.info(f"Setting the target beam for {len(target_beam)} channels")
         commonbeams = target_beam
+        if circularise:
+            logger.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
+            commonbeams = Beams(
+                major=commonbeams.major,
+                minor=commonbeams.major,
+                pa=commonbeams.pa * 0,
+            )
     else:
         commonbeams = _get_commonbeams(
             cube_data_list=cube_data_list,

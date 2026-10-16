@@ -288,3 +288,48 @@ def test_flags():
         flags = beams.major.to(u.arcsec) > cutoff * u.arcsec | flags
 
     flags = beams.major.to(u.arcsec).value > cutoff | flags
+
+
+def test_zero_beam_is_blanked(make_2d_image):
+    """An image with a zero-size beam is blanked, not a failed run."""
+    zero = make_2d_image.path.with_name("zero.fits")
+    with fits.open(make_2d_image.path) as hdul:
+        hdul[0].header["BMAJ"] = 0.0
+        hdul[0].header["BMIN"] = 0.0
+        hdul.writeto(zero)
+    beamcon_2D.smooth_fits_files(
+        infile_list=[make_2d_image.path, zero], suffix="zero_test"
+    )
+    assert np.isnan(fits.getdata(zero.with_suffix(".zero_test.fits"))).all()
+    assert np.isfinite(
+        fits.getdata(make_2d_image.path.with_suffix(".zero_test.fits"))
+    ).all()
+
+
+def test_non_square_pixels_rejected_up_front(make_2d_image):
+    """Kernel modes reject rectangular pixels before writing anything."""
+    rect = make_2d_image.path.with_name("0_rect.fits")
+    with fits.open(make_2d_image.path) as hdul:
+        hdul[0].header["CDELT2"] *= 2
+        hdul.writeto(rect)
+    with pytest.raises(ValueError, match="square"):
+        beamcon_2D.smooth_fits_files(
+            infile_list=[make_2d_image.path, rect],
+            suffix="rect_test",
+            conv_mode="scipy",
+            bmaj=40.0,
+            bmin=40.0,
+            bpa=0.0,
+        )
+    assert not make_2d_image.path.with_suffix(".rect_test.fits").exists()
+
+
+def test_check_target_beam_reports_failures():
+    """A target that cannot be reached is reported, not raised from radio_beam."""
+    beams = Beams(
+        major=[20, 10] * u.arcsec, minor=[10, 10] * u.arcsec, pa=[0, 0] * u.deg
+    )
+    files = [Path("big.fits"), Path("small.fits")]
+    target = Beam(15 * u.arcsec, 15 * u.arcsec, 0 * u.deg)
+    assert not beamcon_2D.check_target_beam(target, beams, files)
+    assert beamcon_2D.check_target_beam(target, beams, files, cutoff=15)

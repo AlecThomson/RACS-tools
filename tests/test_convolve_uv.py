@@ -13,7 +13,14 @@ import scipy.fft
 from astropy import units as u
 from astropy.io import fits
 from racs_tools import gaussft
-from racs_tools.convolve_uv import convolve
+from racs_tools.convolve_uv import (
+    beam_contains,
+    convolve,
+    my_ceil,
+    round_common_beam,
+    round_up,
+    smooth,
+)
 from radio_beam import Beam
 
 OLD_BEAM = Beam(12 * u.arcsec, 10 * u.arcsec, 20 * u.deg)
@@ -160,3 +167,97 @@ def test_convolve_leaves_the_input_alone():
         before = image.copy()
         convolve(image=image, old_beam=OLD_BEAM, new_beam=NEW_BEAM, dx=PIX, dy=PIX)
         assert np.array_equal(image, before, equal_nan=True)
+
+
+def test_rounding_keeps_exact_values():
+    """Round-off from unit conversion does not bump a value up a step."""
+    for k in range(100, 400):
+        arcsec = (k / 10 * u.arcsec).to(u.deg).to(u.arcsec).value
+        assert np.isclose(my_ceil(arcsec, precision=1), k / 10)
+    assert np.isclose(my_ceil(30.51, precision=1), 30.6)
+    assert np.isclose(round_up(10.01 * u.deg, decimals=2).value, 10.01)
+    assert np.isclose(round_up(10.011 * u.deg, decimals=2).value, 10.02)
+
+
+def test_round_common_beam_contains_inputs():
+    """Rounding the PA must not leave an input outside the common beam."""
+    beam = Beam(20 * u.arcsec, 10 * u.arcsec, 10.005 * u.deg)
+    rounded = round_common_beam(beam, [beam])
+    assert beam_contains(rounded, beam)
+
+
+def test_beam_contains_one_dimensional_kernel():
+    target = Beam(20 * u.arcsec, 20 * u.arcsec, 0 * u.deg)
+    for pa in (0, 37, 90, -45):
+        assert beam_contains(target, Beam(20 * u.arcsec, 10 * u.arcsec, pa * u.deg))
+    assert not beam_contains(target, Beam(21 * u.arcsec, 10 * u.arcsec, 0 * u.deg))
+
+
+@pytest.mark.parametrize("sign", [(-1, 1), (1, -1), (-1, -1)])
+def test_negative_pixel_size_keeps_pa(sign):
+    """A negative CDELT1, as in most headers, must not mirror the PA."""
+    image = make_image(dtype=np.float64)
+    want = convolve(image, OLD_BEAM, NEW_BEAM, PIX, PIX).image
+    got = convolve(image, OLD_BEAM, NEW_BEAM, sign[0] * PIX, sign[1] * PIX).image
+    assert np.allclose(got, want)
+
+
+def test_non_square_pixels():
+    """Rows are spaced by dy and columns by dx."""
+    old, new = Beam(6 * u.arcsec), Beam(12 * u.arcsec)
+    dx, dy = 1.5, 3.0
+    image = np.zeros((64, 96))
+    image[32, 48] = 1
+    out = convolve(image, old, new, dx * u.arcsec, dy * u.arcsec).image
+    rows, cols = np.indices(out.shape)
+    total = out.sum()
+    var_y = (out * (rows - (out * rows).sum() / total) ** 2).sum() / total * dy**2
+    var_x = (out * (cols - (out * cols).sum() / total) ** 2).sum() / total * dx**2
+    want = (12**2 - 6**2) / (8 * np.log(2))
+    assert np.isclose(var_x, want, rtol=1e-3)
+    assert np.isclose(var_y, want, rtol=1e-3)
+
+
+def test_all_nan_scaling_factor():
+    """An all-NaN image gets the same scaling factor as a finite one."""
+    old, new = Beam(10 * u.arcsec), Beam(20 * u.arcsec)
+    nan = np.full((16, 16), np.nan, dtype=np.float32)
+    result = convolve(nan, old, new, PIX, PIX)
+    assert np.isnan(result.image).all()
+    assert np.isclose(result.scaling_factor, 2.0)
+
+
+def test_near_equal_beams_keep_nan_block():
+    """A solid NaN region stays blank when the beams are nearly equal."""
+    old = Beam(10 * u.arcsec)
+    new = Beam(10.000001 * u.arcsec, 10 * u.arcsec, 0 * u.deg)
+    image = make_image(shape=(256, 256))
+    image[64:192, 64:192] = np.nan
+    out = smooth(image, old, new, PIX, PIX)
+    assert np.array_equal(np.isnan(out), np.isnan(image))
+
+
+@pytest.mark.parametrize("conv_mode", ["robust", "scipy", "astropy"])
+def test_unreachable_and_zero_beams_raise(conv_mode):
+    """No silent amplification, inf or NaN output for impossible kernels."""
+    image = make_image(shape=(16, 16), dtype=np.float64)
+    small = Beam(10 * u.arcsec)
+    big = Beam(20 * u.arcsec, 10 * u.arcsec, 0 * u.deg)
+    with pytest.raises(ValueError):
+        smooth(image, big, small, PIX, PIX, conv_mode=conv_mode)
+    with pytest.raises(ValueError):
+        smooth(image, Beam(0 * u.deg), small, PIX, PIX, conv_mode=conv_mode)
+    # A one-dimensional kernel is fine
+    out = smooth(image, big, Beam(20 * u.arcsec), PIX, PIX, conv_mode=conv_mode)
+    assert np.isfinite(out).all()
+
+
+@pytest.mark.parametrize("conv_mode", ["scipy", "astropy", "astropy_fft"])
+def test_kernel_modes_reject_non_square_pixels(conv_mode):
+    """The image-plane kernel modes assume square pixels."""
+    image = make_image(shape=(32, 32), dtype=np.float64)
+    with pytest.raises(ValueError, match="square"):
+        smooth(image, OLD_BEAM, NEW_BEAM, PIX, 2 * PIX, conv_mode=conv_mode)
+    # The sign of CDELT1 does not matter
+    out = smooth(image, OLD_BEAM, NEW_BEAM, -PIX, PIX, conv_mode=conv_mode)
+    assert np.isfinite(out).all()

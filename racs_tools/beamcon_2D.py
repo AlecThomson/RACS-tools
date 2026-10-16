@@ -24,11 +24,12 @@ from tqdm import tqdm
 from racs_tools.convolve_uv import (
     NAN_BEAM,
     ZERO_BEAM,
+    beam_contains,
+    check_square_pixels,
     get_convolving_beam,
     get_nyquist_beam,
-    my_ceil,
     parse_conv_mode,
-    round_up,
+    round_common_beam,
     smooth,
 )
 from racs_tools.logging import (
@@ -94,9 +95,6 @@ def check_target_beam(
         files (list[Path]): All the FITS files to check.
         cutoff (float | None, optional): Cutoff of beam in arcsec. Defaults to None.
 
-    Raises:
-        BeamError: If beam deconvolution fails.
-
     Returns:
         bool: If the target beam will deconvolve.
     """
@@ -113,15 +111,10 @@ def check_target_beam(
     ):
         if cutoff is not None and beam.major.to(u.arcsec) > cutoff * u.arcsec:
             continue
-        try:
-            target_beam.deconvolve(beam)
-        except ValueError:
+        # Same test the convolution applies
+        if not beam_contains(target_beam, beam):
             mask_count += 1
             failed.append(file)
-        except BeamError as be:
-            # BeamError should not be raised if beams are equal
-            if target_beam != beam:
-                raise BeamError(be)
     is_good = mask_count == 0
     if not is_good:
         logger.error("The following images could not reach target resolution:")
@@ -241,13 +234,18 @@ def beamcon_2d_on_fits(
 
     image_data = getimdata(file)
 
-    conv_beam, _ = get_convolving_beam(
-        old_beam=image_data.old_beam,
-        new_beam=new_beam,
-        dx=image_data.dx,
-        dy=image_data.dy,
-        cutoff=cutoff,
-    )
+    zero_beam = not (image_data.old_beam.major > 0 and image_data.old_beam.minor > 0)
+    if zero_beam:
+        logger.warning(f"{file} has a zero-size beam -- blanking")
+        conv_beam = NAN_BEAM
+    else:
+        conv_beam, _ = get_convolving_beam(
+            old_beam=image_data.old_beam,
+            new_beam=new_beam,
+            dx=image_data.dx,
+            dy=image_data.dy,
+            cutoff=cutoff,
+        )
 
     if dryrun:
         return BeamLogInfo(
@@ -257,15 +255,18 @@ def beamcon_2d_on_fits(
             conv_beam=conv_beam,
         )
 
-    new_image = smooth(
-        image=image_data.image,
-        old_beam=image_data.old_beam,
-        new_beam=new_beam,
-        dx=image_data.dx,
-        dy=image_data.dy,
-        conv_mode=conv_mode,
-        cutoff=cutoff,
-    )
+    if zero_beam:
+        new_image = image_data.image * np.nan
+    else:
+        new_image = smooth(
+            image=image_data.image,
+            old_beam=image_data.old_beam,
+            new_beam=new_beam,
+            dx=image_data.dx,
+            dy=image_data.dy,
+            conv_mode=conv_mode,
+            cutoff=cutoff,
+        )
 
     if image_data.four_d:
         # make it back into a 4D image
@@ -313,6 +314,9 @@ def get_common_beam(
     beams_list = []
     for file in files:
         header = fits.getheader(file, memmap=True)
+        if conv_mode != "robust":
+            dx, dy = proj_plane_pixel_scales(WCS(header))[:2] * u.deg
+            check_square_pixels(dx, dy)
         beam = Beam.from_fits_header(header)
         beams_list.append(beam)
 
@@ -355,11 +359,7 @@ def get_common_beam(
             )
 
         # Round up values
-        target_beam = Beam(
-            major=my_ceil(target_beam.major.to(u.arcsec).value, precision=1) * u.arcsec,
-            minor=my_ceil(target_beam.minor.to(u.arcsec).value, precision=1) * u.arcsec,
-            pa=round_up(target_beam.pa.to(u.deg), decimals=2),
-        )
+        target_beam = round_common_beam(target_beam, beams[~flags])
 
     if conv_mode != "robust":
         target_beam = get_nyquist_beam(
