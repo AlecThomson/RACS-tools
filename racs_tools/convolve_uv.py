@@ -118,6 +118,23 @@ def round_common_beam(common_beam: Beam, beams: Beams | list[Beam]) -> Beam:
     return rounded
 
 
+def check_square_pixels(dx: u.Quantity, dy: u.Quantity) -> None:
+    """Check that pixels are square, as the image-plane kernel modes assume
+
+    Args:
+        dx (u.Quantity): Pixel size in x.
+        dy (u.Quantity): Pixel size in y.
+
+    Raises:
+        ValueError: If |dx| != |dy|.
+    """
+    if not np.isclose(abs(dx), abs(dy)):
+        raise ValueError(
+            f"Pixels must be square for this convolution mode, got {dx=} and {dy=}. "
+            "Use conv_mode='robust'."
+        )
+
+
 def get_nyquist_beam(
     target_beam: Beam,
     target_header: fits.Header,
@@ -340,6 +357,7 @@ def convolve_scipy(
     Returns:
         ConvolutionResult: Convolved image, scaling factor.
     """
+    check_square_pixels(dx, dy)
     conbeam, sfactor = get_convolving_beam(
         old_beam=old_beam,
         new_beam=new_beam,
@@ -388,6 +406,7 @@ def convolve_astropy(
     Returns:
         ConvolutionResult: Convolved image, scaling factor.
     """
+    check_square_pixels(dx, dy)
     conbeam, sfactor = get_convolving_beam(
         old_beam=old_beam,
         new_beam=new_beam,
@@ -439,6 +458,7 @@ def convolve_astropy_fft(
     Returns:
         ConvolutionResult: Convolved image, scaling factor.
     """
+    check_square_pixels(dx, dy)
     conbeam, sfactor = get_convolving_beam(
         old_beam=old_beam,
         new_beam=new_beam,

@@ -250,3 +250,14 @@ def test_unreachable_and_zero_beams_raise(conv_mode):
     # A one-dimensional kernel is fine
     out = smooth(image, big, Beam(20 * u.arcsec), PIX, PIX, conv_mode=conv_mode)
     assert np.isfinite(out).all()
+
+
+@pytest.mark.parametrize("conv_mode", ["scipy", "astropy", "astropy_fft"])
+def test_kernel_modes_reject_non_square_pixels(conv_mode):
+    """The image-plane kernel modes assume square pixels."""
+    image = make_image(shape=(32, 32), dtype=np.float64)
+    with pytest.raises(ValueError, match="square"):
+        smooth(image, OLD_BEAM, NEW_BEAM, PIX, 2 * PIX, conv_mode=conv_mode)
+    # The sign of CDELT1 does not matter
+    out = smooth(image, OLD_BEAM, NEW_BEAM, -PIX, PIX, conv_mode=conv_mode)
+    assert np.isfinite(out).all()
