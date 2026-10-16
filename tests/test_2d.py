@@ -304,3 +304,21 @@ def test_zero_beam_is_blanked(make_2d_image):
     assert np.isfinite(
         fits.getdata(make_2d_image.path.with_suffix(".zero_test.fits"))
     ).all()
+
+
+def test_non_square_pixels_rejected_up_front(make_2d_image):
+    """Kernel modes reject rectangular pixels before writing anything."""
+    rect = make_2d_image.path.with_name("0_rect.fits")
+    with fits.open(make_2d_image.path) as hdul:
+        hdul[0].header["CDELT2"] *= 2
+        hdul.writeto(rect)
+    with pytest.raises(ValueError, match="square"):
+        beamcon_2D.smooth_fits_files(
+            infile_list=[make_2d_image.path, rect],
+            suffix="rect_test",
+            conv_mode="scipy",
+            bmaj=40.0,
+            bmin=40.0,
+            bpa=0.0,
+        )
+    assert not make_2d_image.path.with_suffix(".rect_test.fits").exists()

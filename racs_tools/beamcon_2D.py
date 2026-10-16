@@ -24,6 +24,7 @@ from tqdm import tqdm
 from racs_tools.convolve_uv import (
     NAN_BEAM,
     ZERO_BEAM,
+    check_square_pixels,
     get_convolving_beam,
     get_nyquist_beam,
     parse_conv_mode,
@@ -320,6 +321,9 @@ def get_common_beam(
     beams_list = []
     for file in files:
         header = fits.getheader(file, memmap=True)
+        if conv_mode != "robust":
+            dx, dy = proj_plane_pixel_scales(WCS(header))[:2] * u.deg
+            check_square_pixels(dx, dy)
         beam = Beam.from_fits_header(header)
         beams_list.append(beam)
 
