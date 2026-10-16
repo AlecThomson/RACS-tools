@@ -260,3 +260,30 @@ def test_get_target_beam():
 #     unittest.TestLoader.sortTestMethodsUsing = None
 #     suite = unittest.TestLoader().loadTestsFromTestCase(test_Beamcon3D)
 #     unittest.TextTestRunner(verbosity=1).run(suite)
+
+
+def test_natural_mode_uses_target(make_3d_image):
+    """A single target beam applies to every channel in natural mode."""
+    _, common_beam_data_list = beamcon_3D.smooth_fits_cube(
+        infiles_list=[make_3d_image.path],
+        mode="natural",
+        dryrun=True,
+        bmaj=60.0,
+        bmin=60.0,
+        bpa=0.0,
+    )
+    commonbeams = common_beam_data_list[0].commonbeams
+    assert np.allclose(commonbeams.major.to(u.arcsec).value, 60)
+    assert np.allclose(commonbeams.minor.to(u.arcsec).value, 60)
+
+
+def test_swapped_axes_in_beam_table(make_3d_image):
+    """A row with BMIN > BMAJ is read as the same ellipse, not a failed run."""
+    with fits.open(make_3d_image.path, mode="update") as hdul:
+        hdul["BEAMS"].data["BMAJ"][5] = 10
+        hdul["BEAMS"].data["BMIN"][5] = 50
+    cube_data_list, _ = beamcon_3D.smooth_fits_cube(
+        infiles_list=[make_3d_image.path], dryrun=True
+    )
+    beam = cube_data_list[0].beams[5]
+    assert beam == Beam(50 * u.arcsec, 10 * u.arcsec, 90 * u.deg)
