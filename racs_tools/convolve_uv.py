@@ -172,7 +172,13 @@ def convolve(
     if np.isnan(conbeam):
         return ConvolutionResult(image * np.nan, sfactor)
     if np.isnan(image).all():
-        return ConvolutionResult(image, sfactor)
+        # Same factor gaussft gives a finite image
+        g_ratio = np.sqrt(
+            (new_beam.major * new_beam.minor / (old_beam.major * old_beam.minor))
+            .decompose()
+            .value
+        )
+        return ConvolutionResult(image, g_ratio)
     if conbeam == ZERO_BEAM and sfactor == 1:
         return ConvolutionResult(image, sfactor)
     ###
@@ -209,8 +215,9 @@ def convolve(
 
     # The coordinates in FT domain. Only the non-redundant v are needed, to
     # match the output of the real-input transform below.
-    u_image = np.fft.fftfreq(nx, d=dx.to(units.rad).value).astype(real_dtype)
-    v_image = np.fft.rfftfreq(ny, d=dy.to(units.rad).value).astype(real_dtype)
+    # Rows run along y and columns along x. A negative CDELT would mirror the PA.
+    u_image = np.fft.fftfreq(nx, d=abs(dy.to(units.rad).value)).astype(real_dtype)
+    v_image = np.fft.rfftfreq(ny, d=abs(dx.to(units.rad).value)).astype(real_dtype)
 
     [g_final, g_ratio] = gaussft.gaussft(
         bmin_in=old_beam.minor.to(units.deg).value,
@@ -243,9 +250,9 @@ def convolve(
         del g_final
         mask_conv = scipy.fft.irfft2(mask_f, s=(nx, ny), overwrite_x=True)
         del mask_f
-        # Use approx values to find the NaNs
-        # Need this to get around numerical issues
-        mask_conv = ~(mask_conv + 1 < 2)
+        # Blank at 0.99 rather than 1. With nearly equal beams a solid NaN
+        # region sits at 1 minus round-off and must stay blank.
+        mask_conv = mask_conv >= 0.99
         logger.warning(
             f"Convolved image contains {mask_conv.sum()} ({mask_conv.sum() / mask_conv.size * 100:0.1f}%) NaNs"
         )
