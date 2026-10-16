@@ -240,13 +240,18 @@ def beamcon_2d_on_fits(
 
     image_data = getimdata(file)
 
-    conv_beam, _ = get_convolving_beam(
-        old_beam=image_data.old_beam,
-        new_beam=new_beam,
-        dx=image_data.dx,
-        dy=image_data.dy,
-        cutoff=cutoff,
-    )
+    zero_beam = not (image_data.old_beam.major > 0 and image_data.old_beam.minor > 0)
+    if zero_beam:
+        logger.warning(f"{file} has a zero-size beam -- blanking")
+        conv_beam = NAN_BEAM
+    else:
+        conv_beam, _ = get_convolving_beam(
+            old_beam=image_data.old_beam,
+            new_beam=new_beam,
+            dx=image_data.dx,
+            dy=image_data.dy,
+            cutoff=cutoff,
+        )
 
     if dryrun:
         return BeamLogInfo(
@@ -256,15 +261,18 @@ def beamcon_2d_on_fits(
             conv_beam=conv_beam,
         )
 
-    new_image = smooth(
-        image=image_data.image,
-        old_beam=image_data.old_beam,
-        new_beam=new_beam,
-        dx=image_data.dx,
-        dy=image_data.dy,
-        conv_mode=conv_mode,
-        cutoff=cutoff,
-    )
+    if zero_beam:
+        new_image = image_data.image * np.nan
+    else:
+        new_image = smooth(
+            image=image_data.image,
+            old_beam=image_data.old_beam,
+            new_beam=new_beam,
+            dx=image_data.dx,
+            dy=image_data.dy,
+            conv_mode=conv_mode,
+            cutoff=cutoff,
+        )
 
     if image_data.four_d:
         # make it back into a 4D image

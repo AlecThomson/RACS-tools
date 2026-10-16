@@ -523,7 +523,7 @@ def get_convolving_beam(
         cutoff (float, optional): Cutoff for beamsize in arcsec. Defaults to None.
 
     Raises:
-        err: If beam deconvolution fails.
+        ValueError: If the input beam has zero size or is larger than the target.
 
     Returns:
         Tuple[Beam, float]: Convolving beam and scaling factor.
@@ -536,6 +536,14 @@ def get_convolving_beam(
             np.nan,
         )
 
+    for beam in (old_beam, new_beam):
+        if not np.isfinite([beam.major.value, beam.minor.value, beam.pa.value]).all():
+            logger.warning(f"Beam {beam!r} is not finite -- blanking")
+            return NAN_BEAM, np.nan
+
+    if not (old_beam.major > 0 and old_beam.minor > 0):
+        raise ValueError(f"Input beam {old_beam!r} has zero size")
+
     if new_beam == old_beam:
         conbm = ZERO_BEAM
         fac = 1.0
@@ -543,6 +551,10 @@ def get_convolving_beam(
             f"New beam {new_beam!r} and old beam {old_beam!r} are the same. Won't attempt convolution."
         )
         return conbm, fac
+    if not beam_contains(new_beam, old_beam):
+        raise ValueError(
+            f"Target beam {new_beam!r} cannot be reached by convolving {old_beam!r}"
+        )
     try:
         conbm = new_beam.deconvolve(old_beam)
     except BeamError as err:

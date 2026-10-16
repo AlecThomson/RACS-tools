@@ -235,3 +235,18 @@ def test_near_equal_beams_keep_nan_block():
     image[64:192, 64:192] = np.nan
     out = smooth(image, old, new, PIX, PIX)
     assert np.array_equal(np.isnan(out), np.isnan(image))
+
+
+@pytest.mark.parametrize("conv_mode", ["robust", "scipy", "astropy"])
+def test_unreachable_and_zero_beams_raise(conv_mode):
+    """No silent amplification, inf or NaN output for impossible kernels."""
+    image = make_image(shape=(16, 16), dtype=np.float64)
+    small = Beam(10 * u.arcsec)
+    big = Beam(20 * u.arcsec, 10 * u.arcsec, 0 * u.deg)
+    with pytest.raises(ValueError):
+        smooth(image, big, small, PIX, PIX, conv_mode=conv_mode)
+    with pytest.raises(ValueError):
+        smooth(image, Beam(0 * u.deg), small, PIX, PIX, conv_mode=conv_mode)
+    # A one-dimensional kernel is fine
+    out = smooth(image, big, Beam(20 * u.arcsec), PIX, PIX, conv_mode=conv_mode)
+    assert np.isfinite(out).all()

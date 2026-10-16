@@ -288,3 +288,19 @@ def test_flags():
         flags = beams.major.to(u.arcsec) > cutoff * u.arcsec | flags
 
     flags = beams.major.to(u.arcsec).value > cutoff | flags
+
+
+def test_zero_beam_is_blanked(make_2d_image):
+    """An image with a zero-size beam is blanked, not a failed run."""
+    zero = make_2d_image.path.with_name("zero.fits")
+    with fits.open(make_2d_image.path) as hdul:
+        hdul[0].header["BMAJ"] = 0.0
+        hdul[0].header["BMIN"] = 0.0
+        hdul.writeto(zero)
+    beamcon_2D.smooth_fits_files(
+        infile_list=[make_2d_image.path, zero], suffix="zero_test"
+    )
+    assert np.isnan(fits.getdata(zero.with_suffix(".zero_test.fits"))).all()
+    assert np.isfinite(
+        fits.getdata(make_2d_image.path.with_suffix(".zero_test.fits"))
+    ).all()
