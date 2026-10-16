@@ -287,3 +287,18 @@ def test_swapped_axes_in_beam_table(make_3d_image):
     )
     beam = cube_data_list[0].beams[5]
     assert beam == Beam(50 * u.arcsec, 10 * u.arcsec, 90 * u.deg)
+
+
+def test_circularise_per_channel_targets(make_3d_image):
+    """--circularise applies to a list of per-channel targets too."""
+    _, common_beam_data_list = beamcon_3D.smooth_fits_cube(
+        infiles_list=[make_3d_image.path],
+        dryrun=True,
+        bmaj=[60.0] * 100,
+        bmin=[55.0] * 100,
+        bpa=[10.0] * 100,
+        circularise=True,
+    )
+    commonbeams = common_beam_data_list[0].commonbeams
+    assert np.allclose(commonbeams.minor.to(u.arcsec).value, 60)
+    assert np.allclose(commonbeams.pa.to(u.deg).value, 0)

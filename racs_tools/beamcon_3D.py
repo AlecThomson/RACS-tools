@@ -603,6 +603,13 @@ def commonbeamer(
     if isinstance(target_beam, Beams):
         logger.info(f"Setting the target beam for {len(target_beam)} channels")
         commonbeams = target_beam
+        if circularise:
+            logger.info("Circular beam requested, setting BMIN=BMAJ and BPA=0")
+            commonbeams = Beams(
+                major=commonbeams.major,
+                minor=commonbeams.major,
+                pa=commonbeams.pa * 0,
+            )
     else:
         commonbeams = _get_commonbeams(
             cube_data_list=cube_data_list,
