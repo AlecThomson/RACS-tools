@@ -45,7 +45,13 @@ jobs:
     - name: Install dependencies
       run: |
         python3 -m pip install --upgrade pip
-        python3 -m pip install pytest pytest-cov numpy git+https://github.com/radio-astro-tools/spectral-cube.git
+        python3 -m pip install pytest pytest-cov numpy
+        # spectral-cube's main branch needs Python >= 3.11; 3.10 gets the release
+        if python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))'; then
+          python3 -m pip install git+https://github.com/radio-astro-tools/spectral-cube.git
+        else
+          python3 -m pip install "spectral-cube>=0.7"
+        fi
         python3 -m pip install -U .
     - name: Install miriad
       run: |
