@@ -88,8 +88,10 @@ def beam_contains(big_beam: Beam, small_beam: Beam) -> bool:
     residual = big - cov(small_beam)
     if not np.isfinite(residual).all():
         return False
-    # Round-off is relative to the beam size
-    tol = 1e-12 * np.trace(big)
+    # Round-off is relative to the beam size. Beams are often read from
+    # float32 columns (CASA beam tables, cube headers written from them), so
+    # allow a few float32 epsilons: a kernel that small is no kernel at all.
+    tol = 4 * np.finfo(np.float32).eps * np.trace(big)
     return bool(np.linalg.eigvalsh(residual)[0] >= -tol)
 
 

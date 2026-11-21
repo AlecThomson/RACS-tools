@@ -193,6 +193,22 @@ def test_beam_contains_one_dimensional_kernel():
     assert not beam_contains(target, Beam(21 * u.arcsec, 10 * u.arcsec, 0 * u.deg))
 
 
+def test_beam_contains_float32_round_off():
+    """A beam read back from float32 still fits a target equal to its float32 value"""
+    # The values of fitscube#72: fitscube < 2.12.1 wrote the float32 table
+    # beam 8.8" (8.800000190734863") into plane headers as 0.0024444445 deg
+    table_minor = float(np.float32(8.8))
+    header_minor = 0.0024444445 * 3600
+    assert header_minor > table_minor
+    target = Beam(11.1 * u.arcsec, table_minor * u.arcsec, 0 * u.deg)
+    plane = Beam(11.00000052 * u.arcsec, header_minor * u.arcsec, 0 * u.deg)
+    assert beam_contains(target, plane)
+    # A real excess, even of a micro-arcsecond in ten, is still refused
+    assert not beam_contains(
+        target, Beam(11.0 * u.arcsec, (table_minor + 1e-5) * u.arcsec, 0 * u.deg)
+    )
+
+
 @pytest.mark.parametrize("sign", [(-1, 1), (1, -1), (-1, -1)])
 def test_negative_pixel_size_keeps_pa(sign):
     """A negative CDELT1, as in most headers, must not mirror the PA."""
