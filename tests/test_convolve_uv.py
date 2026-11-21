@@ -277,3 +277,81 @@ def test_kernel_modes_reject_non_square_pixels(conv_mode):
     # The sign of CDELT1 does not matter
     out = smooth(image, OLD_BEAM, NEW_BEAM, -PIX, PIX, conv_mode=conv_mode)
     assert np.isfinite(out).all()
+
+
+NYQUIST_CASES = (
+    ((9, 9, 0), (12.3, 9.1, 30)),
+    ((16, 11, 40), (16.1, 15.1, 40.03)),
+    ((10, 8, 30), (12.3, 9.1, 65.8)),
+)
+NYQUIST_PIX = 2.0 / 3600.0
+
+
+def _arcsec_beam(major, minor, pa):
+    return Beam(major * u.arcsec, minor * u.arcsec, pa * u.deg)
+
+
+def _exact_smooth(image, old, new):
+    """The closed-form answer: convolve the image's band-limited interpolant
+    with the kernel and resample. On an even axis that averages the taper over
+    the Nyquist bin's +-1/2 cycles/pixel, turning exp(b u v) into cosh(b u v)."""
+
+    def form(beam):
+        f = 2 * np.sqrt(2 * np.log(2))
+        sx, sy = beam[0] / 3600 / NYQUIST_PIX / f, beam[1] / 3600 / NYQUIST_PIX / f
+        c, s = np.cos(np.deg2rad(beam[2])), np.sin(np.deg2rad(beam[2]))
+        return np.array(
+            [
+                sx**2 * c**2 + sy**2 * s**2,
+                2 * c * s * (sy**2 - sx**2),
+                sx**2 * s**2 + sy**2 * c**2,
+            ]
+        )
+
+    a, b, c = -2 * np.pi**2 * (form(new) - form(old))
+    ny, nx = image.shape
+    uu = np.fft.fftfreq(ny)[:, None]
+    vv = np.fft.fftfreq(nx)[None, :]
+    nyquist = np.zeros(image.shape, dtype=bool)
+    if ny % 2 == 0:
+        nyquist[ny // 2, :] = True
+    if nx % 2 == 0:
+        nyquist[:, nx // 2] = True
+    cross = np.where(nyquist, np.cosh(b * uu * vv), np.exp(b * uu * vv))
+    ratio = new[0] * new[1] / (old[0] * old[1])
+    taper = ratio * np.exp(a * uu**2 + c * vv**2) * cross
+    exact = np.fft.ifft2(np.fft.fft2(image) * taper)
+    assert np.abs(exact.imag).max() < 1e-12 * np.abs(exact.real).max()
+    return exact.real
+
+
+@pytest.mark.parametrize("shape", [(64, 64), (64, 65), (65, 64), (65, 65)])
+@pytest.mark.parametrize(("old", "new"), NYQUIST_CASES)
+def test_robust_matches_closed_form(shape, old, new):
+    image = np.random.default_rng(2).normal(size=shape)
+    pix = NYQUIST_PIX * u.deg
+    ours = smooth(
+        image, _arcsec_beam(*old), _arcsec_beam(*new), pix, pix, conv_mode="robust"
+    )
+    exact = _exact_smooth(image, old, new)
+    # The output is float32
+    np.testing.assert_allclose(ours, exact, rtol=0, atol=2e-6 * exact.std())
+
+
+@pytest.mark.parametrize(("old", "new"), NYQUIST_CASES)
+def test_robust_is_mirror_symmetric(old, new):
+    # Mirroring the image and its beams' PAs mirrors the result. Taking one
+    # sign of the Nyquist bin, as before, broke this by up to 15% of the noise.
+    image = np.random.default_rng(3).normal(size=(64, 64))
+    pix = NYQUIST_PIX * u.deg
+
+    def mirror(beam):
+        return _arcsec_beam(beam[0], beam[1], -beam[2])
+
+    direct = smooth(
+        image, _arcsec_beam(*old), _arcsec_beam(*new), pix, pix, conv_mode="robust"
+    )
+    mirrored = smooth(
+        image[:, ::-1].copy(), mirror(old), mirror(new), pix, pix, conv_mode="robust"
+    )[:, ::-1]
+    np.testing.assert_allclose(mirrored, direct, rtol=0, atol=2e-6 * direct.std())

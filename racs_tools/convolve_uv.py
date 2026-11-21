@@ -296,16 +296,29 @@ def convolve(
     u_image = np.fft.fftfreq(nx, d=abs(dy.to(units.rad).value)).astype(real_dtype)
     v_image = np.fft.rfftfreq(ny, d=abs(dx.to(units.rad).value)).astype(real_dtype)
 
-    [g_final, g_ratio] = gaussft.gaussft(
-        bmin_in=old_beam.minor.to(units.deg).value,
-        bmaj_in=old_beam.major.to(units.deg).value,
-        bpa_in=old_beam.pa.to(units.deg).value,
-        bmin=new_beam.minor.to(units.deg).value,
-        bmaj=new_beam.major.to(units.deg).value,
-        bpa=new_beam.pa.to(units.deg).value,
-        u=u_image,
-        v=v_image,
-    )
+    beams = {
+        "bmin_in": old_beam.minor.to(units.deg).value,
+        "bmaj_in": old_beam.major.to(units.deg).value,
+        "bpa_in": old_beam.pa.to(units.deg).value,
+        "bmin": new_beam.minor.to(units.deg).value,
+        "bmaj": new_beam.major.to(units.deg).value,
+        "bpa": new_beam.pa.to(units.deg).value,
+    }
+    [g_final, g_ratio] = gaussft.gaussft(u=u_image, v=v_image, **beams)
+
+    # On an even axis the Nyquist bin holds +1/2 and -1/2 cycles per pixel at
+    # once, and the taper differs between them when the kernel is rotated.
+    # Convolving the image's band-limited interpolant exactly averages the
+    # two. The taper is a quadratic form, so taper(-u, v) = taper(u, -v):
+    # averaging over the sign of u alone is exact, corner included.
+    if nx % 2 == 0:
+        row = nx // 2
+        flipped, _ = gaussft.gaussft(u=-u_image[row : row + 1], v=v_image, **beams)
+        g_final[row] = (g_final[row] + flipped[0]) / 2
+    if ny % 2 == 0:
+        rows = np.arange(nx) != nx // 2 if nx % 2 == 0 else slice(None)
+        flipped, _ = gaussft.gaussft(u=u_image, v=-v_image[-1:], **beams)
+        g_final[rows, -1] = (g_final[rows, -1] + flipped[rows, 0]) / 2
     del u_image
     del v_image
 
