@@ -117,7 +117,10 @@ def test_convolve_agrees_across_precision(shape, nans):
     assert single.image.shape == shape
     assert np.isclose(single.scaling_factor, double.scaling_factor)
     assert np.array_equal(np.isnan(single.image), np.isnan(double.image))
-    assert np.isnan(single.image).any() == nans
+    # The corners, mostly beyond the image, are blank either way
+    corners = np.isnan(single.image[[0, 0, -1, -1], [0, -1, 0, -1]])
+    assert corners.all()
+    assert np.isnan(single.image).sum() > 100 * nans
 
     finite = ~np.isnan(double.image)
     assert np.allclose(
@@ -156,8 +159,10 @@ def test_convolve_keeps_single_precision_for_fits_data(tmp_path, monkeypatch):
         assert spectrum.dtype == np.complex64, (
             f"spectrum promoted to {spectrum.dtype}, which doubles peak memory"
         )
-        # Half spectrum only: the redundant conjugate half is never stored
-        assert spectrum.shape == (image.shape[0], image.shape[1] // 2 + 1)
+        # Half spectrum only, of the padded image: the redundant conjugate
+        # half is never stored
+        assert spectrum.shape[0] > image.shape[0]
+        assert spectrum.shape[1] < image.shape[1]
 
 
 def test_convolve_leaves_the_input_alone():
@@ -215,7 +220,7 @@ def test_negative_pixel_size_keeps_pa(sign):
     image = make_image(dtype=np.float64)
     want = convolve(image, OLD_BEAM, NEW_BEAM, PIX, PIX).image
     got = convolve(image, OLD_BEAM, NEW_BEAM, sign[0] * PIX, sign[1] * PIX).image
-    assert np.allclose(got, want)
+    assert np.allclose(got, want, equal_nan=True)
 
 
 def test_non_square_pixels():
@@ -224,7 +229,8 @@ def test_non_square_pixels():
     dx, dy = 1.5, 3.0
     image = np.zeros((64, 96))
     image[32, 48] = 1
-    out = convolve(image, old, new, dx * u.arcsec, dy * u.arcsec).image
+    # The blank corners hold none of the flux
+    out = np.nan_to_num(convolve(image, old, new, dx * u.arcsec, dy * u.arcsec).image)
     rows, cols = np.indices(out.shape)
     total = out.sum()
     var_y = (out * (rows - (out * rows).sum() / total) ** 2).sum() / total * dy**2
@@ -292,9 +298,12 @@ def _arcsec_beam(major, minor, pa):
 
 
 def _exact_smooth(image, old, new):
-    """The closed-form answer: convolve the image's band-limited interpolant
-    with the kernel and resample. On an even axis that averages the taper over
-    the Nyquist bin's +-1/2 cycles/pixel, turning exp(b u v) into cosh(b u v)."""
+    """The closed-form answer: the image padded beyond the kernel's 6.1 sigma
+    reach, with the sky beyond it missing, its band-limited interpolant
+    convolved with the kernel and resampled. On an even axis that averages
+    the taper over the Nyquist bin's +-1/2 cycles/pixel, turning exp(b u v)
+    into cosh(b u v). Kept pixels are divided by the share of the kernel on
+    data; those with more than half on missing data are blanked."""
 
     def form(beam):
         f = 2 * np.sqrt(2 * np.log(2))
@@ -308,21 +317,38 @@ def _exact_smooth(image, old, new):
             ]
         )
 
-    a, b, c = -2 * np.pi**2 * (form(new) - form(old))
+    difference = form(new) - form(old)
+    a, b, c = -2 * np.pi**2 * difference
+    covariance = [
+        [difference[0], difference[1] / 2],
+        [difference[1] / 2, difference[2]],
+    ]
+    reach = int(np.ceil(6.1 * np.sqrt(np.linalg.eigvalsh(covariance).max()))) + 1
     ny, nx = image.shape
-    uu = np.fft.fftfreq(ny)[:, None]
-    vv = np.fft.fftfreq(nx)[None, :]
-    nyquist = np.zeros(image.shape, dtype=bool)
-    if ny % 2 == 0:
-        nyquist[ny // 2, :] = True
-    if nx % 2 == 0:
-        nyquist[:, nx // 2] = True
+    py = scipy.fft.next_fast_len(ny + reach, real=True)
+    px = scipy.fft.next_fast_len(nx + reach, real=True)
+    uu = np.fft.fftfreq(py)[:, None]
+    vv = np.fft.fftfreq(px)[None, :]
+    nyquist = np.zeros((py, px), dtype=bool)
+    if py % 2 == 0:
+        nyquist[py // 2, :] = True
+    if px % 2 == 0:
+        nyquist[:, px // 2] = True
     cross = np.where(nyquist, np.cosh(b * uu * vv), np.exp(b * uu * vv))
+    taper = np.exp(a * uu**2 + c * vv**2) * cross
+
+    def convolve_padded(plane, fill):
+        padded = np.full((py, px), float(fill))
+        padded[:ny, :nx] = plane
+        out = np.fft.ifft2(np.fft.fft2(padded) * taper)
+        assert np.abs(out.imag).max() < 1e-12 * max(np.abs(out.real).max(), 1)
+        return out.real[:ny, :nx]
+
     ratio = new[0] * new[1] / (old[0] * old[1])
-    taper = ratio * np.exp(a * uu**2 + c * vv**2) * cross
-    exact = np.fft.ifft2(np.fft.fft2(image) * taper)
-    assert np.abs(exact.imag).max() < 1e-12 * np.abs(exact.real).max()
-    return exact.real
+    missing = convolve_padded(np.zeros(image.shape), 1)
+    exact = ratio * convolve_padded(image, 0) / (1 - missing)
+    exact[missing > 0.5] = np.nan
+    return exact
 
 
 @pytest.mark.parametrize("shape", [(64, 64), (64, 65), (65, 64), (65, 65)])
@@ -335,7 +361,7 @@ def test_robust_matches_closed_form(shape, old, new):
     )
     exact = _exact_smooth(image, old, new)
     # The output is float32
-    np.testing.assert_allclose(ours, exact, rtol=0, atol=2e-6 * exact.std())
+    np.testing.assert_allclose(ours, exact, rtol=0, atol=2e-6 * np.nanstd(exact))
 
 
 @pytest.mark.parametrize(("old", "new"), NYQUIST_CASES)
@@ -354,4 +380,33 @@ def test_robust_is_mirror_symmetric(old, new):
     mirrored = smooth(
         image[:, ::-1].copy(), mirror(old), mirror(new), pix, pix, conv_mode="robust"
     )[:, ::-1]
-    np.testing.assert_allclose(mirrored, direct, rtol=0, atol=2e-6 * direct.std())
+    np.testing.assert_allclose(mirrored, direct, rtol=0, atol=2e-6 * np.nanstd(direct))
+
+
+def test_flat_image_stays_flat_and_nothing_wraps():
+    """Near the edges and NaNs pixels are divided by the share of their kernel
+    on data, so a flat image stays flat; and no flux wraps round."""
+    old, new = (
+        Beam(12 * u.arcsec, 10 * u.arcsec, 20 * u.deg),
+        Beam(30 * u.arcsec, 25 * u.arcsec, 35 * u.deg),
+    )
+    image = np.ones((120, 100))
+    image[50:70, 40:60] = np.nan
+    result = convolve(image, old, new, PIX, PIX)
+    kept = result.image[~np.isnan(result.image)]
+    assert kept.size > 0.7 * image.size
+    np.testing.assert_allclose(kept, result.scaling_factor, rtol=2e-6)
+    point = np.zeros((120, 100))
+    point[60, 0] = 1
+    assert abs(convolve(point, old, new, PIX, PIX).image[60, -1]) < 1e-9
+
+
+def test_nan_fraction_is_a_tolerance():
+    image = make_image(dtype=np.float64, nans=True)
+    blanked = [
+        np.isnan(
+            convolve(image, OLD_BEAM, NEW_BEAM, PIX, PIX, nan_fraction=f).image
+        ).sum()
+        for f in (0.01, 0.5, 0.9)
+    ]
+    assert blanked[0] > blanked[1] > blanked[2] > 0
