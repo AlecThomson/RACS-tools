@@ -174,9 +174,22 @@ def test_robust_3d(make_3d_image, mirsmooth_3d):
     )
 
     fname_beamcon = make_3d_image.path.with_suffix(".robust.fits")
-    assert check_images(mirsmooth_3d.path, fname_beamcon), (
-        "Beamcon does not match Miriad"
+    # The robust mode divides each pixel near an edge by the share of its
+    # kernel on the image, which MIRIAD does not, and the 60" target spreads
+    # the sources' flux onto the edges of these 250" images. Compare where the
+    # kernel, no wider than the target, stays on the image (4 sigma).
+    sigma_pix = (
+        (
+            mirsmooth_3d.beam.major
+            / (2 * np.sqrt(2 * np.log(2)))
+            / make_3d_image.pix_scale
+        )
+        .decompose()
+        .value
     )
+    assert check_images(
+        mirsmooth_3d.path, fname_beamcon, border=int(np.ceil(4 * sigma_pix))
+    ), "Beamcon does not match Miriad"
 
 
 def test_get_target_beam():

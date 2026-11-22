@@ -373,9 +373,9 @@ def convolve(
     # Divided by the share on data, so a pixel near missing data keeps its
     # flux scale. Shares under 1e-8 are the kernel's truncation; a coarsely
     # sampled kernel rings, so near an edge the share can dip below zero.
-    near = np.abs(missing) > 1e-8
-    im_conv[near] /= 1 - missing[near]
     blank = missing > max(nan_fraction, 1e-8)
+    near = (np.abs(missing) > 1e-8) & ~blank
+    im_conv[near] /= 1 - missing[near]
     im_conv[blank] = np.nan
     logger.debug(
         f"Convolved image contains {blank.sum()} ({blank.sum() / blank.size * 100:0.1f}%) NaNs"
