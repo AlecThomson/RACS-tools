@@ -206,6 +206,26 @@ def get_nyquist_beam(
     return target_beam
 
 
+def kernel_reach(old_beam: Beam, new_beam: Beam, dx: u.Quantity, dy: u.Quantity) -> int:
+    """The reach in pixels of the kernel from ``old_beam`` to ``new_beam``: 6.1
+    standard deviations along its major axis, plus one. Beyond it the kernel
+    holds under 1e-8 of its sum."""
+    fwhm_to_sigma = 1 / (2 * np.sqrt(2 * np.log(2)))
+
+    def covariance(beam: Beam) -> np.ndarray:
+        """In pixels, along (rows, columns), PA from the row axis."""
+        major = beam.major.to(units.rad).value * fwhm_to_sigma
+        minor = beam.minor.to(units.rad).value * fwhm_to_sigma
+        t = beam.pa.to(units.rad).value
+        c, s = np.cos(t), np.sin(t)
+        rotation = np.array([[c, -s], [s, c]])
+        return rotation @ np.diag([major**2, minor**2]) @ rotation.T
+
+    steps = np.array([abs(dy.to(units.rad).value), abs(dx.to(units.rad).value)])
+    kernel = (covariance(new_beam) - covariance(old_beam)) / np.outer(steps, steps)
+    return int(np.ceil(6.1 * np.sqrt(max(np.linalg.eigvalsh(kernel).max(), 0)))) + 1
+
+
 def convolve(
     image: np.ndarray,
     old_beam: Beam,
@@ -213,12 +233,18 @@ def convolve(
     dx: u.Quantity,
     dy: u.Quantity,
     cutoff: float | None = None,
+    nan_fraction: float = 0.5,
 ) -> ConvolutionResult:
     """Convolve by X-ing in the Fourier domain.
         - convolution with Gaussian kernels only
         - no need for generation of a kernel image
         - direct computation of the FT of the kernel
-        - dimension of FT = dimension of image
+
+    The sky beyond the image's edges and under its NaN pixels is missing data.
+    The image is padded by the kernel's reach, so the convolution is linear
+    rather than circular, and each pixel is divided by the share of its
+    kernel's weight that fell on data. A pixel with more than ``nan_fraction``
+    of that weight on missing data is blanked.
 
     Args:
         image (np.ndarray): The image to be convolved.
@@ -227,6 +253,7 @@ def convolve(
         dx (u.Quantity): Grid size in x (e.g. CDELT1)
         dy (u.Quantity): Grid size in y (e.g. CDELT2)
         cutoff (Optional[float], optional): Dummy cutoff for beamszie in arcsec. Defaults to None. NOT USED.
+        nan_fraction (float, optional): Blank pixels with more than this share of their kernel's weight on missing data. Defaults to 0.5.
 
     Returns:
         ConvolutionResult: convolved image, scaling factor
@@ -262,16 +289,11 @@ def convolve(
 
     # Now we do the convolution
     nan_mask = np.isnan(image)
-    nanflag = nan_mask.any()
-
-    if nanflag:
+    if nan_mask.any():
         logger.warning(
             f"Image contains {nan_mask.sum()} "
             f"({nan_mask.sum() / nan_mask.size * 100:0.1f}%) NaNs"
         )
-        image = np.nan_to_num(image)
-    else:
-        del nan_mask
 
     nx = image.shape[0]
     ny = image.shape[1]
@@ -290,12 +312,6 @@ def convolve(
         else np.float64
     )
 
-    # The coordinates in FT domain. Only the non-redundant v are needed, to
-    # match the output of the real-input transform below.
-    # Rows run along y and columns along x. A negative CDELT would mirror the PA.
-    u_image = np.fft.fftfreq(nx, d=abs(dy.to(units.rad).value)).astype(real_dtype)
-    v_image = np.fft.rfftfreq(ny, d=abs(dx.to(units.rad).value)).astype(real_dtype)
-
     beams = {
         "bmin_in": old_beam.minor.to(units.deg).value,
         "bmaj_in": old_beam.major.to(units.deg).value,
@@ -304,6 +320,17 @@ def convolve(
         "bmaj": new_beam.major.to(units.deg).value,
         "bpa": new_beam.pa.to(units.deg).value,
     }
+    # Padding by the kernel's reach makes the convolution linear: without it
+    # flux convolved off one edge would come back on the opposite one.
+    reach = kernel_reach(old_beam, new_beam, dx, dy)
+    px = scipy.fft.next_fast_len(nx + reach, real=True)
+    py = scipy.fft.next_fast_len(ny + reach, real=True)
+
+    # The coordinates in FT domain. Only the non-redundant v are needed, to
+    # match the output of the real-input transform below.
+    # Rows run along y and columns along x. A negative CDELT would mirror the PA.
+    u_image = np.fft.fftfreq(px, d=abs(dy.to(units.rad).value)).astype(real_dtype)
+    v_image = np.fft.rfftfreq(py, d=abs(dx.to(units.rad).value)).astype(real_dtype)
     [g_final, g_ratio] = gaussft.gaussft(u=u_image, v=v_image, **beams)
 
     # On an even axis the Nyquist bin holds +1/2 and -1/2 cycles per pixel at
@@ -311,42 +338,48 @@ def convolve(
     # Convolving the image's band-limited interpolant exactly averages the
     # two. The taper is a quadratic form, so taper(-u, v) = taper(u, -v):
     # averaging over the sign of u alone is exact, corner included.
-    if nx % 2 == 0:
-        row = nx // 2
+    if px % 2 == 0:
+        row = px // 2
         flipped, _ = gaussft.gaussft(u=-u_image[row : row + 1], v=v_image, **beams)
         g_final[row] = (g_final[row] + flipped[0]) / 2
-    if ny % 2 == 0:
-        rows = np.arange(nx) != nx // 2 if nx % 2 == 0 else slice(None)
+    if py % 2 == 0:
+        rows = np.arange(px) != px // 2 if px % 2 == 0 else slice(None)
         flipped, _ = gaussft.gaussft(u=u_image, v=-v_image[-1:], **beams)
         g_final[rows, -1] = (g_final[rows, -1] + flipped[rows, 0]) / 2
     del u_image
     del v_image
 
-    # Perform the x-ing in the FT domain. The taper is applied in place, and
-    # the spectrum is consumed by its own inverse, so neither is duplicated.
-    im_f = scipy.fft.rfft2(image.astype(real_dtype, copy=False))
-    del image
-    im_f *= g_final
-    im_conv = scipy.fft.irfft2(im_f, s=(nx, ny), overwrite_x=True).astype(
+    def convolve_padded(
+        plane: np.ndarray, fill: float, taper: np.ndarray
+    ) -> np.ndarray:
+        """``plane`` in the corner of a (px, py) grid of ``fill``, through the taper, cropped back."""
+        padded = np.full((px, py), fill, dtype=real_dtype)
+        padded[:nx, :ny] = plane
+        spectrum = scipy.fft.rfft2(padded, overwrite_x=True)
+        del padded
+        spectrum *= taper
+        return scipy.fft.irfft2(spectrum, s=(px, py), overwrite_x=True)[:nx, :ny]
+
+    # Missing pixels are zero-filled, and a mask of them, the padding
+    # included, is convolved the same way to give the share of each pixel's
+    # kernel that fell on missing data.
+    im_conv = convolve_padded(np.where(nan_mask, 0, image), 0, g_final).astype(
         np.float32, copy=False
     )
-    del im_f
+    del image
+    missing = convolve_padded(nan_mask, 1, g_final) / g_ratio
+    del nan_mask, g_final
 
-    if nanflag:
-        # Convolve the NaN mask the same way, to find where the NaNs spread to
-        mask_f = scipy.fft.rfft2(nan_mask.astype(real_dtype))
-        del nan_mask
-        mask_f *= g_final
-        del g_final
-        mask_conv = scipy.fft.irfft2(mask_f, s=(nx, ny), overwrite_x=True)
-        del mask_f
-        # Blank at 0.99 rather than 1. With nearly equal beams a solid NaN
-        # region sits at 1 minus round-off and must stay blank.
-        mask_conv = mask_conv >= 0.99
-        logger.warning(
-            f"Convolved image contains {mask_conv.sum()} ({mask_conv.sum() / mask_conv.size * 100:0.1f}%) NaNs"
-        )
-        im_conv[mask_conv] = np.nan
+    # Divided by the share on data, so a pixel near missing data keeps its
+    # flux scale. Shares under 1e-8 are the kernel's truncation; a coarsely
+    # sampled kernel rings, so near an edge the share can dip below zero.
+    near = np.abs(missing) > 1e-8
+    im_conv[near] /= 1 - missing[near]
+    blank = missing > max(nan_fraction, 1e-8)
+    im_conv[blank] = np.nan
+    logger.debug(
+        f"Convolved image contains {blank.sum()} ({blank.sum() / blank.size * 100:0.1f}%) NaNs"
+    )
 
     return ConvolutionResult(image=im_conv, scaling_factor=g_ratio)
 
