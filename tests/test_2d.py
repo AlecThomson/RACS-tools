@@ -170,12 +170,13 @@ def matches_where_finite(data_1: np.ndarray, data_2: np.ndarray, atol: float) ->
     )
 
 
-def check_images(image_1: Path, image_2: Path) -> bool:
+def check_images(image_1: Path, image_2: Path, border: int = 0) -> bool:
     """Compare two FITS images.
 
     Args:
         fname_1 (str): Image 1.
         fname_2 (str): Image 2.
+        border (int, optional): Pixels at each edge left out of the comparison. Defaults to 0.
 
     Returns:
         bool: True if the images are the same.
@@ -190,6 +191,9 @@ def check_images(image_1: Path, image_2: Path) -> bool:
 
     logger.debug(f"{np.nanmean(data_1-data_2)=}")
 
+    if border:
+        inner = (..., slice(border, -border), slice(border, -border))
+        data_1, data_2 = data_1[inner], data_2[inner]
     return matches_where_finite(data_1, data_2, atol=1e-3)
 
 
